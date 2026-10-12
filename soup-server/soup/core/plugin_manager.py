@@ -80,16 +80,17 @@ class PluginManager:
         point, or a dotted "module.path:Attribute" spec).
 
         If `specs` is None, reads short names from the SOUP_PLUGINS
-        environment variable (comma-separated) and resolves each one
-        against the "soup.plugins" entry points first, falling back to
-        treating it as a dotted module path.
+        environment variable (comma-separated). Every string spec -
+        whether it comes from the environment or was passed in directly
+        (e.g. via Settings.plugins) - is resolved against the
+        "soup.plugins" entry points first, then as a short name of a
+        soup/plugins/<name> package, then as a dotted module path.
         """
 
-        entry_points: dict[str, Any] = {}
         if specs is None:
             specs = self._specs_from_env()
-            entry_points = self._entry_point_lookup()
 
+        entry_points = self._entry_point_lookup()
         return [self._resolve_spec(spec, entry_points) for spec in specs]
 
     @staticmethod
@@ -103,7 +104,7 @@ class PluginManager:
         return {ep.name: ep for ep in eps}
 
     def _resolve_spec(self, spec: Any, entry_points: Optional[dict[str, Any]] = None) -> SoupPlugin:
-        entry_points = entry_points or {}
+        entry_points = entry_points if entry_points is not None else self._entry_point_lookup()
 
         if isinstance(spec, SoupPlugin):
             return spec
@@ -111,20 +112,36 @@ class PluginManager:
             return spec()
         if isinstance(spec, str):
             if spec in entry_points:
-                return self._resolve_spec(entry_points[spec].load())
-            return self._load_dotted_path(spec)
+                return self._resolve_spec(entry_points[spec].load(), entry_points)
+            return self._load_dotted_path(spec, entry_points)
 
         raise TypeError(f"Unsupported plugin spec: {spec!r}")
 
-    def _load_dotted_path(self, dotted: str) -> SoupPlugin:
+    def _load_dotted_path(self, dotted: str, entry_points: Optional[dict[str, Any]] = None) -> SoupPlugin:
         module_path, _, attr = dotted.partition(":")
-        module = importlib.import_module(module_path)
-        obj = getattr(module, attr) if attr else (
-            getattr(module, "PLUGIN", None) or getattr(module, "plugin", None)
-        )
-        if obj is None:
-            raise ImportError(f"Cannot resolve a SoupPlugin from spec '{dotted}'")
-        return self._resolve_spec(obj)
+
+        # A bare name with no dot (e.g. "csv_reader") is tried as a
+        # built-in plugin package under soup.plugins first, since that is
+        # what Settings.plugins / SOUP_PLUGINS short names refer to.
+        candidates = [module_path]
+        if "." not in module_path:
+            candidates.insert(0, f"soup.plugins.{module_path}")
+
+        last_error: Optional[ImportError] = None
+        for candidate in candidates:
+            try:
+                module = importlib.import_module(candidate)
+            except ImportError as exc:
+                last_error = exc
+                continue
+
+            obj = getattr(module, attr) if attr else (
+                getattr(module, "PLUGIN", None) or getattr(module, "plugin", None)
+            )
+            if obj is not None:
+                return self._resolve_spec(obj, entry_points)
+
+        raise ImportError(f"Cannot resolve a SoupPlugin from spec '{dotted}'") from last_error
 
     # ------------------------------------------------------------------ #
     # Phases 2-5: ordering, verification, registration, isolation

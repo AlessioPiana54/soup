@@ -20,6 +20,10 @@ DEFAULT_MEMGRAPH_HOST = "memgraph"
 DEFAULT_MEMGRAPH_PORT = 7687
 DEFAULT_CONTAINER_NAME = "soup-database"
 DEFAULT_LOCAL_STORAGE_ROOT = "/soup"
+# csv_reader ships as a built-in plugin (soup/plugins/csv_reader) and is
+# active unless SOUP_PLUGINS is explicitly set (to "" to disable every
+# plugin, or to a different list).
+DEFAULT_PLUGINS = "csv_reader"
 
 _TRUE_VALUES = {"1", "true", "yes", "on"}
 
@@ -51,7 +55,7 @@ class Settings:
         source = os.environ if env is None else env
 
         return cls(
-            plugins=_split_csv(source.get("SOUP_PLUGINS", "")),
+            plugins=_split_csv(source.get("SOUP_PLUGINS", DEFAULT_PLUGINS)),
             strict=_as_bool(source.get("SOUP_STRICT"), DEFAULT_STRICT),
             storage_kind=source.get("SOUP_STORAGE_KIND", DEFAULT_STORAGE_KIND),
             memgraph_host=source.get("MEMGRAPH_HOST", DEFAULT_MEMGRAPH_HOST),
