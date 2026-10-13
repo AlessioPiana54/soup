@@ -31,47 +31,6 @@ class FileManager:
     svg_folder_name = 'FileData/temp_svg'
 
     @staticmethod
-    def copy_csv_file(file, file_name, entity_folder):
-        """
-        Copy specific file on the engine
-        :param file: the complete file
-        :param file_name: file name
-        :param entity_folder: if the file is entity
-        :return: success or error message with content
-        """
-
-        project_dir = Path(__file__).parent.parent
-        folder_name = FileManager.csv_folder_name
-
-        if entity_folder is True:
-            folder_name = FileManager.csv_entity_folder_name
-
-        temp_dir = project_dir / folder_name
-
-        # 1. Check and create the folder "temp_csv"
-        if not temp_dir.exists():
-            temp_dir.mkdir(parents=True)
-
-        complete_file_name = f'{file_name}.csv'
-        new_file_path = temp_dir / complete_file_name
-
-        try:
-            # 2. Save the file on the directory
-            if entity_folder is True:
-                file.to_csv(new_file_path)
-            else:
-                file.save(new_file_path)
-
-            # 3. Check if the file is correctly saved or not
-            if new_file_path.exists() and new_file_path.stat().st_size > 0:
-                return f"success", new_file_path
-            else:
-                return "Error while copy the file", None
-
-        except Exception as e:
-            return f"Error while copy the file: {e}", None
-
-    @staticmethod
     def delete_file(file_name, file_type, entity_folder):
         """
         Delete specific file on the engine

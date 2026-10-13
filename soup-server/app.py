@@ -16,7 +16,6 @@ import logging
 from flask import Flask, jsonify
 from flask_cors import CORS
 from flask_socketio import SocketIO
-from Controllers.Graph.graph_controller import graph_controller_bp
 from Controllers.AggregateGraph.aggregate_graph_controller import aggregate_graph_controller_bp
 from Controllers.generic_graph_controller import generic_graph_controller_bp
 from Controllers.Graph.graph_op_controller import graph_op_controller_bp
@@ -33,7 +32,6 @@ from Models.logger_model import Logger
 app = Flask(__name__)
 
 # Register the App Blueprint
-app.register_blueprint(graph_controller_bp)
 app.register_blueprint(graph_op_controller_bp)
 app.register_blueprint(aggregate_graph_controller_bp)
 app.register_blueprint(aggregate_graph_op_controller_bp)
