@@ -78,3 +78,27 @@ def test_mapping_validation_raises_validation_error_with_clear_message():
 def test_standard_column_mapping_must_have_exactly_three_entries():
     with pytest.raises(ValidationError):
         ColumnMapping.from_payload(["EventID", "Timestamp"])
+
+
+def test_standard_role_columns_are_dropped_from_entity_and_value_columns():
+    # Regression test: the new-dataset UI lets a user tick the same column
+    # as both a standard role and an entity/value column (e.g. also mark
+    # "Timestamp" as a value column). If that survived normalization,
+    # config["values_columns"] would still contain "Timestamp", and the
+    # legacy /complete-graph/build rebuild (Services/generic_graph_service.py)
+    # would add a `Timestamp: coalesce(row.Timestamp, '')` property to a
+    # Cypher map literal that already has a `Timestamp: localDateTime(...)`
+    # key - "Same key can't appear twice in a map literal." A column
+    # consumed by a standard role has no separate column in the canonical
+    # events CSV (events_csv() already excludes it), so it must never
+    # survive as an entity/value column either.
+    mapping = ColumnMapping.from_payload(
+        ["EventID", "Timestamp", "Activity"],
+        filtered_columns=["Activity", "Timestamp", "Items"],
+        values_columns=["Activity", "Timestamp", "Resource"],
+    )
+
+    normalized = mapping._normalized()
+
+    assert normalized.entity_columns == ("Items",)
+    assert normalized.value_columns == ("Resource",)

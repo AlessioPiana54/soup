@@ -107,7 +107,14 @@ class ColumnMapping:
     nodes) and `valuesColumn` (columns kept as plain Event properties). A
     column may legitimately appear in both entity_columns and
     value_columns (the frontend lets a user tick both checkboxes for the
-    same column).
+    same column). A column that is one of the 3 standard roles is dropped
+    from entity_columns/value_columns on normalization (see _normalized) -
+    it is already consumed by that role, so keeping it as an extra
+    property/entity type would duplicate it (the canonical events CSV has
+    no separate column for it - events_csv() already excludes it from
+    extra_columns - and the legacy rebuild endpoint would otherwise emit a
+    Cypher map literal with the same key twice, e.g. when the timestamp
+    column is also ticked as a value column).
     """
 
     event_id: str
@@ -137,12 +144,20 @@ class ColumnMapping:
         )
 
     def _normalized(self) -> "ColumnMapping":
+        event_id = _normalize_text(self.event_id)
+        timestamp = _normalize_text(self.timestamp)
+        activity = _normalize_text(self.activity)
+        standard_roles = {event_id, timestamp, activity}
         return ColumnMapping(
-            event_id=_normalize_text(self.event_id),
-            timestamp=_normalize_text(self.timestamp),
-            activity=_normalize_text(self.activity),
-            entity_columns=tuple(_normalize_text(c) for c in self.entity_columns),
-            value_columns=tuple(_normalize_text(c) for c in self.value_columns),
+            event_id=event_id,
+            timestamp=timestamp,
+            activity=activity,
+            entity_columns=tuple(
+                c for c in (_normalize_text(c) for c in self.entity_columns) if c not in standard_roles
+            ),
+            value_columns=tuple(
+                c for c in (_normalize_text(c) for c in self.value_columns) if c not in standard_roles
+            ),
         )
 
     def validate_against(self, columns: Sequence[str]) -> None:
