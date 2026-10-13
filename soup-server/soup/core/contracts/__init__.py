@@ -23,6 +23,7 @@ from soup.core.contracts.plugin import PluginContext, SoupPlugin
 from soup.core.contracts.tables import Table
 from soup.core.contracts.input import EVENT_LOG, InputHandler, InputReader
 from soup.core.contracts.event_log import EventLogData, EventLogReader
+from soup.core.contracts.build import BuildContext, EkgBuildStep
 
 __all__ = [
     "CONTRACTS_API_VERSION",
@@ -43,4 +44,6 @@ __all__ = [
     "InputReader",
     "EventLogData",
     "EventLogReader",
+    "BuildContext",
+    "EkgBuildStep",
 ]

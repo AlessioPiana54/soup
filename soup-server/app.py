@@ -119,5 +119,22 @@ def connect_database():
 
 
 # Main (run the Server on 8080)
+#
+# NOTE (Pilastro 1 - Import refactor): the server no longer runs the
+# `app` Flask instance built above - it is left in place, unmodified,
+# because this module's old routes/blueprint-registrations are not
+# deleted (only the import route they used to serve, POST /api/v2/graph,
+# is no longer active here: soup/api/core_routes.py now serves it,
+# backed by the new plugin-based import pipeline). The process instead
+# builds and runs soup.api.flask_app's app, which registers every other
+# legacy blueprint unmodified alongside the new import/welcome/
+# memgraph-connect routes. See soup/core/engine.py (build_engine) and
+# soup/api/flask_app.py (build_flask_app).
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080, debug=True)
+    from soup.core.engine import build_engine
+    from soup.core.settings import Settings
+    from soup.api.flask_app import build_flask_app
+
+    engine = build_engine(Settings.from_env())
+    new_app = build_flask_app(engine)
+    new_app.run(host='0.0.0.0', port=8080, debug=True)
