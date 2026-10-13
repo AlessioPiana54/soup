@@ -20,6 +20,7 @@ import logging
 from flask import Flask, jsonify
 from flask_cors import CORS
 from flask_socketio import SocketIO
+from werkzeug.exceptions import HTTPException
 
 from soup.api.core_routes import build_core_blueprint
 from soup.core.engine import Engine
@@ -80,6 +81,13 @@ def _register_error_handlers(app: Flask) -> None:
     def _handle_domain_error(error: DomainError):
         result = Result(error.http_status_code, str(error))
         return jsonify(result.to_dict()), error.http_status_code
+
+    @app.errorhandler(HTTPException)
+    def _handle_http_exception(error: HTTPException):
+        # Flask/Werkzeug's own routing errors (404 Not Found, 405 Method
+        # Not Allowed, ...) are already well-formed responses - let them
+        # through as-is instead of flattening them into a 500.
+        return error
 
     @app.errorhandler(Exception)
     def _handle_unexpected_error(error: Exception):

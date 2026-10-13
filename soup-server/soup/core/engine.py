@@ -47,6 +47,13 @@ class Engine:
     def shutdown(self) -> None:
         self.plugin_manager.shutdown()
 
+        # GraphDatabase does not declare close() (not every adapter needs
+        # one - FakeDatabase doesn't), so call it only if the concrete
+        # instance actually has it (MemgraphDatabase does).
+        close = getattr(self.db, "close", None)
+        if callable(close):
+            close()
+
 
 def _build_default_database(settings: Settings) -> GraphDatabase:
     from soup.infrastructure.memgraph import MemgraphDatabase

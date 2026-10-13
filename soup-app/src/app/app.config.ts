@@ -4,8 +4,16 @@ import { provideAnimationsAsync } from '@angular/platform-browser/animations/asy
 import { provideRouter } from '@angular/router';
 
 import { routes } from './app.routes';
+import { provideSoupPlugins } from './core/plugins/provide-soup-plugins';
+import { csvImportPlugin } from './plugins/csv-import/csv-import.plugin';
 
 // Application provider configuration
 export const appConfig: ApplicationConfig = {
-  providers: [provideZoneChangeDetection({ eventCoalescing: true }), provideRouter(routes), provideAnimationsAsync(), provideHttpClient()]
+  providers: [
+    provideZoneChangeDetection({ eventCoalescing: true }),
+    provideRouter(routes),
+    provideAnimationsAsync(),
+    provideHttpClient(),
+    provideSoupPlugins(csvImportPlugin)
+  ]
 };

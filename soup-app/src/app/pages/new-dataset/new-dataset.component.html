@@ -17,7 +17,9 @@
           Or try an example .csv file
         </span>
       </p>
-      <ngx-dropzone (change)="this.onSelectFile($event)">
+      <ngx-dropzone
+        [accept]="this.acceptedExtensionsAttr"
+        (change)="this.onSelectFile($event)">
         <ngx-dropzone-label>Upload</ngx-dropzone-label>
         <ngx-dropzone-preview
           *ngFor="let f of files"

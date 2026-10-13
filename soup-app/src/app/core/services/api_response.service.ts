@@ -92,6 +92,14 @@ export class ApiService {
    * @returns an ApiResponse object
    */
   private handleResponse<T>(response: any): ApiResponse<T> {
+    // A 204/205 (No Content) response has no body per HTTP semantics - the
+    // browser already stripped whatever the backend sent (e.g. the legacy
+    // endpoints that jsonify() an ApiResponse envelope even on 204), so
+    // there is no embedded http_status_code/message left to read back.
+    if (response == null) {
+      return new ApiResponse<T>(204, null, 'No content');
+    }
+
     // Return the ApiResponse object
     return new ApiResponse(response.http_status_code, response.response_data, response.message);
   }

@@ -110,8 +110,12 @@ export class LocalDataService {
       dataset.allColumns = item['all_columns'];
 
       // Format the execution process time
+      // `process_info` may legitimately be missing (datasets whose config
+      // predates this field, or any future write path that forgets it) -
+      // fall back to an empty object instead of letting one malformed
+      // dataset crash the whole list.
       const datasetProcess = new DatasetProcessInfo();
-      const processData = item['process_info'];
+      const processData = item['process_info'] ?? {};
       datasetProcess.startNormalExecutionTime = this.formatDateTime(processData['init_time']);
       datasetProcess.finishNormalExecutionTime = this.formatDateTime(processData['finish_time']);
       datasetProcess.startEventTimeExecution = this.formatDateTime(processData['init_event_time']);
@@ -160,8 +164,8 @@ export class LocalDataService {
     this.currentDataset!.obsRel = item['obs_rel_count'];
     this.currentDataset!.dfcRel = item['df_c_rel_count'];
 
-    // Process execution
-    const processInfoData = item['process_info'];
+    // Process execution (see parseItemToDataset: process_info may be absent)
+    const processInfoData = item['process_info'] ?? {};
     this.currentDataset!.processInfo.startClassExecutionTime = this.formatDateTime(processInfoData['init_class_time']);
     this.currentDataset!.processInfo.finishClassExecutionTime = this.formatDateTime(processInfoData['finish_class_time']);
     this.currentDataset!.processInfo.startClassNodeTimeExecution = this.formatDateTime(processInfoData['init_class_node_time']);

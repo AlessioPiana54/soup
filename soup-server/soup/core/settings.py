@@ -20,10 +20,12 @@ DEFAULT_MEMGRAPH_HOST = "memgraph"
 DEFAULT_MEMGRAPH_PORT = 7687
 DEFAULT_CONTAINER_NAME = "soup-database"
 DEFAULT_LOCAL_STORAGE_ROOT = "/soup"
-# csv_reader ships as a built-in plugin (soup/plugins/csv_reader) and is
-# active unless SOUP_PLUGINS is explicitly set (to "" to disable every
-# plugin, or to a different list).
-DEFAULT_PLUGINS = "csv_reader"
+# csv_reader and causal_df ship as built-in plugins (soup/plugins/) and
+# are active unless SOUP_PLUGINS is explicitly set (to "" to disable
+# every plugin, or to a different list). causal_df must be on by default:
+# without it, trigger/target pairs submitted with an import are silently
+# ignored (CausalDirectlyFollowsStep, order 450, never loads).
+DEFAULT_PLUGINS = "csv_reader,causal_df"
 
 _TRUE_VALUES = {"1", "true", "yes", "on"}
 

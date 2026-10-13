@@ -6,7 +6,6 @@ import { FormsModule } from '@angular/forms';
 import { MatRadioModule } from '@angular/material/radio';
 import { Router } from '@angular/router';
 import { NgxDropzoneModule } from 'ngx-dropzone';
-import { Papa } from 'ngx-papaparse';
 import { ApiResponse } from 'src/app/core/models/api_response.model';
 import { Multiplicity } from 'src/app/models/multiplicity.model';
 import { ModalService } from 'src/app/shared/components/s-modals/modal.service';
@@ -18,6 +17,9 @@ import { environment } from 'src/environments/environment';
 import { UMLEdge } from '../../components/uml-diagram/models/uml_edge.model';
 import { UMLNode } from '../../components/uml-diagram/models/uml_node.model';
 import { UmlDiagramComponent } from '../../components/uml-diagram/uml-diagram.component';
+import { EVENT_LOG_KIND, EventLogFormatPlugin } from '../../core/input/event-log-format-plugin';
+import { Table } from '../../core/input/table.model';
+import { PluginRegistryService } from '../../core/plugins/plugin-registry.service';
 import { LoggerService } from '../../core/services/logger.service';
 import { Entity } from '../../models/entity.mode';
 import { DatasetService } from '../../services/datasets.service';
@@ -57,6 +59,9 @@ export class NewDatasetComponent implements OnInit {
 
   // The selected file
   public selectedFile: File | undefined;
+
+  // The input format plugin that accepted the selected file
+  public selectedFormat: EventLogFormatPlugin | undefined;
 
   // Column for the table (based on the .csv entities)
   public displayedColumns: string[] = [];
@@ -123,7 +128,7 @@ export class NewDatasetComponent implements OnInit {
 
   /**
    * Constructor for NewDatasetComponent component
-   * @param parser the Papa parser
+   * @param pluginRegistry the PluginRegistryService service
    * @param router the Router
    * @param http the HttpClient
    * @param modal the ModalService service
@@ -136,7 +141,7 @@ export class NewDatasetComponent implements OnInit {
    * @param graphService the StandardGraphService service
    */
   constructor(
-    private parser: Papa,
+    private pluginRegistry: PluginRegistryService,
     private router: Router,
     private http: HttpClient,
     private modal: ModalService,
@@ -158,36 +163,46 @@ export class NewDatasetComponent implements OnInit {
    * Load example csv
    */
   public loadExampleCsv(): void {
-    this.http.get('help/order_process.csv', { responseType: 'text' }).subscribe({
-      next: (csvData: string) => {
+    this.http.get('help/order_process.csv', { responseType: 'blob' }).subscribe({
+      next: (blob: Blob) => {
         // Simulate the upload
-        const fakeFile = new File([csvData], 'order_process.csv', { type: 'text/csv' });
+        const fakeFile = new File([blob], 'order_process.csv', { type: 'text/csv' });
+        const format = this.pluginRegistry.inputFormatFor<EventLogFormatPlugin>(fakeFile, EVENT_LOG_KIND);
+
+        if (!format) {
+          this.toast.show('No plugin available to read the example file', ToastLevel.Error, 3000);
+          return;
+        }
 
         this.files = [fakeFile];
         this.selectedFile = fakeFile;
+        this.selectedFormat = format;
         this.haveSelectFile = true;
 
-        // Process the upload
-        this.parser.parse(csvData, {
-          header: true,
-          dynamicTyping: true,
-          chunk: (results) => {
-            this.processChunk(results.data);
-          },
-          complete: () => {
+        format
+          .readPreview(fakeFile)
+          .then((table) => {
+            this.applyPreview(table);
             this.isShowUpload = false;
             this.isShowTable = true;
             this.onManageMasterSidebar();
-          },
-          error: (error) => {
-            this.toast.show(`Error processing example CSV: ${error.message}`, ToastLevel.Error, 3000);
-          }
-        });
+          })
+          .catch((error) => {
+            this.toast.show(`Error processing example file: ${error?.message ?? error}`, ToastLevel.Error, 3000);
+          });
       },
       error: () => {
         this.toast.show('Error while loading example csv from HTTP', ToastLevel.Error, 3000);
       }
     });
+  }
+
+  /**
+   * The extensions accepted by the registered event-log formats, as a
+   * comma-separated list suitable for ngx-dropzone's `accept` input.
+   */
+  public get acceptedExtensionsAttr(): string {
+    return this.pluginRegistry.acceptedExtensions(EVENT_LOG_KIND).join(',');
   }
 
   /**
@@ -206,65 +221,59 @@ export class NewDatasetComponent implements OnInit {
 
     this.files.push(...event.addedFiles);
 
-    if (!this.files[0].name.endsWith('.csv')) {
+    const file = this.files[0];
+    const format = this.pluginRegistry.inputFormatFor<EventLogFormatPlugin>(file, EVENT_LOG_KIND);
+
+    if (!format) {
       this.files.splice(this.files.indexOf(event), 1);
       this.selectedFile = undefined;
-      this.toast.show('Only file with CSV extension', ToastLevel.Error, 2000);
+      this.selectedFormat = undefined;
+
+      const accepted = this.pluginRegistry.acceptedExtensions(EVENT_LOG_KIND).join(', ');
+      this.toast.show(`Unsupported file format. Accepted: ${accepted}`, ToastLevel.Error, 2000);
       return;
     }
 
-    this.selectedFile = this.files[0];
+    this.selectedFile = file;
+    this.selectedFormat = format;
     this.haveSelectFile = true;
   }
 
   /**
-   * Parse the csv file
+   * Parse the selected file and show its preview
    */
   public parseFileData(): void {
-    if (this.selectedFile) {
+    if (this.selectedFile && this.selectedFormat) {
       if (this.allFileEntitiesSelected.length > 0 && this.dataSource.length > 0 && this.displayedColumns.length > 0) {
         this.isShowUpload = false;
         this.isShowTable = true;
         return;
       }
 
-      const reader: FileReader = new FileReader();
-      reader.onload = (e) => {
-        if (e.target?.result) {
-          const csvData: string = e.target.result.toString();
+      this.selectedFormat
+        .readPreview(this.selectedFile)
+        .then((table) => {
+          this.applyPreview(table);
+          this.isShowUpload = false;
+          this.isShowTable = true;
 
-          // Parse file data
-          this.parser.parse(csvData, {
-            header: true,
-            dynamicTyping: true,
-            chunk: (results) => {
-              this.processChunk(results.data);
-            },
-            complete: () => {
-              // When the parsing finish
-              this.isShowUpload = false;
-              this.isShowTable = true;
-
-              this.onManageMasterSidebar();
-            },
-            error: (error) => {
-              this.toast.show(`Error processing CSV: ${error.message}`, ToastLevel.Error, 3000);
-            }
-          });
-        }
-      };
-      reader.readAsText(this.selectedFile);
+          this.onManageMasterSidebar();
+        })
+        .catch((error) => {
+          this.toast.show(`Error processing file: ${error?.message ?? error}`, ToastLevel.Error, 3000);
+        });
     } else {
-      this.toast.show('Upload the csv file', ToastLevel.Error, 2000);
+      this.toast.show('Upload the file', ToastLevel.Error, 2000);
     }
   }
 
   /**
-   * Reset the csv file data
+   * Reset the selected file data
    */
   public resetFileData(): void {
     this.files = [];
     this.selectedFile = undefined;
+    this.selectedFormat = undefined;
     this.haveSelectFile = false;
   }
 
@@ -279,60 +288,43 @@ export class NewDatasetComponent implements OnInit {
     }
 
     this.selectedFile = undefined;
+    this.selectedFormat = undefined;
   }
 
   /**
-   * Convert timestamp format
-   * @param value the value
+   * Normalize a column name the same way the backend does (EventLog.from_data):
+   * strip leading/trailing whitespace, then collapse internal whitespace runs to "_".
+   * Applied ONLY to column names, never to cell values - the backend owns
+   * value normalization (spaces, millisecond commas), not the frontend.
+   * @param name the raw column name
    */
-  private convertTimestampFormat(value: string): string {
-    return value.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/, '$1.$2');
+  private normalizeColumnName(name: string): string {
+    return name.trim().replace(/\s+/g, '_');
   }
 
   /**
-   * Check if a string matches the timestamp format
-   * @param value the string to check
+   * Apply a format's preview Table to the page's table/selection state.
+   * Column names are normalized here (matching the names the backend will
+   * save in the dataset config), so eventIdColumn/filteredColumn/etc. and
+   * the resulting POST payload all agree with the backend on column names
+   * from the very start; cell values are kept exactly as read.
+   * @param table the preview returned by the selected format's readPreview()
    */
-  private isTimestamp(value: string): boolean {
-    const timestampRegex = /^(?:\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d{3})?|(\d{8})T\d{6}(\.\d{3})?)$/;
+  private applyPreview(table: Table): void {
+    const normalizedColumns = table.columns.map((name) => this.normalizeColumnName(name));
 
-    return timestampRegex.test(value);
-  }
+    this.allColumns = normalizedColumns;
+    this.displayedColumns = normalizedColumns;
+    this.allFileEntitiesSelected = normalizedColumns.map((name) => ({ name, selected: false }));
+    this.allFileValuesSelected = normalizedColumns.map((name) => ({ name, selected: false }));
 
-  /**
-   * Process a csv chunk
-   * @param chunkData the data
-   */
-  private processChunk(chunkData: any[]): void {
-    if (chunkData.length > 0) {
-      // Replace spaces with underscores in column names
-      const allColumn: string[] = Object.keys(chunkData[0]).map((col) => col.replace(/ /g, '_'));
-      this.allColumns = allColumn;
-
-      // Prepare the columns for the table and replace spaces with underscores in column names
-      this.displayedColumns = allColumn;
-      this.allFileEntitiesSelected = allColumn.map((columnName) => ({ name: columnName, selected: false }));
-      this.allFileValuesSelected = allColumn.map((columnName) => ({ name: columnName, selected: false }));
-
-      // Process each row, replace spaces with underscores in the values
-      chunkData.forEach((row: any) => {
-        // Loop through each cell in the row
-        for (const key in row) {
-          if (Object.prototype.hasOwnProperty.call(row, key)) {
-            if (typeof row[key] === 'string') {
-              row[key] = row[key].replace(/\s+/g, '_').trim();
-
-              // Format the timestamp if the row is time
-              if (this.isTimestamp(row[key])) {
-                row[key] = this.convertTimestampFormat(row[key]);
-              }
-            }
-          }
-        }
-
-        this.dataSource.push(row);
+    this.dataSource = table.rows.map((row) => {
+      const record: Record<string, string | null> = {};
+      normalizedColumns.forEach((column, index) => {
+        record[column] = row[index] ?? null;
       });
-    }
+      return record;
+    });
   }
 
   /**
@@ -803,71 +795,21 @@ export class NewDatasetComponent implements OnInit {
       return;
     }
 
-    if (this.selectedFile) {
-      const reader: FileReader = new FileReader();
-      reader.onload = (e) => {
-        if (e.target?.result) {
-          const csvData: string = e.target.result.toString();
-          const lines = csvData.split('\n');
-
-          if (lines.length > 0) {
-            const header = lines[0].split(',');
-
-            // Check columns spaces
-            for (let i = 0; i < header.length; i++) {
-              header[i] = header[i].replace(/ /g, '_');
-            }
-
-            // Check the row spaces
-            for (let i = 1; i < lines.length; i++) {
-              const row = lines[i].split(',');
-              for (let j = 0; j < row.length; j++) {
-                row[j] = row[j].replace(/ /g, '_');
-              }
-
-              lines[i] = row.join(',');
-            }
-
-            // Rename the standard columns
-            for (let i = 0; i < header.length; i++) {
-              if (header[i] === this.eventIdColumn) {
-                header[i] = 'event_id';
-              } else if (header[i] === this.timestampColumn) {
-                header[i] = 'timestamp';
-              } else if (header[i] === this.activityNameColumn) {
-                header[i] = 'activity_name';
-              }
-            }
-
-            // Check the timestamp
-            const timestampIndex = header.findIndex((col) => col === this.timestampColumn);
-
-            for (let i = 1; i < lines.length; i++) {
-              const row = lines[i].split(',');
-              if (timestampIndex !== -1 && row[timestampIndex]) {
-                row[timestampIndex] = this.convertTimestampFormat(row[timestampIndex]);
-              }
-              lines[i] = row.join(',');
-            }
-
-            const modifiedCSV = lines.join('\n');
-            const modifiedFile: File = new File([new Blob([modifiedCSV], { type: 'text/csv' })], 'modified_data.csv', { type: 'text/csv' });
-
-            this.graphService.deleteGraph().subscribe({
-              next: () => {
-                this.buildDataset(modifiedFile, datasetName, datasetDescription, saveProcessExecution);
-              },
-              error: () => {
-                this.toast.show('Temporal error. Check the Engine and Retry', ToastLevel.Error, 3000);
-              }
-            });
-          }
-        }
-      };
-      reader.readAsText(this.selectedFile);
-    } else {
-      this.toast.show('Please upload .csv file', ToastLevel.Error, 2000);
+    if (!this.selectedFile) {
+      this.toast.show('Please upload a file', ToastLevel.Error, 2000);
+      return;
     }
+
+    const file = this.selectedFile;
+
+    this.graphService.deleteGraph().subscribe({
+      next: () => {
+        this.buildDataset(file, datasetName, datasetDescription, saveProcessExecution);
+      },
+      error: () => {
+        this.toast.show('Temporal error. Check the Engine and Retry', ToastLevel.Error, 3000);
+      }
+    });
   }
 
   /**
@@ -889,8 +831,7 @@ export class NewDatasetComponent implements OnInit {
     const standardColumn: string[] = [this.eventIdColumn, this.timestampColumn, this.activityNameColumn];
 
     const formData: FormData = new FormData();
-    formData.append('file', file, 'filtered.csv');
-    formData.append('copy_file', file, 'filtered.csv');
+    formData.append('file', file, file.name);
 
     // Add trigger and target if exists
     if (this.triggerTargetRows.length > 0) {
