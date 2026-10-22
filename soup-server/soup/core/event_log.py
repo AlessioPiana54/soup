@@ -50,7 +50,7 @@ from dataclasses import dataclass, replace
 from typing import Optional, Sequence
 
 from soup.core.contracts import EventLogData, Table
-from soup.core.errors import ValidationError
+from soup.core.contracts.errors import ValidationError
 
 # Canonical column names of the staged events CSV - these are exactly what
 # Services/generic_graph_service.py passes as event_id_col/timestamp_col/

@@ -93,3 +93,20 @@ def test_iteration_mixes_ordered_and_default_zero_order():
     assert result[0] == "no-order-1"
     assert result[1] == "no-order-2"
     assert result[2].label == "high"
+
+
+def test_remove_owner_removes_only_that_owners_items():
+    registry: Registry[str] = Registry("thing")
+    registry.register("a1", "pkg_a", "a1")
+    registry.register("b1", "pkg_b", "b1")
+    registry.register("a2", "pkg_a", "a2")
+
+    removed = registry.remove_owner("pkg_a")
+
+    assert removed == ["a1", "a2"]
+    assert registry.keys() == ["b1"]
+    assert registry.owner_of("a1") is None
+    # keys freed by remove_owner can be registered again
+    registry.register("a1-again", "pkg_c", "a1")
+    assert registry.owner_of("a1") == "pkg_c"
+    assert registry.remove_owner("nobody") == []

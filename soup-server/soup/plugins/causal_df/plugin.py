@@ -16,6 +16,7 @@ from soup.plugins.causal_df.step import CausalDirectlyFollowsStep
 class CausalDfPlugin(SoupPlugin):
     name = "causal_df"
     version = "1.0.0"
+    api_version = "2.0"
 
     def register(self, ctx: PluginContext) -> None:
         ctx.add_build_step(CausalDirectlyFollowsStep.key, CausalDirectlyFollowsStep())

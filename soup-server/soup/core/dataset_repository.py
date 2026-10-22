@@ -32,7 +32,7 @@ import re
 from typing import Any
 
 from soup.core.contracts import FileStorage
-from soup.core.errors import ValidationError
+from soup.core.contracts.errors import ValidationError
 
 _INVALID_NAME_CHARS = re.compile(r"[\\/]")
 

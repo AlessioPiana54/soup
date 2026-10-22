@@ -4,8 +4,14 @@ File : engine.py
 Description: build_engine() is the single composition root: it wires the
              GraphDatabase/FileStorage adapters (or uses the ones injected
              for testing), discovers/loads the plugins declared in
-             Settings, and assembles the core's own services
-             (DatasetRepository, EkgService, EventLogHandler, ImportService).
+             Settings, and assembles the core's own services: the legacy
+             import path (DatasetRepository, EkgService, EventLogHandler,
+             ImportService, behind /api/v2/graph) and the mediator
+             (ImportRouter, OperationRouter, VisualizerRouter,
+             ExportRouter, WorkspaceService), which reaches the
+             catalog/preferences tools provided by packages. If those
+             tools are missing the engine still starts: the report lists
+             the problem and the services answer 503.
              Nothing outside this module decides which concrete adapter,
              plugin, or service wiring to use.
 Project : soup-server
@@ -15,15 +21,22 @@ Project : soup-server
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Iterable, Optional
 
 from soup.core.contracts import CONTRACTS_API_VERSION, EVENT_LOG, FileStorage, GraphDatabase
 from soup.core.dataset_repository import DatasetRepository
+from soup.core.event_bus import EventBus
 from soup.core.plugin_context import DefaultPluginContext
 from soup.core.plugin_manager import PluginManager, PluginReport
+from soup.core.services.core_tools import CoreTools, missing_core_tools
 from soup.core.services.ekg_service import EkgService
 from soup.core.services.event_log_handler import EventLogHandler
+from soup.core.services.export_router import ExportRouter
+from soup.core.services.import_router import ImportRouter
 from soup.core.services.import_service import ImportService
+from soup.core.services.operation_router import OperationRouter
+from soup.core.services.visualizer_router import VisualizerRouter
+from soup.core.services.workspace_service import WorkspaceService
 from soup.core.settings import Settings
 
 # The core owns kind=EVENT_LOG end to end (EventLogHandler); it is
@@ -43,6 +56,13 @@ class Engine:
     repository: DatasetRepository
     ekg_service: EkgService
     import_service: ImportService
+    event_bus: EventBus
+    core_tools: CoreTools
+    import_router: ImportRouter
+    operation_router: OperationRouter
+    visualizer_router: VisualizerRouter
+    export_router: ExportRouter
+    workspace_service: WorkspaceService
 
     def shutdown(self) -> None:
         self.plugin_manager.shutdown()
@@ -73,21 +93,33 @@ def _build_default_storage(settings: Settings) -> FileStorage:
     return DockerVolumeStorage(container_name=settings.container_name, root=settings.local_storage_root)
 
 
-def build_engine(settings: Settings, db: Optional[GraphDatabase] = None, storage: Optional[FileStorage] = None) -> Engine:
+def build_engine(
+    settings: Settings,
+    db: Optional[GraphDatabase] = None,
+    storage: Optional[FileStorage] = None,
+    extra_plugins: Iterable[Any] = (),
+) -> Engine:
     """
     Single composition root. `db`/`storage` are normally omitted and built
     from `settings`; tests inject fakes (tests.fakes.FakeDatabase,
-    tests.fakes.InMemoryFileStorage) instead.
+    tests.fakes.InMemoryFileStorage) instead. `extra_plugins` are loaded
+    together with Settings.plugins (SoupPlugin instances/classes or
+    specs); tests use it for packages defined in the test itself.
     """
 
     resolved_db = db if db is not None else _build_default_database(settings)
     resolved_storage = storage if storage is not None else _build_default_storage(settings)
 
     manager = PluginManager(contracts_api_version=CONTRACTS_API_VERSION, strict=settings.strict)
-    ctx = DefaultPluginContext()
+    event_bus = EventBus()
+    ctx = DefaultPluginContext(event_bus)
 
-    plugins = manager.discover(list(settings.plugins))
+    plugins = manager.discover([*settings.plugins, *extra_plugins])
     report = manager.load(plugins, ctx=ctx)
+    for problem in missing_core_tools(ctx.tool_registry):
+        report.add_warning(problem)
+
+    core_tools = CoreTools(ctx.tool_registry)
 
     repository = DatasetRepository(resolved_storage, root=settings.local_storage_root)
     ekg_service = EkgService(resolved_db, plugin_build_steps=ctx.build_steps)
@@ -109,4 +141,11 @@ def build_engine(settings: Settings, db: Optional[GraphDatabase] = None, storage
         repository=repository,
         ekg_service=ekg_service,
         import_service=import_service,
+        event_bus=event_bus,
+        core_tools=core_tools,
+        import_router=ImportRouter(ctx.importers, core_tools, event_bus),
+        operation_router=OperationRouter(ctx.operations, core_tools, event_bus),
+        visualizer_router=VisualizerRouter(ctx.visualizers, core_tools),
+        export_router=ExportRouter(ctx.exporters, core_tools),
+        workspace_service=WorkspaceService(ctx.importers, ctx.operations, core_tools, event_bus),
     )

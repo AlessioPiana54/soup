@@ -10,4 +10,4 @@ Project : soup-server
 ------------------------------------------------------------------------
 """
 
-CONTRACTS_API_VERSION = "1.0"
+CONTRACTS_API_VERSION = "2.0"

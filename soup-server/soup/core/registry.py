@@ -43,6 +43,18 @@ class Registry(Generic[T]):
         self._items[key] = item
         self._owners[key] = owner
 
+    def remove_owner(self, owner: str) -> list[str]:
+        """
+        Remove every item registered by `owner` (a package being rolled
+        back or deactivated) and return their keys.
+        """
+
+        keys = [key for key, item_owner in self._owners.items() if item_owner == owner]
+        for key in keys:
+            del self._items[key]
+            del self._owners[key]
+        return keys
+
     def get(self, key: str) -> Optional[T]:
         return self._items.get(key)
 

@@ -10,7 +10,7 @@ Project : soup-server
 import pytest
 
 from soup.core.contracts import EventLogData, Table
-from soup.core.errors import ValidationError
+from soup.core.contracts.errors import ValidationError
 from soup.core.event_log import ColumnMapping, EventLog
 
 

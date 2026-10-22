@@ -22,7 +22,7 @@ Description: The routes the new host owns directly:
                legacy Controllers/* blueprints, registered unmodified
                (soup/api/flask_app.py).
 
-             Domain errors (soup.core.errors.DomainError) are not caught
+             Domain errors (soup.core.contracts.DomainError) are not caught
              here - they propagate to the single error handler registered
              in flask_app.py, which turns them into the right HTTP
              response. This module - together with flask_app.py - is the

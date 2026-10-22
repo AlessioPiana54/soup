@@ -18,7 +18,7 @@ import pytest
 
 from soup.core.contracts import EVENT_LOG, EventLogData, InputHandler, Table
 from soup.core.engine import build_engine
-from soup.core.errors import ValidationError
+from soup.core.contracts.errors import ValidationError
 from soup.core.registry import Registry
 from soup.core.services.import_service import ImportCommand, ImportService
 from soup.core.settings import Settings

@@ -67,6 +67,50 @@ def test_plugins_never_import_flask():
     assert violations == []
 
 
+# The mediator: contracts, package wiring and routing services. None of it
+# may depend on a data library, a database driver, Docker or Flask.
+# (soup/core/tables.py, event_log.py, ekg/ and the legacy import services
+# leave the core in later commits.)
+MEDIATOR_PATHS = (
+    "core/contracts",
+    "core/registry.py",
+    "core/plugin_context.py",
+    "core/plugin_manager.py",
+    "core/events.py",
+    "core/event_bus.py",
+    "core/extension_points.py",
+    "core/toolbox.py",
+    "core/field_validation.py",
+    "core/services/core_tools.py",
+    "core/services/import_router.py",
+    "core/services/operation_router.py",
+    "core/services/visualizer_router.py",
+    "core/services/export_router.py",
+    "core/services/workspace_service.py",
+)
+
+_FORBIDDEN_IN_MEDIATOR = ("pandas", "neo4j", "docker", "flask", "werkzeug")
+
+
+def _mediator_files() -> list[Path]:
+    files: list[Path] = []
+    for relative in MEDIATOR_PATHS:
+        path = SOUP_ROOT / relative
+        files.extend(_py_files(path) if path.is_dir() else [path])
+    return files
+
+
+def test_mediator_imports_no_data_library_database_docker_or_flask():
+    violations = []
+    for file_path in _mediator_files():
+        assert file_path.exists(), file_path
+        for module in _imported_modules(file_path):
+            root = module.split(".")[0]
+            if root in _FORBIDDEN_IN_MEDIATOR or root.startswith("flask_") or module.startswith("soup.infrastructure"):
+                violations.append(f"{file_path.relative_to(SOUP_ROOT)} imports {module}")
+    assert violations == []
+
+
 def test_only_soup_api_imports_flask():
     violations = []
     for file_path in _py_files(SOUP_ROOT):

@@ -24,7 +24,7 @@ from werkzeug.exceptions import HTTPException
 
 from soup.api.core_routes import build_core_blueprint
 from soup.core.engine import Engine
-from soup.core.errors import DomainError
+from soup.core.contracts.errors import DomainError
 from soup.core.results import Result
 
 

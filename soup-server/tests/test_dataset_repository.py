@@ -12,7 +12,7 @@ Project : soup-server
 import pytest
 
 from soup.core.dataset_repository import DatasetRepository
-from soup.core.errors import ValidationError
+from soup.core.contracts.errors import ValidationError
 from tests.fakes import InMemoryFileStorage
 
 

@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from typing import Any, BinaryIO, Mapping, Optional
 
 from soup.core.contracts import InputHandler, InputReader
-from soup.core.errors import ValidationError
+from soup.core.contracts.errors import ValidationError
 from soup.core.registry import Registry
 from soup.core.results import Result
 
