@@ -27,7 +27,7 @@ class _DatabaseWithClose(FakeDatabase):
 
 def test_shutdown_closes_the_database_when_it_has_a_close_method():
     db = _DatabaseWithClose()
-    engine = build_engine(Settings.from_env({"SOUP_PLUGINS": ""}), db=db, storage=InMemoryFileStorage())
+    engine = build_engine(Settings.from_env({"SOUP_PACKAGES": ""}), db=db, storage=InMemoryFileStorage())
 
     engine.shutdown()
 
@@ -38,7 +38,7 @@ def test_shutdown_does_not_fail_when_the_database_has_no_close_method():
     # FakeDatabase (used everywhere else in the suite) has no close() -
     # shutdown() must not raise AttributeError over that.
     db = FakeDatabase()
-    engine = build_engine(Settings.from_env({"SOUP_PLUGINS": ""}), db=db, storage=InMemoryFileStorage())
+    engine = build_engine(Settings.from_env({"SOUP_PACKAGES": ""}), db=db, storage=InMemoryFileStorage())
 
     engine.shutdown()  # must not raise
 
@@ -59,7 +59,7 @@ def test_shutdown_still_shuts_down_the_plugin_manager():
             shutdown_calls.append("tracking_plugin_test_only")
 
     db = FakeDatabase()
-    settings = Settings.from_env({"SOUP_PLUGINS": ""})
+    settings = Settings.from_env({"SOUP_PACKAGES": ""})
     engine = build_engine(settings, db=db, storage=InMemoryFileStorage())
 
     # Load an extra plugin directly into the engine's own context/manager,

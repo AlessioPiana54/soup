@@ -21,7 +21,7 @@ POINT = "exporters"
 
 
 def _owner():
-    return FeaturePackage("owner", on_register=lambda ctx: ctx.add_extension_point(POINT))
+    return FeaturePackage("owner", extension_points=(POINT,), on_register=lambda ctx: ctx.add_extension_point(POINT))
 
 
 def _contributor(name, *contributions, fail=False):
@@ -67,7 +67,7 @@ def test_duplicate_contribution_key_isolates_the_second_package():
 
 
 def test_duplicate_extension_point_is_a_conflict():
-    other_owner = FeaturePackage("other", on_register=lambda c: c.add_extension_point(POINT))
+    other_owner = FeaturePackage("other", extension_points=(POINT,), on_register=lambda c: c.add_extension_point(POINT))
 
     report = PluginManager().load([_owner(), other_owner], ctx=DefaultPluginContext())
 

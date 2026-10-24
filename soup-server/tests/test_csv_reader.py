@@ -1,7 +1,7 @@
 """
 ------------------------------------------------------------------------
 File : test_csv_reader.py
-Description: Tests for the csv_reader plugin (soup/plugins/csv_reader):
+Description: Tests for the csv_reader plugin (soup-packages/csv_reader):
              dtype=str correctness on the fixture CSV, and that it is
              registered under the csv_reader plugin with kind event_log.
 Project : soup-server
@@ -11,8 +11,10 @@ Project : soup-server
 from soup.core.contracts import EVENT_LOG
 from soup.core.engine import build_engine
 from soup.core.settings import Settings
-from soup.plugins.csv_reader import CsvEventLogReader
 from tests.fakes import FakeDatabase, InMemoryFileStorage
+from tests.packages import bundled_api
+
+CsvEventLogReader = bundled_api("csv_reader").CsvEventLogReader
 
 
 def _read_fixture():

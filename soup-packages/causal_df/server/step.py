@@ -10,14 +10,14 @@ Description: CausalDirectlyFollowsStep - inserted between CorrelationStep
              in ctx.df_handled_types, so DirectlyFollowsStep skips them
              instead of creating a conflicting, non-causal :DF edge for
              the same type.
-Project : soup-server
+Project : soup-packages/causal_df
 ------------------------------------------------------------------------
 """
 
 from __future__ import annotations
 
 from soup.core.contracts import BuildContext, EkgBuildStep, GraphDatabase
-from soup.plugins.causal_df.cypher import reveal_causal_relationships_queries
+from .cypher import reveal_causal_relationships_queries
 
 
 class CausalDirectlyFollowsStep(EkgBuildStep):

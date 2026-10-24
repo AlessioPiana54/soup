@@ -42,6 +42,12 @@ class NotFoundError(DomainError):
     http_status_code = 404
 
 
+class ForbiddenError(DomainError):
+    """The operation is not allowed by the server's configuration (403)."""
+
+    http_status_code = 403
+
+
 class ConflictError(DomainError):
     """The request conflicts with the current state of a resource (409)."""
 

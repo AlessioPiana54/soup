@@ -14,7 +14,7 @@ Description: The core's EKG build steps, reproducing the pipeline
                  500  DirectlyFollowsStep   :DF per entity column,
                                             skipping types a plugin step
                                             (order 450, see
-                                            soup/plugins/causal_df) has
+                                            soup-packages/causal_df) has
                                             already handled via
                                             ctx.df_handled_types
 Project : soup-server

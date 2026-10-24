@@ -8,7 +8,15 @@ Description: WorkspaceService - the objects of the workspace as a tree
              the contributor that created it (importer or operation) to
              dispose of its data, then removes it from the catalog. An
              object with children is deleted only with cascade=True
-             (children first), otherwise 409.
+             (children first), otherwise 409. If the contributor of the
+             object (or of a descendant, with cascade) is not loaded, its
+             data cannot be disposed of: 409 naming the packages
+             involved, unless force=True, which removes the objects from
+             the catalog only and records them in the OrphanedDataLog so
+             the leftovers can be cleaned up later. Each node also says
+             whether the package that created the object is active,
+             disabled or missing (uninstalled): the object stays in the
+             catalog either way.
 Project : soup-server
 ------------------------------------------------------------------------
 """
@@ -17,7 +25,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field, replace
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from soup.core.contracts import (
     CREATED_BY_IMPORTER,
@@ -32,17 +40,30 @@ from soup.core.event_bus import EventBus
 from soup.core.events import OBJECT_BEFORE_DELETE
 from soup.core.registry import Registry
 from soup.core.services.core_tools import CoreTools
+from soup.core.services.orphaned_data import OrphanedDataLog
 
 _LOGGER = logging.getLogger("soup.workspace")
+
+# Package name -> "active" | "disabled" | "missing" (PackageManager.package_status).
+PackageStatus = Callable[[str], str]
+
+
+def _always_active(package: str) -> str:
+    return "active"
 
 
 @dataclass
 class WorkspaceNode:
     object: ObjectRef
     children: list["WorkspaceNode"] = field(default_factory=list)
+    package_status: str = "active"
 
     def to_dict(self) -> dict[str, Any]:
-        return {"object": self.object.to_dict(), "children": [child.to_dict() for child in self.children]}
+        return {
+            "object": self.object.to_dict(),
+            "package_status": self.package_status,
+            "children": [child.to_dict() for child in self.children],
+        }
 
 
 def _order(obj: ObjectRef) -> tuple[str, str, str]:
@@ -56,11 +77,15 @@ class WorkspaceService:
         operations: Registry[Operation],
         core_tools: CoreTools,
         event_bus: EventBus,
+        package_status: PackageStatus = _always_active,
+        orphaned_data: Optional[OrphanedDataLog] = None,
     ):
         self._importers = importers
         self._operations = operations
         self._core_tools = core_tools
         self._event_bus = event_bus
+        self._package_status = package_status
+        self._orphaned_data = orphaned_data
 
     def list(self) -> list[WorkspaceNode]:
         """
@@ -81,7 +106,7 @@ class WorkspaceService:
                 children.setdefault(parent, []).append(obj)
 
         def build(obj: ObjectRef, path: frozenset[str]) -> WorkspaceNode:
-            node = WorkspaceNode(obj)
+            node = WorkspaceNode(obj, package_status=self._package_status(obj.created_by.package))
             for child in children.get(obj.id, ()):
                 if child.id not in path:  # defensive: provenance should never loop
                     node.children.append(build(child, path | {child.id}))
@@ -111,10 +136,12 @@ class WorkspaceService:
         ref = self.get(object_id)
         self._core_tools.catalog().set_thumbnail(ref.id, svg)
 
-    def delete(self, object_id: str, cascade: bool = False) -> list[str]:
+    def delete(self, object_id: str, cascade: bool = False, force: bool = False) -> list[str]:
         """
         Return the ids deleted, children before parents.
-        :raises ConflictError: the object has children and cascade is False
+        :raises ConflictError: the object has children and cascade is
+            False; or the contributor of one of the objects to delete is
+            not loaded and force is False (details: packages, objects)
         """
 
         root = self.get(object_id)
@@ -137,6 +164,15 @@ class WorkspaceService:
             ordered.append(obj)
 
         visit(root)
+        orphans = [obj for obj in ordered if self._contributor(obj) is None]
+        if orphans and not force:
+            packages = list(dict.fromkeys(obj.created_by.package for obj in orphans))
+            names = ", ".join(f"'{package}'" for package in packages)
+            raise ConflictError(
+                f"Package {names} is not active: enable it again to delete the data too, "
+                "or use force=true to remove the objects from the catalog only",
+                details={"packages": packages, "objects": [obj.id for obj in orphans]},
+            )
         for obj in ordered:
             self._delete_one(obj)
         return [obj.id for obj in ordered]
@@ -146,17 +182,29 @@ class WorkspaceService:
         self._core_tools.catalog().update(ref)
         return ref
 
-    def _delete_one(self, obj: ObjectRef) -> None:
-        self._event_bus.publish(OBJECT_BEFORE_DELETE, {"object": obj.to_dict()})
+    def _contributor(self, obj: ObjectRef) -> Any:
+        """The loaded importer/operation able to dispose of `obj`, or None."""
+
         creator = obj.created_by
         registry: Registry[Any] = self._importers if creator.type == CREATED_BY_IMPORTER else self._operations
         contributor = registry.get(creator.contributor_id)
         if contributor is None or not self._core_tools.available(contributor.requires_tools):
+            return None
+        return contributor
+
+    def _delete_one(self, obj: ObjectRef) -> None:
+        self._event_bus.publish(OBJECT_BEFORE_DELETE, {"object": obj.to_dict()})
+        creator = obj.created_by
+        contributor = self._contributor(obj)
+        if contributor is None:
+            # Only reached with force=True (delete() refuses otherwise).
             _LOGGER.warning(
                 "%s '%s' (package '%s') is not loaded: data of object '%s' was not disposed of",
                 creator.type, creator.contributor_id, creator.package, obj.id,
             )
+            if self._orphaned_data is not None:
+                self._orphaned_data.record(obj)
         else:
-            tools = self._core_tools.toolbox(f"{creator.type} '{contributor.id}'", contributor.requires_tools)
+            tools = self._core_tools.toolbox(f"{creator.type} '{creator.contributor_id}'", contributor.requires_tools)
             contributor.dispose(obj, tools)
         self._core_tools.catalog().remove(obj.id)

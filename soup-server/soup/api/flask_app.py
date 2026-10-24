@@ -6,9 +6,10 @@ Description: build_flask_app(engine) assembles the Flask app: every
              modification, except Controllers/Graph/graph_controller.py's
              old POST /api/v2/graph, which core_routes.py replaces at the
              identical path/method with the new ImportService-backed
-             implementation (soup/core). This module - together with
-             core_routes.py - is the only place in soup/ that imports
-             Flask; soup/core and soup/plugins never do.
+             implementation (soup/core), plus the /api/v3/packages
+             routes (package_routes.py). soup/api is the only place
+             in soup/ that imports Flask; soup/core and the packages
+             never do.
 Project : soup-server
 ------------------------------------------------------------------------
 """
@@ -23,6 +24,7 @@ from flask_socketio import SocketIO
 from werkzeug.exceptions import HTTPException
 
 from soup.api.core_routes import build_core_blueprint
+from soup.api.package_routes import build_package_blueprint
 from soup.core.engine import Engine
 from soup.core.contracts.errors import DomainError
 from soup.core.results import Result
@@ -33,6 +35,7 @@ def build_flask_app(engine: Engine) -> Flask:
 
     _register_legacy_blueprints(app)
     app.register_blueprint(build_core_blueprint(engine))
+    app.register_blueprint(build_package_blueprint(engine))
     _register_error_handlers(app)
 
     socketio = SocketIO(app, cors_allowed_origins="*")
@@ -79,7 +82,8 @@ def _register_error_handlers(app: Flask) -> None:
 
     @app.errorhandler(DomainError)
     def _handle_domain_error(error: DomainError):
-        result = Result(error.http_status_code, str(error))
+        # `details` (e.g. the packages blocking a disable) go in response_data.
+        result = Result(error.http_status_code, str(error), error.details or None)
         return jsonify(result.to_dict()), error.http_status_code
 
     @app.errorhandler(HTTPException)

@@ -28,8 +28,10 @@ from soup.core.contracts import (
     validate_name,
 )
 from soup.core.contracts import report
-from soup.plugins.causal_df import PLUGIN as CAUSAL_DF
-from soup.plugins.csv_reader import PLUGIN as CSV_READER
+from tests.packages import bundled_plugin
+
+CAUSAL_DF = bundled_plugin("causal_df")
+CSV_READER = bundled_plugin("csv_reader")
 
 
 def test_contracts_version_is_2_0_and_built_in_plugins_declare_it():

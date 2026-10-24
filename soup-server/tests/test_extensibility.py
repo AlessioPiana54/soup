@@ -7,7 +7,7 @@ Description: Proves the plugin system is actually extensible WITHOUT
              (SoupPlugin, PluginContext, InputReader/InputHandler,
              Table.from_records) and public services (PluginManager,
              DatasetRepository, EkgService, EventLogHandler, ImportService) -
-             the exact same classes a real soup/plugins/* package would use.
+             the exact same classes a real package in soup-packages/ would use.
 
              - a flat JSON Lines reader, built with Table.from_records;
              - an OCEL 2.0-style reader producing separated
@@ -51,7 +51,7 @@ from tests.fakes import FakeDatabase, InMemoryFileStorage
 def _build_import_service(plugins, db, storage):
     """
     Mirrors what soup.core.engine.build_engine does, so a test plugin is
-    wired up exactly the way a real soup/plugins/* package would be -
+    wired up exactly the way a real package in soup-packages/ would be -
     without going through build_engine's string-based plugin discovery
     (which is tested separately in test_plugin_manager.py/test_csv_reader.py).
     """

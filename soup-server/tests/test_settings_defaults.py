@@ -1,28 +1,38 @@
 """
 ------------------------------------------------------------------------
 File : test_settings_defaults.py
-Description: Tests that Settings.from_env() defaults to BOTH built-in
-             plugins (csv_reader and causal_df) and that causal_df's
-             build step actually ends up in the pipeline - regression
-             test for the bug where trigger/target pairs were silently
-             ignored in production because causal_df was never loaded.
+Description: Tests that Settings.from_env() activates every package
+             found by default - so both bundled packages (csv_reader and
+             causal_df) load and causal_df's build step actually ends up
+             in the pipeline (regression test for the bug where
+             trigger/target pairs were silently ignored in production
+             because causal_df was never loaded) - and the package
+             settings read from the environment.
 Project : soup-server
 ------------------------------------------------------------------------
 """
 
 from __future__ import annotations
 
+import os
+
 from soup.core.engine import build_engine
-from soup.core.settings import Settings
+from soup.core.settings import (
+    DEFAULT_BUNDLED_PACKAGES_DIR,
+    DEFAULT_INSTALLED_PACKAGES_DIR,
+    Settings,
+)
 from tests.fakes import FakeDatabase, InMemoryFileStorage
 
 
-def test_default_plugins_include_csv_reader_and_causal_df():
+def test_default_settings_activate_every_package_found():
     settings = Settings.from_env({})
-    assert settings.plugins == ("csv_reader", "causal_df")
+    assert settings.packages is None
+    assert settings.packages_path == (DEFAULT_BUNDLED_PACKAGES_DIR, DEFAULT_INSTALLED_PACKAGES_DIR)
+    assert settings.allow_package_install is False
 
 
-def test_from_env_with_no_overrides_loads_both_built_in_plugins():
+def test_from_env_with_no_overrides_loads_both_bundled_packages():
     engine = build_engine(Settings.from_env({}), db=FakeDatabase(), storage=InMemoryFileStorage())
 
     assert engine.report.failed == []
@@ -39,8 +49,32 @@ def test_causal_step_is_in_the_pipeline_by_default():
     assert "causal_directly_follows" in [step.key for step in pipeline]
 
 
-def test_explicit_empty_soup_plugins_still_disables_everything():
-    # SOUP_PLUGINS="" is the documented way to opt out of every plugin,
+def test_explicit_empty_soup_packages_disables_everything():
+    # SOUP_PACKAGES="" is the documented way to opt out of every package,
     # distinct from the variable being entirely absent.
-    settings = Settings.from_env({"SOUP_PLUGINS": ""})
-    assert settings.plugins == ()
+    settings = Settings.from_env({"SOUP_PACKAGES": ""})
+    assert settings.packages == ()
+
+    engine = build_engine(settings, db=FakeDatabase(), storage=InMemoryFileStorage())
+    assert engine.report.loaded == []
+    assert sorted(engine.report.disabled) == ["causal_df", "csv_reader"]
+
+
+def test_soup_plugins_is_still_read_as_an_alias_of_soup_packages():
+    assert Settings.from_env({"SOUP_PLUGINS": "csv_reader"}).packages == ("csv_reader",)
+    assert Settings.from_env({"SOUP_PACKAGES": "causal_df", "SOUP_PLUGINS": "csv_reader"}).packages == ("causal_df",)
+
+
+def test_package_settings_from_env(tmp_path):
+    first, second, installed = tmp_path / "a", tmp_path / "b", tmp_path / "installed"
+    settings = Settings.from_env({
+        "SOUP_PACKAGES_PATH": os.pathsep.join([str(first), str(second)]),
+        "SOUP_INSTALLED_PACKAGES_DIR": str(installed),
+        "SOUP_ALLOW_PACKAGE_INSTALL": "true",
+    })
+
+    # The installed-packages folder is always searched, so installed
+    # packages are found again at the next start.
+    assert settings.packages_path == (str(first), str(second), str(installed))
+    assert settings.installed_packages_dir == str(installed)
+    assert settings.allow_package_install is True

@@ -151,7 +151,7 @@ def test_contribution_toolbox_only_exposes_its_own_tools():
     )
     engine, _core = build_test_engine(package)
 
-    engine.import_router.import_("imp", upload(), "ds")
+    engine.import_router.import_("feature.imp", upload(), "ds")
 
     assert seen == {"graph": "graph"}
 

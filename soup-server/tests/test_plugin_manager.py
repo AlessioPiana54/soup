@@ -186,3 +186,54 @@ def test_shutdown_skips_plugins_that_failed_to_load():
     manager.shutdown()
 
     assert shutdown_order == ["good"]
+
+
+def test_load_is_incremental_on_the_same_context():
+    # Regression: a second load() used to forget the packages of the first
+    # one, so they were never shut down (and could not be required).
+    manager = PluginManager()
+    shutdown_order = []
+    base = _Plugin("base", on_shutdown_cb=lambda ctx: shutdown_order.append("base"))
+    manager.load([base])
+
+    later = _Plugin("later", requires=["base"], on_shutdown_cb=lambda ctx: shutdown_order.append("later"))
+    report = manager.load([later])
+
+    assert report.loaded == ["later"]
+    assert manager.loaded_names == ["base", "later"]
+    assert manager.report.loaded == ["base", "later"]
+    manager.shutdown()
+    assert shutdown_order == ["later", "base"]
+
+
+def test_loading_an_already_loaded_package_fails_without_touching_it():
+    manager = PluginManager()
+    manager.load([_Plugin("a", on_register=lambda ctx: ctx.add_input_reader("a", object()))])
+
+    report = manager.load([_Plugin("a")])
+
+    assert [failure.plugin_name for failure in report.failed] == ["a"]
+    assert manager.loaded_names == ["a"]
+
+
+def test_unload_removes_contributions_and_publishes_package_unloaded():
+    manager = PluginManager()
+    shutdowns = []
+    plugin = _Plugin(
+        "a",
+        on_register=lambda ctx: ctx.add_input_reader("a", object()),
+        on_shutdown_cb=lambda ctx: shutdowns.append("a"),
+    )
+    manager.load([plugin])
+    ctx = manager._ctx
+    events = []
+    ctx.event_bus.subscribe("package.unloaded", lambda payload: events.append(dict(payload)), owner="test")
+
+    assert manager.unload("a") is plugin
+
+    assert "a" not in ctx.input_readers
+    assert manager.loaded_names == []
+    assert shutdowns == ["a"]
+    assert events == [{"package": "a", "version": "1.0.0"}]
+    with pytest.raises(KeyError):
+        manager.unload("a")

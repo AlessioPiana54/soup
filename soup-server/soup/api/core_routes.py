@@ -25,8 +25,8 @@ Description: The routes the new host owns directly:
              Domain errors (soup.core.contracts.DomainError) are not caught
              here - they propagate to the single error handler registered
              in flask_app.py, which turns them into the right HTTP
-             response. This module - together with flask_app.py - is the
-             only place in soup/ that imports Flask.
+             response. soup/api is the only place in
+             soup/ that imports Flask.
 Project : soup-server
 ------------------------------------------------------------------------
 """

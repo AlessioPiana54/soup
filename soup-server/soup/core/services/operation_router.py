@@ -10,7 +10,10 @@ Description: OperationRouter - offers, for a selection of objects, the
              or its registration fails, the outputs already registered
              are removed and op.dispose() is called on every output, then
              the error is re-raised. An operation that does not exist or
-             does not apply to the given objects is a 404.
+             does not apply to the given objects is a 404. Operations
+             are addressed by their full key "<package>.<id>"
+             (operations_for() lists them with their key and package),
+             which is also what created_by.contributor_id records.
 Project : soup-server
 ------------------------------------------------------------------------
 """
@@ -39,7 +42,7 @@ from soup.core.contracts.report import validate_blocks
 from soup.core.event_bus import EventBus
 from soup.core.events import OBJECT_CREATED
 from soup.core.field_validation import validate_values
-from soup.core.registry import Registry
+from soup.core.registry import Registered, Registry
 from soup.core.services.core_tools import CoreTools, ObjectLike, new_object_id, timestamp
 from soup.core.toolbox import ToolBox
 
@@ -82,20 +85,20 @@ class OperationRouter:
         self._event_bus = event_bus
         self._clock = clock
 
-    def operations_for(self, objects: Sequence[ObjectLike]) -> list[Operation]:
+    def operations_for(self, objects: Sequence[ObjectLike]) -> list[Registered[Operation]]:
         refs = [self._core_tools.object(obj) for obj in objects]
         applicable = [
-            operation for operation in self._operations
-            if self._core_tools.available(operation.requires_tools) and assign_inputs(operation, refs) is not None
+            entry for entry in self._operations.entries()
+            if self._core_tools.available(entry.item.requires_tools) and assign_inputs(entry.item, refs) is not None
         ]
-        return sorted(applicable, key=lambda op: (op.group.lower(), op.label.lower(), op.id))
+        return sorted(applicable, key=lambda entry: (entry.item.group.lower(), entry.item.label.lower(), entry.key))
 
     def package_of(self, operation_id: str) -> str:
         return self._operations.owner_of(operation_id) or ""
 
     def fields(self, operation_id: str, input_ids: InputIds) -> list[Field]:
         operation, inputs = self._resolve(operation_id, input_ids)
-        return self._fields(operation, inputs, self._toolbox(operation))
+        return self._fields(operation, inputs, self._toolbox(operation_id, operation))
 
     def run(
         self, operation_id: str, input_ids: InputIds, params: Optional[Mapping[str, Any]] = None
@@ -109,12 +112,12 @@ class OperationRouter:
         """
 
         operation, inputs = self._resolve(operation_id, input_ids)
-        tools = self._toolbox(operation)
+        tools = self._toolbox(operation_id, operation)
         cleaned = validate_values(self._fields(operation, inputs, tools), params)
         drafts = list(operation.run(inputs, cleaned, tools) or [])
 
         parents = tuple(dict.fromkeys(inputs[slot.name].id for slot in operation.inputs))
-        created_by = CreatedBy(CREATED_BY_OPERATION, operation.id, self.package_of(operation.id))
+        created_by = CreatedBy(CREATED_BY_OPERATION, operation_id, self.package_of(operation_id))
         created_at = timestamp(self._clock)
         outputs = [
             ObjectRef(
@@ -164,8 +167,8 @@ class OperationRouter:
             raise NotFoundError(f"Operation '{operation_id}' is not available for the given objects")
         return operation, assigned
 
-    def _toolbox(self, operation: Operation) -> ToolBox:
-        return self._core_tools.toolbox(f"operation '{operation.id}'", operation.requires_tools)
+    def _toolbox(self, key: str, operation: Operation) -> ToolBox:
+        return self._core_tools.toolbox(f"operation '{key}'", operation.requires_tools)
 
     @staticmethod
     def _fields(operation: Operation, inputs: Mapping[str, ObjectRef], tools: ToolBox) -> list[Field]:

@@ -10,6 +10,9 @@ Description: ImportRouter - routes an uploaded file to the importer the
              object in the Catalog, publish "object.created". If the
              importer or the registration fails, importer.dispose() is
              called to undo it (compensation) and the error re-raised.
+             Importers are addressed by their full key "<package>.<id>"
+             (importers_for() lists them with their key and package),
+             which is also what created_by.contributor_id records.
              Separate from the legacy ImportService (/api/v2/graph).
 Project : soup-server
 ------------------------------------------------------------------------
@@ -36,7 +39,7 @@ from soup.core.contracts import (
 from soup.core.contracts.report import validate_blocks
 from soup.core.event_bus import EventBus
 from soup.core.events import OBJECT_CREATED
-from soup.core.registry import Registry
+from soup.core.registry import Registered, Registry
 from soup.core.services.core_tools import CoreTools, new_object_id, timestamp
 from soup.core.toolbox import ToolBox
 
@@ -56,14 +59,14 @@ class ImportRouter:
         self._event_bus = event_bus
         self._clock = clock
 
-    def importers_for(self, filename: str) -> list[Importer]:
+    def importers_for(self, filename: str) -> list[Registered[Importer]]:
         """Every importer that accepts `filename` and whose tools are available, by label."""
 
         candidates = [
-            importer for importer in self._importers
-            if importer.accepts(filename) and self._core_tools.available(importer.requires_tools)
+            entry for entry in self._importers.entries()
+            if entry.item.accepts(filename) and self._core_tools.available(entry.item.requires_tools)
         ]
-        return sorted(candidates, key=lambda importer: (importer.label.lower(), importer.id))
+        return sorted(candidates, key=lambda entry: (entry.item.label.lower(), entry.key))
 
     def get(self, importer_id: str) -> Importer:
         importer = self._importers.get(importer_id)
@@ -77,7 +80,7 @@ class ImportRouter:
 
     def inspect(self, importer_id: str, upload: Upload) -> Inspection:
         importer = self._accepting(importer_id, upload)
-        inspection = importer.inspect(upload, self._toolbox(importer))
+        inspection = importer.inspect(upload, self._toolbox(importer_id, importer))
         if not isinstance(inspection, Inspection):
             raise TypeError(f"Importer '{importer.id}'.inspect() must return an Inspection")
         validate_blocks(list(inspection.preview))
@@ -87,7 +90,7 @@ class ImportRouter:
         self, importer_id: str, upload: Upload, options: Optional[Mapping[str, Any]] = None
     ) -> list[dict[str, Any]]:
         importer = self._accepting(importer_id, upload)
-        blocks = importer.preview(upload, dict(options or {}), self._toolbox(importer)) or []
+        blocks = importer.preview(upload, dict(options or {}), self._toolbox(importer_id, importer)) or []
         return validate_blocks(list(blocks))
 
     def import_(
@@ -114,12 +117,12 @@ class ImportRouter:
             id=new_object_id(),
             name=name,
             kind=importer.produces,
-            created_by=CreatedBy(CREATED_BY_IMPORTER, importer.id, self._importers.owner_of(importer.id) or ""),
+            created_by=CreatedBy(CREATED_BY_IMPORTER, importer_id, self._importers.owner_of(importer_id) or ""),
             parents=(),
             created_at=timestamp(self._clock),
             description=description or "",
         )
-        tools = self._toolbox(importer)
+        tools = self._toolbox(importer_id, importer)
         try:
             meta = importer.import_(upload, obj, dict(options or {}), tools)
             if meta is not None and not isinstance(meta, Mapping):
@@ -143,8 +146,8 @@ class ImportRouter:
             )
         return importer
 
-    def _toolbox(self, importer: Importer) -> ToolBox:
-        return self._core_tools.toolbox(f"importer '{importer.id}'", importer.requires_tools)
+    def _toolbox(self, key: str, importer: Importer) -> ToolBox:
+        return self._core_tools.toolbox(f"importer '{key}'", importer.requires_tools)
 
     @staticmethod
     def _compensate(importer: Importer, obj: ObjectRef, tools: ToolBox) -> None:

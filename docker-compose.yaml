@@ -12,7 +12,8 @@ services:
 
   flask:
     build:
-      context: ./soup-server
+      context: . # Repository root: the image also needs soup-packages/
+      dockerfile: soup-server/Dockerfile
     container_name: soup-engine
     ports:
       - "8080:8080" # Expose Flask API on port 8080
@@ -21,8 +22,13 @@ services:
     environment:
       - MEMGRAPH_HOST=memgraph
       - MEMGRAPH_PORT=7687
+      # Development: allow installing packages at runtime. A package runs
+      # code with the privileges of the server and of the browser.
+      - SOUP_ALLOW_PACKAGE_INSTALL=true
+      - SOUP_INSTALLED_PACKAGES_DIR=/data/soup-packages
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - soup-installed-packages:/data/soup-packages # Packages installed at runtime
 
   memgraph:
     image: memgraph/memgraph-platform
@@ -38,6 +44,8 @@ services:
 
 volumes:
   soup-volume: # Define persistent volume to /soup memgraph folder
+    driver: local
+  soup-installed-packages: # Packages installed at runtime, and their enabled/disabled state
     driver: local
 
 networks:

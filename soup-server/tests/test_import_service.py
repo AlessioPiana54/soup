@@ -22,8 +22,10 @@ from soup.core.contracts.errors import ValidationError
 from soup.core.registry import Registry
 from soup.core.services.import_service import ImportCommand, ImportService
 from soup.core.settings import Settings
-from soup.plugins.csv_reader import CsvEventLogReader
 from tests.fakes import FakeDatabase, InMemoryFileStorage
+from tests.packages import bundled_api
+
+CsvEventLogReader = bundled_api("csv_reader").CsvEventLogReader
 
 
 def _fixture_options():
@@ -39,7 +41,7 @@ def _fixture_options():
 
 
 def _engine(db=None, storage=None, plugins=("csv_reader",)):
-    settings = Settings.from_env({"SOUP_PLUGINS": ",".join(plugins)})
+    settings = Settings.from_env({"SOUP_PACKAGES": ",".join(plugins)})
     return build_engine(settings, db=db or FakeDatabase(), storage=storage or InMemoryFileStorage())
 
 

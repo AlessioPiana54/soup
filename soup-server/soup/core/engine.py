@@ -3,8 +3,8 @@
 File : engine.py
 Description: build_engine() is the single composition root: it wires the
              GraphDatabase/FileStorage adapters (or uses the ones injected
-             for testing), discovers/loads the plugins declared in
-             Settings, and assembles the core's own services: the legacy
+             for testing), discovers/loads the packages (PackageManager,
+             from Settings.packages_path) and assembles the core's own services: the legacy
              import path (DatasetRepository, EkgService, EventLogHandler,
              ImportService, behind /api/v2/graph) and the mediator
              (ImportRouter, OperationRouter, VisualizerRouter,
@@ -21,13 +21,15 @@ Project : soup-server
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Iterable, Optional
 
 from soup.core.contracts import CONTRACTS_API_VERSION, EVENT_LOG, FileStorage, GraphDatabase
 from soup.core.dataset_repository import DatasetRepository
 from soup.core.event_bus import EventBus
 from soup.core.plugin_context import DefaultPluginContext
-from soup.core.plugin_manager import PluginManager, PluginReport
+from soup.core.packages import PackageManager, PackageManagerConfig
+from soup.core.plugin_manager import PackageReport, PluginManager
 from soup.core.services.core_tools import CoreTools, missing_core_tools
 from soup.core.services.ekg_service import EkgService
 from soup.core.services.event_log_handler import EventLogHandler
@@ -35,6 +37,7 @@ from soup.core.services.export_router import ExportRouter
 from soup.core.services.import_router import ImportRouter
 from soup.core.services.import_service import ImportService
 from soup.core.services.operation_router import OperationRouter
+from soup.core.services.orphaned_data import ORPHANED_DATA_FILE, OrphanedDataLog
 from soup.core.services.visualizer_router import VisualizerRouter
 from soup.core.services.workspace_service import WorkspaceService
 from soup.core.settings import Settings
@@ -52,7 +55,8 @@ class Engine:
     storage: FileStorage
     ctx: DefaultPluginContext
     plugin_manager: PluginManager
-    report: PluginReport
+    package_manager: PackageManager
+    report: PackageReport
     repository: DatasetRepository
     ekg_service: EkgService
     import_service: ImportService
@@ -103,8 +107,9 @@ def build_engine(
     Single composition root. `db`/`storage` are normally omitted and built
     from `settings`; tests inject fakes (tests.fakes.FakeDatabase,
     tests.fakes.InMemoryFileStorage) instead. `extra_plugins` are loaded
-    together with Settings.plugins (SoupPlugin instances/classes or
-    specs); tests use it for packages defined in the test itself.
+    together with the packages found on disk (SoupPlugin
+    instances/classes or specs); tests use it for packages defined in
+    the test itself.
     """
 
     resolved_db = db if db is not None else _build_default_database(settings)
@@ -114,8 +119,18 @@ def build_engine(
     event_bus = EventBus()
     ctx = DefaultPluginContext(event_bus)
 
-    plugins = manager.discover([*settings.plugins, *extra_plugins])
-    report = manager.load(plugins, ctx=ctx)
+    package_manager = PackageManager(
+        manager,
+        ctx,
+        PackageManagerConfig(
+            packages_path=settings.packages_path,
+            installed_dir=settings.installed_packages_dir,
+            enabled_override=settings.packages,
+            allow_install=settings.allow_package_install,
+            strict=settings.strict,
+        ),
+    )
+    report = package_manager.load_all(manager.discover(extra_plugins))
     for problem in missing_core_tools(ctx.tool_registry):
         report.add_warning(problem)
 
@@ -137,6 +152,7 @@ def build_engine(
         storage=resolved_storage,
         ctx=ctx,
         plugin_manager=manager,
+        package_manager=package_manager,
         report=report,
         repository=repository,
         ekg_service=ekg_service,
@@ -147,5 +163,12 @@ def build_engine(
         operation_router=OperationRouter(ctx.operations, core_tools, event_bus),
         visualizer_router=VisualizerRouter(ctx.visualizers, core_tools),
         export_router=ExportRouter(ctx.exporters, core_tools),
-        workspace_service=WorkspaceService(ctx.importers, ctx.operations, core_tools, event_bus),
+        workspace_service=WorkspaceService(
+            ctx.importers,
+            ctx.operations,
+            core_tools,
+            event_bus,
+            package_status=package_manager.package_status,
+            orphaned_data=OrphanedDataLog(Path(settings.installed_packages_dir) / ORPHANED_DATA_FILE),
+        ),
     )

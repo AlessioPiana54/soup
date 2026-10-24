@@ -66,7 +66,25 @@ class PluginApiVersionError(PluginError):
         self.host_api_version = host_api_version
         super().__init__(
             f"Plugin '{plugin_name}' requires contracts api_version "
-            f"'{plugin_api_version}', host provides '{host_api_version}'"
+            f"'{plugin_api_version}', host provides '{host_api_version}' "
+            "(compatible: same major, minor not above the host's)"
+        )
+
+
+class PluginPythonDependencyError(PluginError):
+    """
+    Raised when a package declares python_dependencies that are not
+    installed (or not in the required version) on the server. Python
+    libraries are never installed at runtime: they belong to the image.
+    """
+
+    def __init__(self, plugin_name: str, problems: Iterable[str]):
+        self.plugin_name = plugin_name
+        self.problems = list(problems)
+        super().__init__(
+            f"Package '{plugin_name}' needs Python libraries that are not available: "
+            f"{'; '.join(self.problems)}. Libraries are not installed at runtime: "
+            "add them to the server image (requirements.txt)"
         )
 
 
@@ -98,3 +116,12 @@ class ToolNotDeclaredError(PluginError):
 
 class ExtensionPointError(PluginError):
     """Raised when contributing to, or reading, an extension point that does not exist."""
+
+
+class ExtensionPointNotDeclaredError(ExtensionPointError):
+    """Raised when a package opens an extension point it did not declare in extension_points."""
+
+    def __init__(self, owner: str, point: str):
+        self.owner = owner
+        self.point = point
+        super().__init__(f"'{owner}' did not declare extension point '{point}' in extension_points")

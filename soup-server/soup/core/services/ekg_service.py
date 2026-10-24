@@ -4,7 +4,7 @@ File : ekg_service.py
 Description: EkgService - build/reset/rebuild the EKG for one dataset,
              merging the core's build steps (soup/core/ekg/steps.py) with
              whatever steps plugins contributed (PluginContext.add_build_step,
-             e.g. soup/plugins/causal_df), ordered by `.order`.
+             e.g. soup-packages/causal_df), ordered by `.order`.
 Project : soup-server
 ------------------------------------------------------------------------
 """

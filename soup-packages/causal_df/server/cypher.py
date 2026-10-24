@@ -10,7 +10,7 @@ Description: Parameterized rewrite of Utils/causal_query_lib.py's
              'collider' are internal, fixed constants (never derived from
              request input), so splicing them into the query text is not
              the injection risk ident()/$params guard against.
-Project : soup-server
+Project : soup-packages/causal_df
 ------------------------------------------------------------------------
 """
 

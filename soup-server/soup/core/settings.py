@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Mapping, Optional
 
 DEFAULT_STRICT = False
@@ -20,18 +21,35 @@ DEFAULT_MEMGRAPH_HOST = "memgraph"
 DEFAULT_MEMGRAPH_PORT = 7687
 DEFAULT_CONTAINER_NAME = "soup-database"
 DEFAULT_LOCAL_STORAGE_ROOT = "/soup"
-# csv_reader and causal_df ship as built-in plugins (soup/plugins/) and
-# are active unless SOUP_PLUGINS is explicitly set (to "" to disable
-# every plugin, or to a different list). causal_df must be on by default:
-# without it, trigger/target pairs submitted with an import are silently
-# ignored (CausalDirectlyFollowsStep, order 450, never loads).
-DEFAULT_PLUGINS = "csv_reader,causal_df"
+
+# soup-server/ and the repository root, from this file's location
+# (soup-server/soup/core/settings.py). The Docker image keeps the same
+# layout (/srv/soup-server, /srv/soup-packages), so the defaults hold there.
+_SERVER_ROOT = Path(__file__).resolve().parents[2]
+_REPO_ROOT = _SERVER_ROOT.parent
+
+# The packages shipped with SOUP (csv_reader, causal_df, ...). Every
+# package found is active unless disabled at runtime (persisted state)
+# or SOUP_PACKAGES lists the active ones explicitly.
+DEFAULT_BUNDLED_PACKAGES_DIR = str(_REPO_ROOT / "soup-packages")
+# Where install(zip) extracts packages; also holds the enabled/disabled
+# state. Under instance/, which .gitignore already excludes.
+DEFAULT_INSTALLED_PACKAGES_DIR = str(_SERVER_ROOT / "instance" / "packages")
+# Installing a package runs its code with the server's privileges: off
+# unless explicitly enabled (docker-compose turns it on for development).
+DEFAULT_ALLOW_PACKAGE_INSTALL = False
 
 _TRUE_VALUES = {"1", "true", "yes", "on"}
 
 
 def _split_csv(value: str) -> tuple[str, ...]:
     return tuple(item.strip() for item in value.split(",") if item.strip())
+
+
+def _split_paths(value: str) -> tuple[str, ...]:
+    # os.pathsep: ":" on Linux/Docker, ";" on Windows, where ":" would
+    # split "C:\..." apart.
+    return tuple(item.strip() for item in value.split(os.pathsep) if item.strip())
 
 
 def _as_bool(value: Optional[str], default: bool) -> bool:
@@ -42,7 +60,11 @@ def _as_bool(value: Optional[str], default: bool) -> bool:
 
 @dataclass(frozen=True)
 class Settings:
-    plugins: tuple[str, ...] = ()
+    # None: every package found; a tuple: only those (SOUP_PACKAGES).
+    packages: Optional[tuple[str, ...]] = None
+    packages_path: tuple[str, ...] = (DEFAULT_BUNDLED_PACKAGES_DIR, DEFAULT_INSTALLED_PACKAGES_DIR)
+    installed_packages_dir: str = DEFAULT_INSTALLED_PACKAGES_DIR
+    allow_package_install: bool = DEFAULT_ALLOW_PACKAGE_INSTALL
     strict: bool = DEFAULT_STRICT
     storage_kind: str = DEFAULT_STORAGE_KIND
     memgraph_host: str = DEFAULT_MEMGRAPH_HOST
@@ -56,8 +78,21 @@ class Settings:
 
         source = os.environ if env is None else env
 
+        # SOUP_PACKAGES="" disables every package; absent means all of them.
+        # TODO(commit 11): drop SOUP_PLUGINS, the old name of SOUP_PACKAGES.
+        raw_packages = source.get("SOUP_PACKAGES", source.get("SOUP_PLUGINS"))
+        installed_dir = source.get("SOUP_INSTALLED_PACKAGES_DIR", DEFAULT_INSTALLED_PACKAGES_DIR)
+        raw_path = source.get("SOUP_PACKAGES_PATH")
+        packages_path = _split_paths(raw_path) if raw_path is not None else (DEFAULT_BUNDLED_PACKAGES_DIR,)
+        # The installed packages must be found again at the next start.
+        if installed_dir not in packages_path:
+            packages_path = (*packages_path, installed_dir)
+
         return cls(
-            plugins=_split_csv(source.get("SOUP_PLUGINS", DEFAULT_PLUGINS)),
+            packages=_split_csv(raw_packages) if raw_packages is not None else None,
+            packages_path=packages_path,
+            installed_packages_dir=installed_dir,
+            allow_package_install=_as_bool(source.get("SOUP_ALLOW_PACKAGE_INSTALL"), DEFAULT_ALLOW_PACKAGE_INSTALL),
             strict=_as_bool(source.get("SOUP_STRICT"), DEFAULT_STRICT),
             storage_kind=source.get("SOUP_STORAGE_KIND", DEFAULT_STORAGE_KIND),
             memgraph_host=source.get("MEMGRAPH_HOST", DEFAULT_MEMGRAPH_HOST),

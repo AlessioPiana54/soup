@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pytest
 
-from soup.core.contracts import PluginConflictError
+from soup.core.contracts import ExtensionPointNotDeclaredError, PluginConflictError
 from soup.core.plugin_context import DefaultPluginContext
 from soup.core.plugin_manager import PluginManager
 from tests.mediator_doubles import (
@@ -36,6 +36,7 @@ def _rich_package(name="rich", suffix=""):
 
     return FeaturePackage(
         name,
+        extension_points=(f"exporters{suffix}",),
         importers=[FakeImporter(f"imp{suffix}", "Imp")],
         operations=[FakeOperation(f"op{suffix}", inputs=[("t", ["table"])])],
         visualizers=[FakeVisualizer(f"vis{suffix}", ["table"])],
@@ -49,9 +50,10 @@ def test_contributions_are_attributed_to_their_package():
     ctx = DefaultPluginContext()
     PluginManager().load([_rich_package()], ctx=ctx)
 
+    # Contributions are keyed "<package>.<id>"; tools keep their global name.
     for registry, key in (
-        (ctx.importers, "imp"), (ctx.operations, "op"), (ctx.visualizers, "vis"),
-        (ctx.exporters, "exp"), (ctx.tool_registry, "tool"),
+        (ctx.importers, "rich.imp"), (ctx.operations, "rich.op"), (ctx.visualizers, "rich.vis"),
+        (ctx.exporters, "rich.exp"), (ctx.tool_registry, "tool"),
     ):
         assert registry.owner_of(key) == "rich"
     assert ctx.extension_points.owner_of("exporters") == "rich"
@@ -71,16 +73,55 @@ def test_remove_owner_removes_every_contribution_of_one_package():
     assert [s.owner for s in ctx.event_bus.subscribers(DATASET_INDEXED)] == ["other"]
 
 
-def test_duplicate_contribution_names_both_packages():
+def test_the_same_id_in_two_packages_gives_two_contributions():
     ctx = DefaultPluginContext()
     first = FeaturePackage("first", visualizers=[FakeVisualizer("grid", ["table"])])
     second = FeaturePackage("second", visualizers=[FakeVisualizer("grid", ["event_log"])])
 
     report = PluginManager().load([first, second], ctx=ctx)
 
+    assert report.failed == []
+    assert ctx.visualizers.keys() == ["first.grid", "second.grid"]
+    assert [(e.key, e.package, e.item.id) for e in ctx.visualizers.entries()] == [
+        ("first.grid", "first", "grid"), ("second.grid", "second", "grid"),
+    ]
+
+
+def test_duplicate_id_within_a_package_is_a_conflict():
+    ctx = DefaultPluginContext()
+    package = FeaturePackage("first", visualizers=[FakeVisualizer("grid", ["table"]), FakeVisualizer("grid", ["log"])])
+
+    report = PluginManager().load([package], ctx=ctx)
+
     error = report.failed[0].error
     assert isinstance(error, PluginConflictError)
-    assert (error.existing_owner, error.new_owner, error.key) == ("first", "second", "grid")
+    assert (error.existing_owner, error.new_owner, error.key) == ("first", "first", "first.grid")
+    assert len(ctx.visualizers) == 0
+
+
+def test_tool_with_the_same_name_in_two_packages_names_both():
+    ctx = DefaultPluginContext()
+    first = FeaturePackage("first", tools=[FakeTool("graph")])
+    second = FeaturePackage("second", tools=[FakeTool("graph")])
+
+    report = PluginManager().load([first, second], ctx=ctx)
+
+    error = report.failed[0].error
+    assert isinstance(error, PluginConflictError)
+    assert (error.existing_owner, error.new_owner, error.key) == ("first", "second", "graph")
+
+
+def test_extension_point_not_declared_is_refused():
+    ctx = DefaultPluginContext()
+    sneaky = FeaturePackage("sneaky", on_register=lambda c: c.add_extension_point("hidden"))
+    lazy = FeaturePackage("lazy", extension_points=("promised",))
+
+    report = PluginManager().load([sneaky, lazy], ctx=ctx)
+
+    errors = {failure.plugin_name: failure.error for failure in report.failed}
+    assert isinstance(errors["sneaky"], ExtensionPointNotDeclaredError)
+    assert "did not open" in str(errors["lazy"])
+    assert ctx.extension_points.points() == []
 
 
 @pytest.mark.parametrize(

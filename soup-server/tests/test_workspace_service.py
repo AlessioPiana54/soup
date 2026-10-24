@@ -11,10 +11,15 @@ Project : soup-server
 
 from __future__ import annotations
 
+import json
+from datetime import datetime
+
 import pytest
 
 from soup.core.contracts import ConflictError, CreatedBy, NotFoundError, ObjectRef, ServiceUnavailableError, ValidationError
 from soup.core.events import OBJECT_BEFORE_DELETE
+from soup.core.services.orphaned_data import OrphanedDataLog
+from soup.core.services.workspace_service import WorkspaceService
 from tests.mediator_doubles import FakeImporter, FakeOperation, FeaturePackage, build_test_engine, published, upload
 
 
@@ -28,10 +33,10 @@ def _setup():
         FeaturePackage("logs", importers=[importer], operations=[filter_op]),
         FeaturePackage("models", importers=[model_importer], operations=[conformance], requires=("logs",)),
     )
-    log = engine.import_router.import_("log_csv", upload(), "log")
-    filtered = engine.operation_router.run("filter", [log.id])[0]
-    filtered_twice = engine.operation_router.run("filter", [filtered.id])[0]
-    model = engine.import_router.import_("pnml", upload("m.pnml"), "model")
+    log = engine.import_router.import_("logs.log_csv", upload(), "log")
+    filtered = engine.operation_router.run("logs.filter", [log.id])[0]
+    filtered_twice = engine.operation_router.run("logs.filter", [filtered.id])[0]
+    model = engine.import_router.import_("models.pnml", upload("m.pnml"), "model")
     return engine, core, importer, filter_op, {"log": log, "filtered": filtered, "twice": filtered_twice, "model": model}
 
 
@@ -126,18 +131,71 @@ def test_critical_before_delete_subscriber_can_veto():
     assert core.catalog.get(objs["model"].id) is not None
 
 
-def test_delete_when_the_contributor_is_gone_removes_the_entry(caplog):
-    engine, core = build_test_engine()
-    orphan = ObjectRef(
-        id="22222222-2222-4222-8222-222222222222", name="old", kind="event_log",
-        created_by=CreatedBy("importer", "uninstalled", "old_package"),
+def _orphan(object_id="22222222-2222-4222-8222-222222222222", parents=()):
+    return ObjectRef(
+        id=object_id, name="old", kind="event_log", parents=parents,
+        created_by=CreatedBy("importer", "old_package.uninstalled", "old_package"), meta={"graph": "old"},
     )
-    core.catalog.add(orphan)
 
-    engine.workspace_service.delete(orphan.id)
 
-    assert core.catalog.get(orphan.id) is None
+def test_delete_when_the_contributor_is_gone_is_409_naming_the_package():
+    engine, core = build_test_engine()
+    core.catalog.add(_orphan())
+
+    with pytest.raises(ConflictError, match="'old_package' is not active") as error:
+        engine.workspace_service.delete(_orphan().id)
+
+    assert error.value.details == {"packages": ["old_package"], "objects": [_orphan().id]}
+    assert "force=true" in str(error.value)
+    assert core.catalog.get(_orphan().id) is not None
+
+
+def test_cascade_is_409_when_a_descendant_belongs_to_an_inactive_package():
+    engine, core, importer, filter_op, objs = _setup()
+    child = _orphan("44444444-4444-4444-8444-444444444444", parents=(objs["log"].id,))
+    core.catalog.add(child)
+
+    with pytest.raises(ConflictError) as error:
+        engine.workspace_service.delete(objs["log"].id, cascade=True)
+
+    assert error.value.details["objects"] == [child.id]
+    # Nothing was deleted or disposed of.
+    assert importer.disposed == [] and filter_op.disposed == []
+    assert core.catalog.get(objs["log"].id) is not None
+
+
+def test_force_removes_from_the_catalog_and_records_the_orphaned_data(tmp_path, caplog):
+    engine, core = build_test_engine()
+    log = OrphanedDataLog(tmp_path / "orphaned-data.json", clock=lambda: datetime(2025, 1, 2, 3, 4, 5))
+    service = WorkspaceService(engine.ctx.importers, engine.ctx.operations, engine.core_tools, engine.event_bus,
+                               orphaned_data=log)
+    core.catalog.add(_orphan())
+
+    assert service.delete(_orphan().id, force=True) == [_orphan().id]
+
+    assert core.catalog.get(_orphan().id) is None
     assert "was not disposed of" in caplog.text
+    [entry] = json.loads((tmp_path / "orphaned-data.json").read_text(encoding="utf-8"))
+    assert entry["package"] == "old_package"
+    assert entry["object"]["meta"] == {"graph": "old"}
+    assert entry["contributor"]["contributor_id"] == "old_package.uninstalled"
+    assert entry["removed_at"] == "2025-01-02T03:04:05.000"
+
+
+def test_engine_records_orphaned_data_in_the_installed_packages_folder(tmp_path):
+    from soup.core.engine import build_engine
+    from soup.core.settings import Settings
+    from tests.fakes import CoreToolsPackage, FakeDatabase, InMemoryFileStorage
+
+    tools = CoreToolsPackage()
+    settings = Settings(packages_path=(), installed_packages_dir=str(tmp_path))
+    engine = build_engine(settings, db=FakeDatabase(), storage=InMemoryFileStorage(), extra_plugins=[tools])
+    tools.catalog.add(_orphan())
+
+    engine.workspace_service.delete(_orphan().id, force=True)
+
+    entries = json.loads((tmp_path / "orphaned-data.json").read_text(encoding="utf-8"))
+    assert [entry["object"]["id"] for entry in entries] == [_orphan().id]
 
 
 def test_unknown_or_hostile_ids_and_missing_catalog():

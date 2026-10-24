@@ -1,13 +1,11 @@
 """
 ------------------------------------------------------------------------
 File : tables.py
-Description: to_dataframe()/from_dataframe() - the ONLY point of contact
-             with pandas in soup/core. Plugins that are more convenient
-             to write against a DataFrame (e.g. csv_reader, which reads
-             via pd.read_csv) use this as a helper to convert back into
-             the pandas-free Table contract; nothing in soup/core/
-             contracts ever imports pandas.
-Project : soup-server
+Description: to_dataframe()/from_dataframe() - conversion between a pandas
+             DataFrame and the pandas-free Table contract. Moved here
+             from soup/core/tables.py: csv_reader was its only user, and
+             the core no longer imports pandas.
+Project : soup-packages/csv_reader
 ------------------------------------------------------------------------
 """
 

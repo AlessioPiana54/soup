@@ -1,0 +1,14 @@
+{
+  "name": "csv_reader",
+  "version": "1.0.0",
+  "api_version": "2.0",
+  "label": "CSV reader",
+  "description": "Reads flat CSV event logs for the event-log import (/api/v2/graph).",
+  "author": "SOUP",
+  "requires": [],
+  "requires_tools": [],
+  "provides_tools": [],
+  "extension_points": [],
+  "python_dependencies": ["pandas>=2"],
+  "server": {"module": "server", "plugin": "plugin:Plugin"}
+}

@@ -62,7 +62,7 @@ def new_app():
     from soup.core.settings import Settings
     from tests.fakes import FakeDatabase, InMemoryFileStorage
 
-    settings = Settings.from_env({"SOUP_PLUGINS": "csv_reader"})
+    settings = Settings.from_env({"SOUP_PACKAGES": "csv_reader"})
     engine = build_engine(settings, db=FakeDatabase(), storage=InMemoryFileStorage())
     return build_flask_app(engine)
 

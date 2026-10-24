@@ -14,6 +14,7 @@ from typing import Any, Iterable, Mapping, Optional
 
 from soup.core.contracts import (
     EventHandler,
+    ExtensionPointNotDeclaredError,
     Exporter,
     Importer,
     Operation,
@@ -22,6 +23,7 @@ from soup.core.contracts import (
     Tool,
     ToolNotDeclaredError,
     Visualizer,
+    contribution_key,
 )
 from soup.core.event_bus import EventBus
 from soup.core.extension_points import ExtensionPoints
@@ -48,7 +50,10 @@ class DefaultPluginContext:
     contribution to whichever package is currently being registered.
     `PluginManager` opens/closes the current package around each call to
     plugin.register(ctx), and removes its contributions (remove_owner) if
-    the call fails; packages never pass their own name.
+    the call fails; packages never pass their own name. Importers,
+    operations, visualizers and exporters are keyed "<package>.<id>"
+    (contribution_key); tools and extension points keep their global
+    name and must be declared by the package.
     """
 
     def __init__(self, event_bus: Optional[EventBus] = None) -> None:
@@ -68,6 +73,7 @@ class DefaultPluginContext:
         self._current_plugin: Optional[str] = None
         self._declared_tools: frozenset[str] = frozenset()
         self._provides_tools: frozenset[str] = frozenset()
+        self._declared_points: frozenset[str] = frozenset()
 
     def _registries(self) -> tuple[Registry[Any], ...]:
         return (
@@ -80,11 +86,13 @@ class DefaultPluginContext:
         self._current_plugin = name
         self._declared_tools = frozenset()
         self._provides_tools = frozenset()
+        self._declared_points = frozenset()
 
     def _begin_plugin(self, plugin: SoupPlugin) -> None:
         self._current_plugin = plugin.name
         self._provides_tools = frozenset(plugin.provides_tools)
         self._declared_tools = frozenset(plugin.requires_tools) | self._provides_tools
+        self._declared_points = frozenset(plugin.extension_points)
 
     def _end_plugin(self) -> None:
         self._set_current_plugin(None)
@@ -127,7 +135,7 @@ class DefaultPluginContext:
         owner = self._require_current_plugin()
         if not isinstance(importer, Importer):
             raise TypeError(f"add_importer expects an Importer, got {type(importer).__name__}")
-        key = _non_empty_str(importer.id, "Importer.id")
+        key = contribution_key(owner, _non_empty_str(importer.id, "Importer.id"))
         _non_empty_str(importer.produces, f"Importer '{key}'.produces")
         self._check_required_tools(f"importer '{key}'", importer.requires_tools)
         self.importers.register(importer, owner, key)
@@ -136,7 +144,7 @@ class DefaultPluginContext:
         owner = self._require_current_plugin()
         if not isinstance(operation, Operation):
             raise TypeError(f"add_operation expects an Operation, got {type(operation).__name__}")
-        key = _non_empty_str(operation.id, "Operation.id")
+        key = contribution_key(owner, _non_empty_str(operation.id, "Operation.id"))
         inputs = tuple(operation.inputs or ())
         if not inputs or not all(isinstance(item, OperationInput) for item in inputs):
             raise ValueError(f"Operation '{key}'.inputs must list at least one OperationInput")
@@ -151,7 +159,7 @@ class DefaultPluginContext:
         owner = self._require_current_plugin()
         if not isinstance(visualizer, Visualizer):
             raise TypeError(f"add_visualizer expects a Visualizer, got {type(visualizer).__name__}")
-        key = _non_empty_str(visualizer.id, "Visualizer.id")
+        key = contribution_key(owner, _non_empty_str(visualizer.id, "Visualizer.id"))
         _kinds(visualizer.accepts, f"Visualizer '{key}'.accepts")
         element = _non_empty_str(visualizer.element, f"Visualizer '{key}'.element")
         if "-" not in element:
@@ -163,7 +171,7 @@ class DefaultPluginContext:
         owner = self._require_current_plugin()
         if not isinstance(exporter, Exporter):
             raise TypeError(f"add_exporter expects an Exporter, got {type(exporter).__name__}")
-        key = _non_empty_str(exporter.id, "Exporter.id")
+        key = contribution_key(owner, _non_empty_str(exporter.id, "Exporter.id"))
         _kinds(exporter.accepts, f"Exporter '{key}'.accepts")
         extension = _non_empty_str(exporter.extension, f"Exporter '{key}'.extension")
         if not extension.startswith("."):
@@ -181,7 +189,10 @@ class DefaultPluginContext:
         self.tool_registry.register(tool, owner, key)
 
     def add_extension_point(self, name: str) -> None:
-        self.extension_points.add_point(name, self._require_current_plugin())
+        owner = self._require_current_plugin()
+        if name not in self._declared_points:
+            raise ExtensionPointNotDeclaredError(owner, name)
+        self.extension_points.add_point(name, owner)
 
     def contribute(self, point: str, item: Any, key: str, order: int = 0) -> None:
         self.extension_points.contribute(point, item, key, order, self._require_current_plugin())

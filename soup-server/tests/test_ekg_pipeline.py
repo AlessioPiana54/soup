@@ -6,7 +6,7 @@ Description: Tests for the EKG build pipeline - step ordering
              plugin taking over :DF for trigger/target entity types, and
              that no query text ever embeds a raw user-supplied value
              (soup.core.ekg, soup.core.services.ekg_service,
-             soup.plugins.causal_df).
+             soup-packages/causal_df).
 Project : soup-server
 ------------------------------------------------------------------------
 """
@@ -19,8 +19,10 @@ from soup.core.contracts import BuildContext
 from soup.core.event_log import ColumnMapping
 from soup.core.registry import Registry
 from soup.core.services.ekg_service import EkgService
-from soup.plugins.causal_df.step import CausalDirectlyFollowsStep
 from tests.fakes import FakeDatabase
+from tests.packages import bundled_api
+
+CausalDirectlyFollowsStep = bundled_api("causal_df").CausalDirectlyFollowsStep
 
 
 def _plugin_build_steps(*steps) -> Registry:

@@ -2,9 +2,12 @@
 ------------------------------------------------------------------------
 File : test_architecture_boundaries.py
 Description: Static (AST-based) checks of the dependency rules: soup/core
-             never imports from soup/plugins or soup/api; soup/plugins
-             never imports Flask; soup/core/contracts never imports
-             pandas; and soup/api is the only package that imports Flask.
+             never imports from soup/api; the packages in soup-packages/
+             never import Flask, reach the host only through
+             soup.core.contracts and another package only through its
+             api.py, after declaring it in `requires`; soup/core/contracts
+             never imports pandas; and soup/api is the only package that
+             imports Flask.
 Project : soup-server
 ------------------------------------------------------------------------
 """
@@ -12,9 +15,11 @@ Project : soup-server
 from __future__ import annotations
 
 import ast
+import json
 from pathlib import Path
 
 SOUP_ROOT = Path(__file__).resolve().parent.parent / "soup"
+PACKAGES_ROOT = Path(__file__).resolve().parent.parent.parent / "soup-packages"
 
 
 def _imported_modules(file_path: Path) -> set[str]:
@@ -40,13 +45,18 @@ def _py_files(directory: Path) -> list[Path]:
     return sorted(directory.rglob("*.py")) if directory.exists() else []
 
 
-def test_core_never_imports_from_plugins_or_api():
+def test_core_never_imports_from_api_or_packages():
     violations = []
     for file_path in _py_files(SOUP_ROOT / "core"):
         for module in _imported_modules(file_path):
-            if module.startswith("soup.plugins") or module.startswith("soup.api"):
+            if module.startswith("soup.api") or module.startswith("soup_pkg_"):
                 violations.append(f"{file_path.relative_to(SOUP_ROOT)} imports {module}")
     assert violations == []
+
+
+def test_soup_plugins_is_gone():
+    # The built-in plugins moved to soup-packages/ (commit 2).
+    assert not (SOUP_ROOT / "plugins").exists()
 
 
 def test_contracts_never_import_pandas():
@@ -58,21 +68,47 @@ def test_contracts_never_import_pandas():
     assert violations == []
 
 
-def test_plugins_never_import_flask():
+def _package_dirs() -> list[Path]:
+    return sorted(path.parent for path in PACKAGES_ROOT.glob("*/soup-package.json"))
+
+
+def test_bundled_packages_exist():
+    assert {path.name for path in _package_dirs()} >= {"csv_reader", "causal_df"}
+
+
+def test_packages_never_import_flask():
     violations = []
-    for file_path in _py_files(SOUP_ROOT / "plugins"):
-        for module in _imported_modules(file_path):
-            if _is_flask_module(module):
-                violations.append(f"{file_path.relative_to(SOUP_ROOT)} imports {module}")
+    for package_dir in _package_dirs():
+        for file_path in _py_files(package_dir):
+            for module in _imported_modules(file_path):
+                if _is_flask_module(module):
+                    violations.append(f"{file_path.relative_to(PACKAGES_ROOT)} imports {module}")
+    assert violations == []
+
+
+def test_packages_reach_the_host_only_through_contracts_and_others_only_through_api():
+    violations = []
+    for package_dir in _package_dirs():
+        manifest = json.loads((package_dir / "soup-package.json").read_text(encoding="utf-8"))
+        allowed_packages = {f"soup_pkg_{name}.api" for name in manifest.get("requires", [])}
+        for file_path in _py_files(package_dir):
+            relative = file_path.relative_to(PACKAGES_ROOT)
+            for module in _imported_modules(file_path):
+                if module == "soup" or (module.startswith("soup.") and not module.startswith("soup.core.contracts")):
+                    violations.append(f"{relative} imports host module {module}")
+                if module.startswith("soup_pkg_") and module not in allowed_packages:
+                    violations.append(f"{relative} imports {module} (not api.py of a package in requires)")
     assert violations == []
 
 
 # The mediator: contracts, package wiring and routing services. None of it
 # may depend on a data library, a database driver, Docker or Flask.
-# (soup/core/tables.py, event_log.py, ekg/ and the legacy import services
-# leave the core in later commits.)
+# (event_log.py, ekg/ and the legacy import services leave the core in
+# later commits.)
 MEDIATOR_PATHS = (
     "core/contracts",
+    "core/packages",
+    "core/settings.py",
     "core/registry.py",
     "core/plugin_context.py",
     "core/plugin_manager.py",
@@ -87,6 +123,7 @@ MEDIATOR_PATHS = (
     "core/services/visualizer_router.py",
     "core/services/export_router.py",
     "core/services/workspace_service.py",
+    "core/services/orphaned_data.py",
 )
 
 _FORBIDDEN_IN_MEDIATOR = ("pandas", "neo4j", "docker", "flask", "werkzeug")

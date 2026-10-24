@@ -5,7 +5,8 @@
 # packages (e.g. bcrypt==4.0.1/cryptography==41.0.4, which predate
 # prebuilt wheels for newer Python) from source. The soup/ package and
 # its tests only need neo4j and docker from that list, listed here
-# directly (unpinned/ranged like in requirements.txt) plus pytest.
+# directly (unpinned/ranged like in requirements.txt) plus pytest, and
+# packaging (manifest versions and python_dependencies checks).
 pytest==8.3.3
 neo4j
 docker~=7.1.0
@@ -13,3 +14,4 @@ pandas==2.1.1
 Flask==2.3.3
 Flask-Cors==4.0.0
 Flask-SocketIO
+packaging

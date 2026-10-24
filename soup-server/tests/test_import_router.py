@@ -38,8 +38,8 @@ def test_two_importers_on_the_same_extension_are_both_offered():
     as_table, as_log, as_text = _importers()
     engine, _core = build_test_engine(FeaturePackage("feature", importers=[as_table, as_log, as_text]))
 
-    assert [i.id for i in engine.import_router.importers_for("LOG.CSV")] == ["csv_log", "csv_table"]
-    assert [i.id for i in engine.import_router.importers_for("notes.txt")] == ["txt"]
+    assert [e.key for e in engine.import_router.importers_for("LOG.CSV")] == ["feature.csv_log", "feature.csv_table"]
+    assert [e.key for e in engine.import_router.importers_for("notes.txt")] == ["feature.txt"]
     assert engine.import_router.importers_for("image.png") == []
 
 
@@ -48,8 +48,8 @@ def test_inspect_and_preview_are_routed_to_the_chosen_importer():
     engine, _core = build_test_engine(FeaturePackage("feature", importers=[as_table, as_log]))
     file = upload()
 
-    inspection = engine.import_router.inspect("csv_log", file)
-    blocks = engine.import_router.preview("csv_log", file, {"separator": ";"})
+    inspection = engine.import_router.inspect("feature.csv_log", file)
+    blocks = engine.import_router.preview("feature.csv_log", file, {"separator": ";"})
 
     assert inspection.preview[0]["data"]["text"] == "csv_log:a,b\n1,2\n"
     assert [field.name for field in inspection.fields] == ["separator"]
@@ -63,9 +63,9 @@ def test_unknown_importer_is_404_and_an_importer_refusing_the_file_is_400():
     engine, _core = build_test_engine(FeaturePackage("feature", importers=[as_table, as_text]))
 
     with pytest.raises(NotFoundError):
-        engine.import_router.inspect("missing", upload())
+        engine.import_router.inspect("feature.missing", upload())
     with pytest.raises(ValidationError):
-        engine.import_router.inspect("txt", upload("log.csv"))
+        engine.import_router.inspect("feature.txt", upload("log.csv"))
 
 
 def test_import_creates_a_typed_object_and_publishes_object_created():
@@ -74,11 +74,11 @@ def test_import_creates_a_typed_object_and_publishes_object_created():
     engine, core = build_test_engine(FeaturePackage("feature", importers=[as_table, as_log]))
     created = published(engine, OBJECT_CREATED)
 
-    obj = engine.import_router.import_("csv_log", upload(), "orders", "My orders", {"separator": ","})
+    obj = engine.import_router.import_("feature.csv_log", upload(), "orders", "My orders", {"separator": ","})
 
     uuid.UUID(obj.id)
     assert (obj.name, obj.kind, obj.parents, obj.description) == ("orders", "event_log", (), "My orders")
-    assert obj.created_by.to_dict() == {"type": "importer", "contributor_id": "csv_log", "package": "feature"}
+    assert obj.created_by.to_dict() == {"type": "importer", "contributor_id": "feature.csv_log", "package": "feature"}
     assert obj.meta == {"events": 10}
     assert core.catalog.get(obj.id) == obj
     assert created == [{"object": obj.to_dict()}]
@@ -89,8 +89,8 @@ def test_import_creates_a_typed_object_and_publishes_object_created():
 def test_names_need_not_be_unique_ids_are():
     engine, core = build_test_engine(FeaturePackage("feature", importers=[FakeImporter("csv_table", "Table")]))
 
-    first = engine.import_router.import_("csv_table", upload(), "orders")
-    second = engine.import_router.import_("csv_table", upload(), "orders")
+    first = engine.import_router.import_("feature.csv_table", upload(), "orders")
+    second = engine.import_router.import_("feature.csv_table", upload(), "orders")
 
     assert first.id != second.id
     assert len(core.catalog.list()) == 2
@@ -99,12 +99,12 @@ def test_names_need_not_be_unique_ids_are():
 def test_created_at_uses_the_process_timer_format():
     importer = FakeImporter("csv_table", "Table")
     importers: Registry = Registry("importer")
-    importers.register(importer, "feature", importer.id)
+    importers.register(importer, "feature", "feature.csv_table")
     tools: Registry = Registry("tool")
     tools.register(InMemoryCatalog(), "test", "catalog")
     router = ImportRouter(importers, CoreTools(tools), EventBus(), clock=lambda: datetime(2025, 1, 2, 3, 4, 5, 678901))
 
-    assert router.import_("csv_table", upload(), "ds").created_at == "2025-01-02T03:04:05.678"
+    assert router.import_("feature.csv_table", upload(), "ds").created_at == "2025-01-02T03:04:05.678"
 
 
 def test_failed_import_is_compensated_with_dispose_and_re_raised():
@@ -113,7 +113,7 @@ def test_failed_import_is_compensated_with_dispose_and_re_raised():
     created = published(engine, OBJECT_CREATED)
 
     with pytest.raises(RuntimeError, match="disk full"):
-        engine.import_router.import_("csv_table", upload(), "orders")
+        engine.import_router.import_("feature.csv_table", upload(), "orders")
 
     attempted = failing.calls[-1][1]
     assert failing.disposed == [attempted.id]
@@ -131,7 +131,7 @@ def test_failed_registration_is_compensated_too():
     core.catalog.add = _refuse
 
     with pytest.raises(OSError, match="catalog full"):
-        engine.import_router.import_("csv_table", upload(), "orders")
+        engine.import_router.import_("feature.csv_table", upload(), "orders")
     assert len(importer.disposed) == 1
 
 
@@ -140,7 +140,7 @@ def test_invalid_meta_is_compensated():
     engine, core = build_test_engine(FeaturePackage("feature", importers=[bad_meta]))
 
     with pytest.raises(TypeError):
-        engine.import_router.import_("csv_table", upload(), "orders")
+        engine.import_router.import_("feature.csv_table", upload(), "orders")
     assert len(bad_meta.disposed) == 1
     assert core.catalog.list() == []
 
@@ -155,7 +155,7 @@ def test_compensation_failure_does_not_hide_the_original_error(caplog):
     engine, _core = build_test_engine(FeaturePackage("feature", importers=[failing]))
 
     with pytest.raises(RuntimeError, match="original"):
-        engine.import_router.import_("csv_table", upload(), "orders")
+        engine.import_router.import_("feature.csv_table", upload(), "orders")
     assert "Compensation failed" in caplog.text
 
 
@@ -167,7 +167,7 @@ def test_hostile_names_are_refused_before_the_importer_runs(name):
     engine, core = build_test_engine(FeaturePackage("feature", importers=[importer]))
 
     with pytest.raises(ValidationError) as invalid:
-        engine.import_router.import_("csv_table", upload(), name)
+        engine.import_router.import_("feature.csv_table", upload(), name)
 
     assert invalid.value.http_status_code == 400
     assert importer.calls == []
@@ -179,9 +179,9 @@ def test_import_without_a_catalog_tool_is_503():
     engine, _core = build_test_engine(FeaturePackage("feature", importers=[importer]), with_core_tools=False)
 
     with pytest.raises(ServiceUnavailableError) as unavailable:
-        engine.import_router.import_("csv_table", upload(), "orders")
+        engine.import_router.import_("feature.csv_table", upload(), "orders")
 
     assert unavailable.value.http_status_code == 503
     assert "'catalog' tool" in str(unavailable.value)
     assert importer.calls == []
-    assert [i.id for i in engine.import_router.importers_for("x.csv")] == ["csv_table"]
+    assert [e.key for e in engine.import_router.importers_for("x.csv")] == ["feature.csv_table"]

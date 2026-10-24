@@ -173,6 +173,7 @@ class FeaturePackage(SoupPlugin):
         requires: Sequence[str] = (),
         requires_tools: Sequence[str] = (),
         provides_tools: Optional[Sequence[str]] = None,
+        extension_points: Sequence[str] = (),
         on_register: Optional[Callable[[PluginContext], None]] = None,
     ):
         self.name = name
@@ -180,6 +181,7 @@ class FeaturePackage(SoupPlugin):
         self.requires = tuple(requires)
         self.requires_tools = tuple(requires_tools)
         self.provides_tools = tuple(provides_tools if provides_tools is not None else (t.name for t in tools))
+        self.extension_points = tuple(extension_points)
         self._tools = list(tools)
         self._importers = list(importers)
         self._operations = list(operations)
@@ -208,7 +210,7 @@ def build_test_engine(*packages: SoupPlugin, with_core_tools: bool = True):
     core = CoreToolsPackage()
     extra = [core, *packages] if with_core_tools else list(packages)
     engine = build_engine(
-        Settings.from_env({"SOUP_PLUGINS": ""}),
+        Settings.from_env({"SOUP_PACKAGES": ""}),
         db=FakeDatabase(),
         storage=InMemoryFileStorage(),
         extra_plugins=extra,

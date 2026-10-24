@@ -1,0 +1,11 @@
+# The flask image is built from the repository root: send only what it needs.
+.git
+**/.DS_Store
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.idea
+**/node_modules
+soup-app
+soup-server/instance
+soup-server/tests

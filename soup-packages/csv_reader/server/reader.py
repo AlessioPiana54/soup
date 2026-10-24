@@ -10,7 +10,7 @@ Description: CsvEventLogReader - reads a CSV into an EventLogData in the
              (spaces, millisecond comma, entity extraction, canonical
              CSV) is common core logic in soup/core/event_log.py, not
              duplicated here.
-Project : soup-server
+Project : soup-packages/csv_reader
 ------------------------------------------------------------------------
 """
 
@@ -21,7 +21,7 @@ from typing import BinaryIO
 import pandas as pd
 
 from soup.core.contracts import EventLogData, EventLogReader
-from soup.core.tables import from_dataframe
+from .tables import from_dataframe
 
 
 class CsvEventLogReader(EventLogReader):

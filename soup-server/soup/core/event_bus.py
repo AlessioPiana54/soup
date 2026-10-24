@@ -9,6 +9,10 @@ Description: EventBus (Observer, scheda C6) - lets packages react to
              handler is logged and does not stop the others, unless it
              subscribed as critical: then the error propagates to the
              publisher and the remaining handlers are not called.
+             Copy-on-write: subscribe/remove_owner build a new mapping and
+             publish it with one assignment under a lock; publish() reads
+             the current snapshot without locking, so packages can be
+             installed or disabled while events are being published.
 Project : soup-server
 ------------------------------------------------------------------------
 """
@@ -37,7 +41,8 @@ class Subscription:
 class EventBus:
     def __init__(self, logger: Optional[logging.Logger] = None):
         self._logger = logger or _LOGGER
-        self._subscriptions: dict[str, list[Subscription]] = {}
+        # Never mutated: replaced as a whole on every change.
+        self._subscriptions: Mapping[str, tuple[Subscription, ...]] = MappingProxyType({})
         self._lock = threading.Lock()
 
     def subscribe(self, event: str, handler: EventHandler, owner: str, critical: bool = False) -> None:
@@ -45,21 +50,21 @@ class EventBus:
             raise ValueError("Event name must be a non-empty string")
         if not callable(handler):
             raise ValueError(f"Handler for event '{event}' must be callable")
+        subscription = Subscription(event, handler, owner, critical)
         with self._lock:
-            self._subscriptions.setdefault(event, []).append(Subscription(event, handler, owner, critical))
+            current = self._subscriptions
+            self._subscriptions = MappingProxyType({**current, event: (*current.get(event, ()), subscription)})
 
     def remove_owner(self, owner: str) -> None:
         with self._lock:
-            for event, subscriptions in list(self._subscriptions.items()):
-                kept = [subscription for subscription in subscriptions if subscription.owner != owner]
-                if kept:
-                    self._subscriptions[event] = kept
-                else:
-                    del self._subscriptions[event]
+            kept = {
+                event: tuple(subscription for subscription in subscriptions if subscription.owner != owner)
+                for event, subscriptions in self._subscriptions.items()
+            }
+            self._subscriptions = MappingProxyType({event: subs for event, subs in kept.items() if subs})
 
     def subscribers(self, event: str) -> list[Subscription]:
-        with self._lock:
-            return list(self._subscriptions.get(event, ()))
+        return list(self._subscriptions.get(event, ()))
 
     def publish(self, event: str, payload: Optional[Mapping[str, Any]] = None) -> None:
         view = MappingProxyType(dict(payload or {}))

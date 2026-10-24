@@ -6,7 +6,9 @@ Description: VisualizerRouter - offers the visualizers that accept an
              none is a valid answer) and forwards the component's
              requests: data() for the initial JSON, action() for
              interactive requests. package_of() tells the API which
-             package serves the Web Component's module.
+             package serves the Web Component's module. Visualizers are
+             addressed by their full key "<package>.<id>"
+             (visualizers_for() lists them with their key and package).
 Project : soup-server
 ------------------------------------------------------------------------
 """
@@ -16,7 +18,7 @@ from __future__ import annotations
 from typing import Any, Mapping, Optional
 
 from soup.core.contracts import NotFoundError, ObjectRef, ValidationError, Visualizer
-from soup.core.registry import Registry
+from soup.core.registry import Registered, Registry
 from soup.core.services.core_tools import CoreTools, ObjectLike, kinds_of
 from soup.core.toolbox import ToolBox
 
@@ -26,10 +28,10 @@ class VisualizerRouter:
         self._visualizers = visualizers
         self._core_tools = core_tools
 
-    def visualizers_for(self, obj: ObjectLike) -> list[Visualizer]:
+    def visualizers_for(self, obj: ObjectLike) -> list[Registered[Visualizer]]:
         ref = self._core_tools.object(obj)
-        found = [visualizer for visualizer in self._visualizers if self._applies(visualizer, ref)]
-        return sorted(found, key=lambda visualizer: (visualizer.label.lower(), visualizer.id))
+        found = [entry for entry in self._visualizers.entries() if self._applies(entry.item, ref)]
+        return sorted(found, key=lambda entry: (entry.item.label.lower(), entry.key))
 
     def package_of(self, visualizer_id: str) -> str:
         if self._visualizers.get(visualizer_id) is None:
@@ -38,7 +40,7 @@ class VisualizerRouter:
 
     def data(self, visualizer_id: str, obj: ObjectLike, params: Optional[Mapping[str, Any]] = None) -> Any:
         visualizer, ref = self._resolve(visualizer_id, obj)
-        return visualizer.data(ref, dict(params or {}), self._toolbox(visualizer))
+        return visualizer.data(ref, dict(params or {}), self._toolbox(visualizer_id, visualizer))
 
     def action(
         self, visualizer_id: str, obj: ObjectLike, name: str, params: Optional[Mapping[str, Any]] = None
@@ -46,7 +48,7 @@ class VisualizerRouter:
         if not isinstance(name, str) or not name:
             raise ValidationError("Action name must be a non-empty string")
         visualizer, ref = self._resolve(visualizer_id, obj)
-        return visualizer.action(ref, name, dict(params or {}), self._toolbox(visualizer))
+        return visualizer.action(ref, name, dict(params or {}), self._toolbox(visualizer_id, visualizer))
 
     # ------------------------------------------------------------------ #
     def _applies(self, visualizer: Visualizer, obj: ObjectRef) -> bool:
@@ -59,5 +61,5 @@ class VisualizerRouter:
             raise NotFoundError(f"Visualizer '{visualizer_id}' is not available for object '{ref.id}'")
         return visualizer, ref
 
-    def _toolbox(self, visualizer: Visualizer) -> ToolBox:
-        return self._core_tools.toolbox(f"visualizer '{visualizer.id}'", visualizer.requires_tools)
+    def _toolbox(self, key: str, visualizer: Visualizer) -> ToolBox:
+        return self._core_tools.toolbox(f"visualizer '{key}'", visualizer.requires_tools)

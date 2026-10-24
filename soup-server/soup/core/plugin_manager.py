@@ -1,23 +1,31 @@
 """
 ------------------------------------------------------------------------
 File : plugin_manager.py
-Description: Discovers, orders, loads and shuts down plugins. Mirrors the
-             six-phase lifecycle from the refactoring document:
-             1. Discovery   - SOUP_PLUGINS env var + "soup.plugins" entry points
+Description: Orders, loads, unloads and shuts down plugins (the SoupPlugin
+             of each package). Packages are found on disk by the
+             PackageManager (soup/core/packages), which hands their
+             plugins to this class; discover() only resolves specs
+             passed in code (tests, "soup.plugins" entry points).
+             Mirrors the six-phase lifecycle from the refactoring document:
+             1. Discovery   - explicit specs + "soup.plugins" entry points
              2. Ordering    - topological sort on `requires` and on tools
                                (a tool's provider loads before the
                                packages requiring it), cycle detection
              3. Verification- required deps and required tools present,
-                               api_version compatible
+                               api_version compatible (same major,
+                               minor not above the host's)
              4. Registration- calls register(ctx); PluginContext attributes
                                every contribution to the current plugin;
                                "package.loaded" is published on success
              5. Isolation   - a failing plugin is excluded, its partial
                                contributions removed (remove_owner) and
-                               the reason recorded in the PluginReport;
+                               the reason recorded in the PackageReport;
                                the host still starts (unless `strict=True`)
              6. Shutdown    - on_shutdown(ctx) in reverse load order, then
                                "package.unloaded"
+             load() is incremental: packages loaded by an earlier call
+             satisfy the `requires` of later ones (runtime install and
+             enable), and unload() removes one package at runtime.
 Project : soup-server
 ------------------------------------------------------------------------
 """
@@ -26,12 +34,12 @@ from __future__ import annotations
 
 import importlib
 import importlib.metadata as importlib_metadata
-import os
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Optional
 
 from soup.core.contracts import (
     CONTRACTS_API_VERSION,
+    is_api_compatible,
     PluginApiVersionError,
     PluginCycleError,
     PluginDependencyError,
@@ -43,7 +51,6 @@ from soup.core.events import PACKAGE_LOADED, PACKAGE_UNLOADED
 from soup.core.plugin_context import DefaultPluginContext
 
 ENTRY_POINT_GROUP = "soup.plugins"
-ENV_VAR = "SOUP_PLUGINS"
 
 
 @dataclass
@@ -57,11 +64,16 @@ class PluginFailure:
 
 
 @dataclass
-class PluginReport:
-    """Outcome of a PluginManager.load() call: who loaded, who did not and why."""
+class PackageReport:
+    """
+    Outcome of loading packages: who loaded, who was left disabled (by
+    the persisted state or the SOUP_PACKAGES override), who did not load
+    and why.
+    """
 
     loaded: list[str] = field(default_factory=list)
     failed: list[PluginFailure] = field(default_factory=list)
+    disabled: list[str] = field(default_factory=list)
     # Problems that exclude no package but leave a service unable to
     # answer (e.g. no package provides the object catalog).
     warnings: list[str] = field(default_factory=list)
@@ -72,21 +84,35 @@ class PluginReport:
     def add_failure(self, name: str, error: Exception) -> None:
         self.failed.append(PluginFailure(name, error))
 
+    def add_disabled(self, name: str) -> None:
+        self.disabled.append(name)
+
     def add_warning(self, message: str) -> None:
         self.warnings.append(message)
+
+    def merge(self, other: "PackageReport") -> None:
+        self.loaded.extend(other.loaded)
+        self.failed.extend(other.failed)
+        self.disabled.extend(other.disabled)
+        self.warnings.extend(other.warnings)
 
     @property
     def has_failures(self) -> bool:
         return bool(self.failed)
 
 
+# TODO(commit 11): remove the old name once nothing imports it.
+PluginReport = PackageReport
+
+
 class PluginManager:
     def __init__(self, contracts_api_version: str = CONTRACTS_API_VERSION, strict: bool = False):
         self.contracts_api_version = contracts_api_version
         self.strict = strict
-        self.report: PluginReport = PluginReport()
+        self.report: PackageReport = PackageReport()
         self._ctx: Optional[DefaultPluginContext] = None
-        self._loaded_plugins: list[SoupPlugin] = []
+        # Replaced, never mutated: readers (package_status, list) iterate a snapshot.
+        self._loaded_plugins: tuple[SoupPlugin, ...] = ()
 
     # ------------------------------------------------------------------ #
     # Phase 1: discovery
@@ -95,27 +121,13 @@ class PluginManager:
         """
         Resolve `specs` into SoupPlugin instances, without registering
         them. Each spec may be a SoupPlugin instance, a SoupPlugin
-        subclass, or a string (either the name of a "soup.plugins" entry
-        point, or a dotted "module.path:Attribute" spec).
-
-        If `specs` is None, reads short names from the SOUP_PLUGINS
-        environment variable (comma-separated). Every string spec -
-        whether it comes from the environment or was passed in directly
-        (e.g. via Settings.plugins) - is resolved against the
-        "soup.plugins" entry points first, then as a short name of a
-        soup/plugins/<name> package, then as a dotted module path.
+        subclass, or a string: the name of a "soup.plugins" entry point,
+        or a dotted "module.path:Attribute" spec. Packages on disk are
+        not resolved here: the PackageManager loads them.
         """
 
-        if specs is None:
-            specs = self._specs_from_env()
-
         entry_points = self._entry_point_lookup()
-        return [self._resolve_spec(spec, entry_points) for spec in specs]
-
-    @staticmethod
-    def _specs_from_env() -> list[str]:
-        raw = os.environ.get(ENV_VAR, "")
-        return [item.strip() for item in raw.split(",") if item.strip()]
+        return [self._resolve_spec(spec, entry_points) for spec in specs or ()]
 
     @staticmethod
     def _entry_point_lookup() -> dict[str, Any]:
@@ -138,47 +150,56 @@ class PluginManager:
 
     def _load_dotted_path(self, dotted: str, entry_points: Optional[dict[str, Any]] = None) -> SoupPlugin:
         module_path, _, attr = dotted.partition(":")
+        try:
+            module = importlib.import_module(module_path)
+        except ImportError as exc:
+            raise ImportError(f"Cannot resolve a SoupPlugin from spec '{dotted}'") from exc
 
-        # A bare name with no dot (e.g. "csv_reader") is tried as a
-        # built-in plugin package under soup.plugins first, since that is
-        # what Settings.plugins / SOUP_PLUGINS short names refer to.
-        candidates = [module_path]
-        if "." not in module_path:
-            candidates.insert(0, f"soup.plugins.{module_path}")
-
-        last_error: Optional[ImportError] = None
-        for candidate in candidates:
-            try:
-                module = importlib.import_module(candidate)
-            except ImportError as exc:
-                last_error = exc
-                continue
-
-            obj = getattr(module, attr) if attr else (
-                getattr(module, "PLUGIN", None) or getattr(module, "plugin", None)
-            )
-            if obj is not None:
-                return self._resolve_spec(obj, entry_points)
-
-        raise ImportError(f"Cannot resolve a SoupPlugin from spec '{dotted}'") from last_error
+        obj = getattr(module, attr, None) if attr else (
+            getattr(module, "PLUGIN", None) or getattr(module, "plugin", None)
+        )
+        if obj is None:
+            raise ImportError(f"Cannot resolve a SoupPlugin from spec '{dotted}'")
+        return self._resolve_spec(obj, entry_points)
 
     # ------------------------------------------------------------------ #
     # Phases 2-5: ordering, verification, registration, isolation
     # ------------------------------------------------------------------ #
-    def load(self, plugins: Iterable[SoupPlugin], ctx: Optional[DefaultPluginContext] = None) -> PluginReport:
-        ctx = ctx if ctx is not None else DefaultPluginContext()
-        self._ctx = ctx
+    @property
+    def loaded_names(self) -> list[str]:
+        return [plugin.name for plugin in self._loaded_plugins]
 
+    def get(self, name: str) -> Optional[SoupPlugin]:
+        return next((plugin for plugin in self._loaded_plugins if plugin.name == name), None)
+
+    def load(self, plugins: Iterable[SoupPlugin], ctx: Optional[DefaultPluginContext] = None) -> PackageReport:
+        """
+        Load `plugins` into `ctx` (by default the context of the previous
+        call, or a new one). Packages already loaded into the same
+        context stay loaded and satisfy the `requires` of the new ones.
+        Returns the report of this call; self.report accumulates them.
+        """
+
+        ctx = ctx if ctx is not None else (self._ctx or DefaultPluginContext())
+        if ctx is not self._ctx:
+            self._ctx = ctx
+            self._loaded_plugins = ()
+            self.report = PackageReport()
+
+        report = PackageReport()
+        already_loaded = set(self.loaded_names)
         plugins = list(plugins)
+        for plugin in [plugin for plugin in plugins if plugin.name in already_loaded]:
+            self._fail(report, plugin.name, PluginError(f"Package '{plugin.name}' is already loaded"))
+            plugins.remove(plugin)
+
         by_name = {plugin.name: plugin for plugin in plugins}
-        report = PluginReport()
-        # Tools registered by the host before any package count as provided.
+        # Tools registered by the host, or by packages already loaded, count as provided.
         host_tools = set(ctx.tool_registry.keys())
 
-        valid = self._verify(plugins, by_name, report, host_tools)
+        valid = self._verify(plugins, by_name, report, host_tools, already_loaded)
         ordered = self._topological_order(valid)  # raises PluginCycleError, not isolated
 
-        self._loaded_plugins = []
         for plugin in ordered:
             # A provider that passed verification but then failed in
             # register() leaves its tools missing: its consumers fail here.
@@ -197,6 +218,14 @@ class PluginManager:
                     raise PluginError(
                         f"Plugin '{plugin.name}' declares provides_tools {not_added} but did not add them"
                     )
+                points_not_added = [
+                    name for name in plugin.extension_points
+                    if name not in ctx.extension_points.points() or ctx.extension_points.owner_of(name) != plugin.name
+                ]
+                if points_not_added:
+                    raise PluginError(
+                        f"Plugin '{plugin.name}' declares extension_points {points_not_added} but did not open them"
+                    )
             except Exception as exc:  # noqa: BLE001 - isolate any plugin failure
                 ctx.remove_owner(plugin.name)
                 if self.strict:
@@ -205,20 +234,43 @@ class PluginManager:
                 continue
             else:
                 report.add_loaded(plugin.name)
-                self._loaded_plugins.append(plugin)
+                self._loaded_plugins = (*self._loaded_plugins, plugin)
             finally:
                 ctx._end_plugin()
             ctx.publish(PACKAGE_LOADED, {"package": plugin.name, "version": plugin.version})
 
-        self.report = report
+        self.report.merge(report)
         return report
+
+    def unload(self, name: str) -> SoupPlugin:
+        """
+        Remove a loaded package at runtime: on_shutdown(ctx), then every
+        contribution it made (registries, extension points,
+        subscriptions), then "package.unloaded". Dependents are not
+        checked here: the PackageManager refuses to unload a package
+        that other loaded packages need.
+        :raises KeyError: `name` is not loaded
+        """
+
+        plugin = self.get(name)
+        if plugin is None or self._ctx is None:
+            raise KeyError(name)
+        try:
+            plugin.on_shutdown(self._ctx)
+        except Exception:  # noqa: BLE001 - the package's own cleanup is best-effort
+            pass
+        self._ctx.remove_owner(name)
+        self._loaded_plugins = tuple(loaded for loaded in self._loaded_plugins if loaded is not plugin)
+        self._ctx.publish(PACKAGE_UNLOADED, {"package": plugin.name, "version": plugin.version})
+        return plugin
 
     def _verify(
         self,
         plugins: list[SoupPlugin],
         by_name: dict[str, SoupPlugin],
-        report: PluginReport,
+        report: PackageReport,
         host_tools: Optional[set[str]] = None,
+        already_loaded: Optional[set[str]] = None,
     ) -> list[SoupPlugin]:
         """
         Phase 3: exclude (and record in `report`) plugins with an
@@ -230,6 +282,7 @@ class PluginManager:
         """
 
         host_tools = host_tools or set()
+        already_loaded = already_loaded or set()
 
         candidates = dict(by_name)
         failed_names: set[str] = set()
@@ -238,14 +291,15 @@ class PluginManager:
         while changed:
             changed = False
             for name, plugin in list(candidates.items()):
-                if plugin.api_version != self.contracts_api_version:
-                    self._fail(report, name, PluginApiVersionError(name, plugin.api_version, self.contracts_api_version))
+                if not is_api_compatible(plugin.api_version, self.contracts_api_version):
+                    error = PluginApiVersionError(name, plugin.api_version, self.contracts_api_version)
+                    self._fail(report, name, error)
                     del candidates[name]
                     failed_names.add(name)
                     changed = True
                     continue
 
-                missing = [dep for dep in plugin.requires if dep not in by_name]
+                missing = [dep for dep in plugin.requires if dep not in by_name and dep not in already_loaded]
                 unavailable = [dep for dep in plugin.requires if dep in failed_names and dep not in missing]
                 all_missing = missing + unavailable
                 if all_missing:
@@ -266,9 +320,9 @@ class PluginManager:
                     changed = True
                     continue
 
-        return [plugins_by_original_order for plugins_by_original_order in plugins if plugins_by_original_order.name in candidates]
+        return [plugin for plugin in plugins if plugin.name in candidates]
 
-    def _fail(self, report: PluginReport, name: str, error: Exception) -> None:
+    def _fail(self, report: PackageReport, name: str, error: Exception) -> None:
         if self.strict:
             raise error
         report.add_failure(name, error)

@@ -4,7 +4,7 @@ File : build.py
 Description: EkgBuildStep - one step of the EKG build pipeline - and
              BuildContext, the data threaded through it. Core steps
              (soup/core/ekg/steps.py) and plugin steps
-             (soup/plugins/causal_df) both implement EkgBuildStep; the
+             (soup-packages/causal_df) both implement EkgBuildStep; the
              core discovers and orders them without knowing which plugin
              contributed which step (see soup/core/services/ekg_service.py).
 Project : soup-server

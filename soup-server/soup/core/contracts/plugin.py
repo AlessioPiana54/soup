@@ -19,6 +19,16 @@ from soup.core.contracts.version import CONTRACTS_API_VERSION
 EventHandler = Callable[[Mapping[str, Any]], None]
 
 
+def contribution_key(package: str, contribution_id: str) -> str:
+    """
+    The key an importer/operation/visualizer/exporter is registered and
+    addressed by: "<package>.<id>". Ids are unique within a package only,
+    so two packages may both offer an importer "csv".
+    """
+
+    return f"{package}.{contribution_id}"
+
+
 class PluginContext(Protocol):
     """
     Facade offered to a package's register(ctx) call. Every add_* call
@@ -26,12 +36,17 @@ class PluginContext(Protocol):
     registered - the package never passes its own name. Duplicate keys
     raise PluginConflictError naming both packages.
 
-    - add_importer / add_operation / add_visualizer / add_exporter /
-      add_tool: keyed by the contribution's id (a tool by its name). A
-      tool must be declared in the package's provides_tools; any other
+    - add_importer / add_operation / add_visualizer / add_exporter:
+      keyed by contribution_key(package, id), "<package>.<id>", so ids
+      only need to be unique within the package; the routers, the API
+      and ObjectRef.created_by.contributor_id use that full key. A
       contribution may only require tools the package requires or
-      provides. `tools` gives the package access to those same tools.
-    - add_extension_point(name) opens a point other packages (which list
+      provides.
+    - add_tool: keyed by the tool's global name, which must be declared
+      in the package's provides_tools. `tools` gives the package access
+      to the tools it requires or provides.
+    - add_extension_point(name) opens a point (global name, declared in
+      the package's extension_points) that other packages (which list
       this one in `requires`) contribute to with contribute(); the owner
       reads them with contributions(), ordered by `order` then by
       registration.
@@ -94,8 +109,11 @@ class SoupPlugin(ABC):
     load (successfully) before this one; `requires_tools` lists the tools
     it uses and `provides_tools` the tools it adds (a package loads after
     the providers of its tools, and is dropped if one is missing);
-    `api_version` must match the host's
-    soup.core.contracts.CONTRACTS_API_VERSION.
+    `extension_points` the extension points it opens. Tool and extension
+    point names are global: two active packages cannot declare the same
+    one. `api_version` must be compatible with the host's
+    soup.core.contracts.CONTRACTS_API_VERSION (see version.py). For a
+    package on disk, all of these come from soup-package.json.
     """
 
     name: str = ""
@@ -103,6 +121,7 @@ class SoupPlugin(ABC):
     requires: Sequence[str] = ()
     requires_tools: Sequence[str] = ()
     provides_tools: Sequence[str] = ()
+    extension_points: Sequence[str] = ()
     api_version: str = CONTRACTS_API_VERSION
 
     @abstractmethod
