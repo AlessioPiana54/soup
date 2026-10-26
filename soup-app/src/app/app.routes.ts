@@ -46,6 +46,27 @@ export const routes: Routes = [
     data: { animation: 'GraphDatasetPage' },
     canActivate: [EngineAuthGuard, MemgraphAuthGuard, DatasetAuthGuard]
   },
+  // Pages of the /api/v3 workspace (the pages above stay until the v2 API is removed)
+  {
+    path: 'workspace',
+    loadComponent: () => import('./v3/pages/workspace/workspace.component').then((c) => c.WorkspaceComponent),
+    canActivate: [EngineAuthGuard]
+  },
+  {
+    path: 'import',
+    loadComponent: () => import('./v3/pages/import/import.component').then((c) => c.ImportComponent),
+    canActivate: [EngineAuthGuard]
+  },
+  {
+    path: 'o/:id',
+    loadComponent: () => import('./v3/pages/object/object.component').then((c) => c.ObjectComponent),
+    canActivate: [EngineAuthGuard]
+  },
+  {
+    path: 'packages',
+    loadComponent: () => import('./v3/pages/packages/packages.component').then((c) => c.PackagesComponent),
+    canActivate: [EngineAuthGuard]
+  },
   {
     path: '**',
     redirectTo: 'welcome'

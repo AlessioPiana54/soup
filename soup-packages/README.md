@@ -18,8 +18,11 @@ soup-packages/<nome>/
     __init__.py          obbligatorio
     plugin.py            la classe SoupPlugin indicata nel manifest
     api.py               API pubblica per gli altri package
-  app/                   sorgenti frontend (dal commit 5)
-    dist/index.js        bundle con i Web Component dei visualizzatori
+  app/                   frontend (facoltativo)
+    package.json         workspace npm con le dipendenze (almeno @soup/sdk)
+    tsconfig.json
+    src/index.ts         definisce i Web Component dei visualizzatori
+    dist/index.js        bundle generato da `npm run build:packages`
 ```
 
 La cartella deve avere lo stesso nome del package.
@@ -171,9 +174,59 @@ catalogo e lo annota in `<cartella dei package installati>/orphaned-data.json` (
 Installazione e disinstallazione rispondono `403` se `SOUP_ALLOW_PACKAGE_INSTALL` non è `true`.
 Lo stato abilitato/disabilitato si conserva tra i riavvii.
 
-## Creare uno zip
+## Frontend: `@soup/sdk`
+
+L'host Angular non contiene visualizzatori. Ogni visualizzatore è un **Web Component** (custom
+element) definito nel bundle `app/dist/index.js` del suo package; l'host lo importa a runtime con
+`import()` dall'URL `/api/v3/packages/<nome>/app/...`, nell'ordine del manifest frontend (ogni
+package dopo quelli che richiede). Un bundle che fallisce non blocca gli altri: l'errore compare
+nella pagina `/packages`. La parte `app/` dipende solo da `@soup/sdk` (`sdk/`, solo TypeScript,
+nessun framework), mai dal codice dell'host.
+
+- **Tipi condivisi**: `ObjectRef`, `Field` (i 13 tipi di campo), `Block` (i 9 tipi di blocco di
+  `report.py`), `FileValue`, `ItemValue`.
+- **Visualizzatori**: l'host crea l'elemento con il tag dichiarato in `Visualizer.element`, imposta
+  `data` (la risposta di `data()`) e `context`, poi lo inserisce nella pagina. `VisualizerContext`:
+  `object`, `theme`, `action(name, params)` (chiama `Visualizer.action` del proprio visualizzatore),
+  `openObject(id)`, `notify(message, level)`, `setThumbnail(svg)` (anteprima mostrata nel workspace
+  come immagine), `download(filename, mime, data)`.
+- **Configurazione degli importer**: un importer con `config_element` sostituisce il form generico
+  con un proprio elemento, che riceve un `ConfigContext`: `fields`, `columns` (colonne
+  dell'anteprima), `value`, `preview(options)` e `emit(options)` per le opzioni dell'import.
+- **Eventi DOM** verso l'host (bubbling, `composed`): `soup-thumbnail` `{svg}`, `soup-open-object`
+  `{id}`, `soup-notify` `{message, level}`, `soup-config-change` `{value}`. I metodi del contesto
+  li emettono: un elemento può usare indifferentemente gli uni o gli altri.
+- **`defineSoupElement(tag, klass)`** registra l'elemento solo se il tag non esiste già, così un
+  bundle ricaricato (dopo disable/enable) non fallisce. Un custom element non si può ridefinire: la
+  nuova versione di un package già caricato nella pagina si usa dopo aver ricaricato la pagina
+  (`/packages` lo segnala).
+- Il testo che viene dai dati va inserito con `textContent`, mai come markup.
+
+```ts
+import { defineSoupElement, SoupVisualizerElement, VisualizerContext } from '@soup/sdk';
+
+class MyViewer extends HTMLElement implements SoupVisualizerElement<MyData> {
+  data!: MyData;
+  context!: VisualizerContext;
+  connectedCallback() { /* render this.data */ }
+}
+
+defineSoupElement('my-package-viewer', MyViewer);
+```
+
+## Build e zip
+
+Dalla radice di `soup-packages` (workspace npm: `sdk` e l'`app/` di ogni package):
 
 ```sh
-cd soup-packages && zip -r my_package.zip my_package -x '*/__pycache__/*'
-curl -F file=@my_package.zip http://localhost:8080/api/v3/packages
+npm install                          # una volta, e dopo aver aggiunto un package con app/
+npm run lint
+npm run build:packages               # SDK, poi type check + esbuild di ogni app/ -> app/dist/index.js (ES module unico, con sourcemap)
+npm run build:packages -- my_package # solo alcuni package
+npm run pack -- my_package           # dist/my_package-<versione>.zip: manifest, server/, app/dist/
+curl -F file=@dist/my_package-1.0.0.zip http://localhost:8080/api/v3/packages
 ```
+
+L'immagine Docker del server esegue `npm ci && npm run build:packages`, quindi i bundle dei package
+forniti sono sempre aggiornati. Per partire da un esempio copia [`_template`](_template/README.md)
+(un importer di file `.txt` e il suo visualizzatore).

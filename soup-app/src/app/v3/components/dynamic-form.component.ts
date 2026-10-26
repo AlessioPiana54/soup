@@ -1,0 +1,281 @@
+import { KeyValuePipe } from '@angular/common';
+import { Component, DestroyRef, inject, input, OnChanges, output, signal, SimpleChanges } from '@angular/core';
+import { Field, FileValue, FormValues, ItemValue, PairValue, Variant } from '@soup/sdk';
+
+import { formatValue, initialValues, optionsFor, readFileValue, requiredErrors, summarize, withoutIndex } from './form-values';
+
+// The element of an "items" field being added (index null) or edited
+interface ItemEditor {
+  index: number | null;
+  variant: string;
+  values: FormValues;
+  errors: Record<string, string>;
+}
+
+/**
+ * <soup-dynamic-form [fields] [columns] [value] (valueChange)> - the
+ * generic form of an importer, operation or exporter, for every Field
+ * type. "column", "columns" and "pairs" offer the field's choices, else
+ * the preview's `columns`, else free text. "items" elements are tiles with
+ * a summary; deleting a tile removes the element from the value (C28),
+ * editing or adding one opens the form of its variant (this same
+ * component). Every change emits the whole value.
+ */
+@Component({
+  selector: 'soup-dynamic-form',
+  standalone: true,
+  imports: [KeyValuePipe],
+  templateUrl: './dynamic-form.component.html',
+  styleUrl: './dynamic-form.component.scss'
+})
+export class DynamicFormComponent implements OnChanges {
+  // The fields of the form
+  public fields = input.required<readonly Field[]>();
+
+  // The columns of the preview, offered by column/columns/pairs fields
+  public columns = input<readonly string[]>([]);
+
+  // The initial values (missing ones: the field's default)
+  public value = input<FormValues | null>(null);
+
+  // The whole value, at every change (and once with the initial values)
+  public valueChange = output<FormValues>();
+
+  public readonly values = signal<FormValues>({});
+  public readonly errors = signal<Record<string, string>>({});
+  public readonly editors = signal<Record<string, ItemEditor>>({});
+
+  // The variant picked in the "add" selector of each items field
+  public readonly newVariant = signal<Record<string, string>>({});
+
+  // Unique prefix for the ids of the inputs (several forms per page)
+  public readonly uid = `sdf${Math.random().toString(36).slice(2, 8)}`;
+
+  public readonly formatValue = formatValue;
+
+  // The initial value is emitted after the change detection that set it, if still alive
+  private destroyed = false;
+
+  constructor() {
+    inject(DestroyRef).onDestroy(() => (this.destroyed = true));
+  }
+
+  public ngOnChanges(changes: SimpleChanges): void {
+    // A parent binding [value] to what this form emitted gives it back: not a reset.
+    const newValue = changes['value'] && changes['value'].currentValue !== this.values();
+    if (!changes['fields'] && !newValue) {
+      return;
+    }
+    this.values.set(initialValues(this.fields(), this.value()));
+    this.errors.set({});
+    this.editors.set({});
+    queueMicrotask(() => {
+      if (!this.destroyed) {
+        this.valueChange.emit(this.values());
+      }
+    });
+  }
+
+  /** True when every required field has a value (errors are then shown). */
+  public validate(): boolean {
+    const errors = requiredErrors(this.fields(), this.values());
+    this.errors.set(errors);
+    return Object.keys(errors).length === 0;
+  }
+
+  /** The current value of the form. */
+  public currentValue(): FormValues {
+    return this.values();
+  }
+
+  // --- reading values in the template -------------------------------------- //
+  public text(field: Field): string {
+    const value = this.values()[field.name];
+    return value === null || value === undefined ? '' : String(value);
+  }
+
+  public list(field: Field): string[] {
+    const value = this.values()[field.name];
+    return Array.isArray(value) ? (value as string[]) : [];
+  }
+
+  public pairs(field: Field): PairValue[] {
+    const value = this.values()[field.name];
+    return Array.isArray(value) ? (value as PairValue[]) : [];
+  }
+
+  public items(field: Field): ItemValue[] {
+    const value = this.values()[field.name];
+    return Array.isArray(value) ? (value as ItemValue[]) : [];
+  }
+
+  public file(field: Field): FileValue | null {
+    return (this.values()[field.name] as FileValue | null) ?? null;
+  }
+
+  public options(field: Field): { value: string; label: string }[] {
+    return optionsFor(field, this.columns());
+  }
+
+  public variantOf(field: Field, key: string): Variant | undefined {
+    return field.variants.find((variant) => variant.key === key);
+  }
+
+  public summary(field: Field, item: ItemValue): string {
+    return summarize(this.variantOf(field, item.variant), item);
+  }
+
+  public id(field: Field, suffix = ''): string {
+    return `${this.uid}-${field.name}${suffix}`;
+  }
+
+  // --- changing values ----------------------------------------------------- //
+  public set(field: Field, value: unknown): void {
+    this.values.update((values) => ({ ...values, [field.name]: value }));
+    if (this.errors()[field.name]) {
+      this.errors.update((errors) => {
+        const next = { ...errors };
+        delete next[field.name];
+        return next;
+      });
+    }
+    this.valueChange.emit(this.values());
+  }
+
+  public onText(field: Field, event: Event): void {
+    this.set(field, (event.target as HTMLInputElement).value);
+  }
+
+  public onNumber(field: Field, event: Event): void {
+    const raw = (event.target as HTMLInputElement).value;
+    const parsed = raw.trim() === '' ? null : Number(raw);
+    this.set(field, parsed === null || Number.isNaN(parsed) ? null : parsed);
+  }
+
+  public onBool(field: Field, event: Event): void {
+    this.set(field, (event.target as HTMLInputElement).checked);
+  }
+
+  public onToggle(field: Field, choice: string, event: Event): void {
+    const checked = (event.target as HTMLInputElement).checked;
+    const current = this.list(field).filter((item) => item !== choice);
+    this.set(field, checked ? [...current, choice] : current);
+  }
+
+  /** columns without options: a comma-separated list. */
+  public onList(field: Field, event: Event): void {
+    const raw = (event.target as HTMLInputElement).value;
+    this.set(
+      field,
+      raw
+        .split(',')
+        .map((item) => item.trim())
+        .filter((item) => item)
+    );
+  }
+
+  public addPair(field: Field): void {
+    const first = this.options(field)[0]?.value ?? '';
+    this.set(field, [...this.pairs(field), [first, first] as PairValue]);
+  }
+
+  public setPair(field: Field, index: number, position: 0 | 1, event: Event): void {
+    const value = (event.target as HTMLInputElement | HTMLSelectElement).value;
+    this.set(
+      field,
+      this.pairs(field).map((pair, i) => (i === index ? ((position === 0 ? [value, pair[1]] : [pair[0], value]) as PairValue) : pair))
+    );
+  }
+
+  public removePair(field: Field, index: number): void {
+    this.set(field, withoutIndex(this.pairs(field), index));
+  }
+
+  public async onFile(field: Field, event: Event): Promise<void> {
+    const chosen = (event.target as HTMLInputElement).files?.[0];
+    if (!chosen) {
+      return;
+    }
+    this.set(field, await readFileValue(chosen));
+  }
+
+  public clearFile(field: Field): void {
+    this.set(field, null);
+  }
+
+  // --- items --------------------------------------------------------------- //
+  public pickVariant(field: Field, event: Event): void {
+    const key = (event.target as HTMLSelectElement).value;
+    this.newVariant.update((picked) => ({ ...picked, [field.name]: key }));
+  }
+
+  public pickedVariant(field: Field): string {
+    return this.newVariant()[field.name] ?? field.variants[0]?.key ?? '';
+  }
+
+  public startAdd(field: Field): void {
+    const variant = this.variantOf(field, this.pickedVariant(field));
+    if (variant) {
+      this.openEditor(field, { index: null, variant: variant.key, values: initialValues(variant.fields, null), errors: {} });
+    }
+  }
+
+  public startEdit(field: Field, index: number): void {
+    const item = this.items(field)[index];
+    const variant = item && this.variantOf(field, item.variant);
+    if (variant) {
+      this.openEditor(field, { index, variant: variant.key, values: initialValues(variant.fields, item.values), errors: {} });
+    }
+  }
+
+  public editor(field: Field): ItemEditor | undefined {
+    return this.editors()[field.name];
+  }
+
+  public onEditorChange(field: Field, values: FormValues): void {
+    const editor = this.editor(field);
+    if (editor) {
+      this.openEditor(field, { ...editor, values });
+    }
+  }
+
+  public saveEditor(field: Field): void {
+    const editor = this.editor(field);
+    const variant = editor && this.variantOf(field, editor.variant);
+    if (!editor || !variant) {
+      return;
+    }
+    const errors = requiredErrors(variant.fields, editor.values);
+    if (Object.keys(errors).length) {
+      this.openEditor(field, { ...editor, errors });
+      return;
+    }
+    const item: ItemValue = { variant: variant.key, values: editor.values };
+    const items = this.items(field);
+    this.set(field, editor.index === null ? [...items, item] : items.map((current, i) => (i === editor.index ? item : current)));
+    this.closeEditor(field);
+  }
+
+  public closeEditor(field: Field): void {
+    this.editors.update((editors) => {
+      const next = { ...editors };
+      delete next[field.name];
+      return next;
+    });
+  }
+
+  /** Delete a tile: the element leaves the value, not only the view (C28). */
+  public removeItem(field: Field, index: number): void {
+    const editor = this.editor(field);
+    if (editor?.index === index) {
+      this.closeEditor(field);
+    } else if (editor && editor.index !== null && editor.index > index) {
+      this.openEditor(field, { ...editor, index: editor.index - 1 });
+    }
+    this.set(field, withoutIndex(this.items(field), index));
+  }
+
+  private openEditor(field: Field, editor: ItemEditor): void {
+    this.editors.update((editors) => ({ ...editors, [field.name]: editor }));
+  }
+}

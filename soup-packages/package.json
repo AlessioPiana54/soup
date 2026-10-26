@@ -1,0 +1,26 @@
+{
+  "name": "soup-packages",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SOUP packages: the @soup/sdk and the frontend bundles of every package with an app/ part",
+  "workspaces": [
+    "sdk",
+    "_template/app",
+    "*/app"
+  ],
+  "scripts": {
+    "build:sdk": "tsc -p sdk",
+    "build:packages": "node sdk/scripts/build-packages.mjs",
+    "pack": "node sdk/scripts/pack.mjs",
+    "lint": "eslint .",
+    "typecheck": "tsc -p sdk --noEmit"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.15.0",
+    "esbuild": "^0.23.1",
+    "eslint": "^9.15.0",
+    "fflate": "^0.8.2",
+    "typescript": "~5.5.2",
+    "typescript-eslint": "^8.29.0"
+  }
+}

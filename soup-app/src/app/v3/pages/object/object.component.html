@@ -1,0 +1,212 @@
+<div class="container-fluid py-4 soup-object">
+  @if (this.loadError()) {
+    <div
+      class="alert alert-danger"
+      role="alert">
+      {{ this.loadError() }}
+      <a routerLink="/workspace">Torna al workspace</a>
+    </div>
+  }
+
+  @if (this.object(); as object) {
+    <!-- Header and provenance -->
+    <header class="soup-panel">
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <a
+          routerLink="/workspace"
+          class="btn btn-sm btn-link px-0">
+          <i class="bi bi-arrow-left"></i>
+          Workspace
+        </a>
+        <h2 class="m-0 soup-object-name">{{ object.name }}</h2>
+        <span class="badge text-bg-light">{{ object.kind }}</span>
+        <span class="badge text-bg-secondary">{{ object.created_by.package }}</span>
+      </div>
+      @if (object.description) {
+        <p class="mt-2 mb-1">{{ object.description }}</p>
+      }
+      <div class="text-muted small">
+        Creato da {{ object.created_by.type }} {{ object.created_by.contributor_id }} il
+        {{ object.created_at | date: 'medium' }}
+      </div>
+      @if (this.parents().length) {
+        <div class="small mt-1">
+          Deriva da:
+          @for (parent of this.parents(); track parent.id) {
+            <a
+              class="me-2"
+              [routerLink]="['/o', parent.id]">
+              {{ parent.name }}
+            </a>
+          }
+        </div>
+      }
+      @if (this.children().length) {
+        <div class="small mt-1">
+          Oggetti derivati:
+          @for (child of this.children(); track child.id) {
+            <a
+              class="me-2"
+              [routerLink]="['/o', child.id]">
+              {{ child.name }}
+            </a>
+          }
+        </div>
+      }
+    </header>
+
+    <div class="row g-3">
+      <!-- Visualizer -->
+      <main class="col-lg-9">
+        <section class="soup-panel">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            @if (this.visualizers().length > 1) {
+              <label
+                class="form-label m-0"
+                for="soup-visualizer">
+                Visualizzatore
+              </label>
+              <select
+                id="soup-visualizer"
+                class="form-select form-select-sm w-auto"
+                (change)="this.chooseVisualizer($event)">
+                @for (item of this.visualizers(); track item.id) {
+                  <option
+                    [value]="item.id"
+                    [selected]="item.id === this.visualizerId()">
+                    {{ item.label }} ({{ item.package }})
+                  </option>
+                }
+              </select>
+            } @else if (this.visualizer()) {
+              <span class="text-muted small">{{ this.visualizer()?.label }} ({{ this.visualizer()?.package }})</span>
+            }
+
+            <!-- Export -->
+            @if (this.exporters().length) {
+              <div class="ms-auto position-relative">
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-secondary"
+                  [attr.aria-expanded]="this.exportOpen()"
+                  (click)="this.toggleExport()">
+                  <i class="bi bi-download"></i>
+                  Esporta
+                </button>
+                @if (this.exportOpen()) {
+                  <ul class="dropdown-menu dropdown-menu-end show soup-export-menu">
+                    @for (exporter of this.exporters(); track exporter.id) {
+                      <li>
+                        <button
+                          type="button"
+                          class="dropdown-item"
+                          (click)="this.chooseExporter(exporter)">
+                          {{ exporter.label }}
+                          <span class="text-muted small">{{ exporter.extension }}</span>
+                        </button>
+                      </li>
+                    }
+                  </ul>
+                }
+              </div>
+            }
+          </div>
+
+          @if (this.exportForm(); as form) {
+            <div class="soup-subpanel">
+              <h6>Esporta: {{ form.item.label }}</h6>
+              <soup-dynamic-form
+                #exportFields
+                [fields]="form.fields"
+                (valueChange)="this.onExportValues($event)"></soup-dynamic-form>
+              <button
+                type="button"
+                class="btn btn-sm btn-primary me-2"
+                (click)="this.confirmExport()">
+                Scarica
+              </button>
+              <button
+                type="button"
+                class="btn btn-sm btn-outline-secondary"
+                (click)="this.closeExport()">
+                Annulla
+              </button>
+            </div>
+          }
+
+          @if (this.visualizersLoaded()) {
+            <soup-visualizer-host
+              [object]="object"
+              [visualizer]="this.visualizer()"></soup-visualizer-host>
+          }
+        </section>
+      </main>
+
+      <!-- Actions -->
+      <aside class="col-lg-3">
+        <section class="soup-panel soup-actions-panel">
+          <h5>Azioni</h5>
+          @if (this.busy()) {
+            <div class="text-muted small mb-2">
+              <span class="spinner-border spinner-border-sm"></span>
+              {{ this.busy() }}
+            </div>
+          }
+          @if (this.actionError()) {
+            <div
+              class="alert alert-danger small"
+              role="alert">
+              {{ this.actionError() }}
+            </div>
+          }
+
+          @if (this.operationForm(); as form) {
+            <h6>{{ form.item.label }}</h6>
+            @if (form.item.description) {
+              <p class="text-muted small">{{ form.item.description }}</p>
+            }
+            <soup-dynamic-form
+              #operationFields
+              [fields]="form.fields"
+              (valueChange)="this.onOperationValues($event)"></soup-dynamic-form>
+            <button
+              type="button"
+              class="btn btn-sm btn-primary me-2 soup-run-operation"
+              [disabled]="!!this.busy()"
+              (click)="this.runOperation()">
+              Esegui
+            </button>
+            <button
+              type="button"
+              class="btn btn-sm btn-outline-secondary"
+              (click)="this.closeOperation()">
+              Annulla
+            </button>
+          } @else if (this.operations().length === 0) {
+            <p class="text-muted small m-0">Nessuna operazione installata accetta oggetti di kind {{ object.kind }}.</p>
+          } @else {
+            @for (group of this.groups(); track group.name) {
+              <div class="mb-2">
+                <div class="text-muted small text-uppercase">{{ group.name }}</div>
+                @for (operation of group.items; track operation.id) {
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-link text-start px-0 d-block"
+                    [title]="operation.description"
+                    (click)="this.openOperation(operation)">
+                    {{ operation.label }}
+                  </button>
+                }
+              </div>
+            }
+          }
+        </section>
+      </aside>
+    </div>
+  } @else if (!this.loadError()) {
+    <div class="text-muted">
+      <span class="spinner-border spinner-border-sm"></span>
+      Caricamento...
+    </div>
+  }
+</div>

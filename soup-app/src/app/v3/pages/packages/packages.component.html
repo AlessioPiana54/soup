@@ -1,0 +1,200 @@
+<div class="container py-4 soup-packages">
+  <h2 class="mb-3">Package</h2>
+
+  <!-- Install -->
+  <section class="soup-panel">
+    <h5>Installa da zip</h5>
+    <p class="text-muted small">
+      Un package esegue codice con i privilegi del server e del browser: installa solo package di cui ti fidi.
+    </p>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      <input
+        type="file"
+        class="form-control w-auto soup-archive"
+        accept=".zip"
+        aria-label="Archivio del package"
+        (change)="this.onArchive($event)" />
+      <div class="form-check">
+        <input
+          id="soup-allow-override"
+          type="checkbox"
+          class="form-check-input"
+          [checked]="this.allowOverride()"
+          (change)="this.onAllowOverride($event)" />
+        <label
+          class="form-check-label"
+          for="soup-allow-override">
+          Sostituisci un package fornito (versione superiore)
+        </label>
+      </div>
+      <button
+        type="button"
+        class="btn btn-primary soup-install"
+        [disabled]="!this.archive() || !!this.busy()"
+        (click)="this.install()">
+        <i class="bi bi-box-arrow-in-down"></i>
+        Installa
+      </button>
+    </div>
+    @if (this.installError()) {
+      <div
+        class="alert alert-danger small mt-2 mb-0"
+        role="alert">
+        {{ this.installError() }}
+      </div>
+    }
+  </section>
+
+  @if (this.busy()) {
+    <div class="text-muted mb-3">
+      <span class="spinner-border spinner-border-sm"></span>
+      {{ this.busy() }}
+    </div>
+  }
+  @if (this.loadError()) {
+    <div
+      class="alert alert-danger"
+      role="alert">
+      {{ this.loadError() }}
+    </div>
+  }
+
+  <!-- List -->
+  @for (pkg of this.packages(); track pkg.name) {
+    <section
+      class="soup-panel soup-package"
+      [attr.data-package]="pkg.name">
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <h5 class="m-0">{{ pkg.label || pkg.name }}</h5>
+        <code>{{ pkg.name }}</code>
+        <span class="text-muted">{{ pkg.version }}</span>
+        <span
+          class="badge soup-status"
+          [class.text-bg-success]="pkg.status === 'active'"
+          [class.text-bg-secondary]="pkg.status === 'disabled'"
+          [class.text-bg-danger]="pkg.status === 'failed'">
+          {{ pkg.status }}
+        </span>
+        @if (pkg.origin) {
+          <span class="badge text-bg-light">{{ pkg.origin }}</span>
+        }
+        <span class="ms-auto">
+          @if (pkg.status === 'active') {
+            <button
+              type="button"
+              class="btn btn-sm btn-outline-secondary"
+              [disabled]="!!this.busy()"
+              (click)="this.disable(pkg)">
+              Disattiva
+            </button>
+          } @else {
+            <button
+              type="button"
+              class="btn btn-sm btn-outline-success soup-enable"
+              [disabled]="!!this.busy()"
+              (click)="this.enable(pkg)">
+              Attiva
+            </button>
+          }
+          @if (pkg.origin === 'installed') {
+            <button
+              type="button"
+              class="btn btn-sm btn-outline-danger ms-2"
+              [disabled]="!!this.busy()"
+              (click)="this.askUninstall(pkg)">
+              Disinstalla
+            </button>
+          }
+        </span>
+      </div>
+      @if (pkg.description) {
+        <p class="mt-2 mb-1">{{ pkg.description }}</p>
+      }
+      @if (pkg.error) {
+        <div
+          class="alert alert-danger small my-2"
+          role="alert">
+          {{ pkg.error }}
+        </div>
+      }
+      @if (this.loader.statuses().get(pkg.name); as frontend) {
+        @if (frontend.state !== 'loaded') {
+          <div
+            class="alert small my-2 soup-frontend-error"
+            role="alert"
+            [class.alert-danger]="frontend.state === 'failed'"
+            [class.alert-warning]="frontend.state === 'reload-required'">
+            Frontend: {{ frontend.error }}
+          </div>
+        }
+      }
+      <div class="small text-muted">
+        @if (pkg.requires.length) {
+          <div>Richiede: {{ pkg.requires.join(', ') }}</div>
+        }
+        @if (pkg.dependents.length) {
+          <div>Richiesto da: {{ pkg.dependents.join(', ') }}</div>
+        }
+        @if (pkg.provides_tools.length) {
+          <div>Tool: {{ pkg.provides_tools.join(', ') }}</div>
+        }
+      </div>
+      @if (this.contributionCount(pkg)) {
+        <dl class="soup-contributions small mb-0 mt-2">
+          @for (entry of pkg.contributions | keyvalue; track entry.key) {
+            @if (entry.value.length) {
+              <dt>{{ entry.key }}</dt>
+              <dd>{{ entry.value.join(', ') }}</dd>
+            }
+          }
+        </dl>
+      }
+    </section>
+  } @empty {
+    @if (!this.loadError()) {
+      <p class="text-muted">Nessun package.</p>
+    }
+  }
+</div>
+
+@if (this.pending(); as change) {
+  <div
+    class="soup-dialog-backdrop"
+    role="dialog"
+    aria-modal="true">
+    <div class="soup-dialog">
+      @if (change.kind === 'disable-cascade') {
+        <h5>Disattivare anche i package che dipendono da '{{ change.pkg.name }}'?</h5>
+        <p>Verranno disattivati anche: {{ change.dependents.join(', ') }}.</p>
+      } @else {
+        <h5>Disinstallare '{{ change.pkg.name }}'?</h5>
+        <p class="text-muted">
+          Gli oggetti creati dal package restano nel workspace, segnalati come package mancante.
+        </p>
+      }
+      <div class="d-flex justify-content-end gap-2">
+        <button
+          type="button"
+          class="btn btn-outline-secondary"
+          (click)="this.cancelPending()">
+          Annulla
+        </button>
+        @if (change.kind === 'disable-cascade') {
+          <button
+            type="button"
+            class="btn btn-warning"
+            (click)="this.disable(change.pkg, true)">
+            Disattiva tutti
+          </button>
+        } @else {
+          <button
+            type="button"
+            class="btn btn-danger"
+            (click)="this.uninstall(change.pkg)">
+            Disinstalla
+          </button>
+        }
+      </div>
+    </div>
+  </div>
+}

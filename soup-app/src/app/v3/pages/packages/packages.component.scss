@@ -1,0 +1,15 @@
+@use '../v3-page';
+
+.soup-contributions {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: 12px;
+
+  dt {
+    font-weight: 600;
+  }
+
+  dd {
+    margin: 0;
+  }
+}

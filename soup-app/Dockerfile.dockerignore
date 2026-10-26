@@ -1,0 +1,14 @@
+# The angular image is built from the repository root (docker-compose.yaml)
+# because the app compiles @soup/sdk from soup-packages/sdk: send only that
+# and soup-app. BuildKit reads this file instead of the root .dockerignore.
+*
+!soup-app
+!soup-packages/sdk
+**/node_modules
+**/.DS_Store
+**/.idea
+soup-app/dist
+soup-app/.angular
+soup-app/test-results
+soup-app/playwright-report
+soup-packages/sdk/dist

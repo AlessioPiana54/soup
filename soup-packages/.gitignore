@@ -1,3 +1,6 @@
 __pycache__/
 *.py[cod]
-**/app/node_modules/
+node_modules/
+*/app/dist/
+sdk/dist/
+/dist/

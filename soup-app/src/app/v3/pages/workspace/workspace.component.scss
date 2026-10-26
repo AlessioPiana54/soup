@@ -1,0 +1,49 @@
+@use '../v3-page';
+
+.soup-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #eee;
+}
+
+.soup-thumb {
+  flex: 0 0 48px;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #e5e5e5;
+  border-radius: 4px;
+  background: #fafafa;
+  color: #999;
+
+  img {
+    max-width: 100%;
+    max-height: 100%;
+  }
+}
+
+.soup-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.soup-name {
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.soup-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.soup-rename {
+  max-width: 420px;
+}

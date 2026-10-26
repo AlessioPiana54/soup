@@ -5,6 +5,7 @@
 <div
   class="content"
   [@routeAnimation]="this.prepareRoute(o)"
+  (@routeAnimation.start)="this.onAnimationStart()"
   (@routeAnimation.done)="this.onAnimationDone()">
   <router-outlet #o="outlet"></router-outlet>
 </div>

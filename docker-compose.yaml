@@ -1,7 +1,8 @@
 services:
   angular:
     build:
-      context: ./soup-app
+      context: . # Repository root: the app compiles @soup/sdk from soup-packages/sdk
+      dockerfile: soup-app/Dockerfile
     container_name: soup-app
     ports:
       - "4200:80" # Expose port 4200 on the host to port 80 in the container (where Nginx is serving)

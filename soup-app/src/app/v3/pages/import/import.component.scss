@@ -1,0 +1,28 @@
+@use '../v3-page';
+
+.soup-dropzone {
+  height: 140px;
+}
+
+.soup-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.soup-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 260px;
+  padding: 12px;
+  text-align: left;
+  border: 1px solid #d0d7de;
+  border-radius: 8px;
+  background: #fff;
+
+  &:hover {
+    border-color: #0d6efd;
+  }
+}

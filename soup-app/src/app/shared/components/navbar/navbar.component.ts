@@ -43,6 +43,14 @@ export class NavbarComponent {
   }
 
   /**
+   * Go to a page of the workspace (/workspace, /import, /packages)
+   * @param path the path of the page
+   */
+  public goTo(path: string): void {
+    this.router.navigate([path]);
+  }
+
+  /**
    * Return true if the user stay in the welcome
    * page
    */

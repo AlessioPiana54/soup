@@ -1,0 +1,244 @@
+<div class="container py-4 soup-workspace">
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h2 class="m-0">Workspace</h2>
+    <div>
+      <a
+        class="btn btn-primary me-2"
+        routerLink="/import">
+        <i class="bi bi-upload"></i>
+        Importa
+      </a>
+      <button
+        type="button"
+        class="btn btn-outline-secondary"
+        (click)="this.refresh()">
+        <i class="bi bi-arrow-clockwise"></i>
+      </button>
+    </div>
+  </div>
+
+  <div class="row g-2 mb-3">
+    <div class="col-md-6">
+      <input
+        type="search"
+        class="form-control"
+        placeholder="Cerca per nome o descrizione"
+        aria-label="Cerca"
+        [value]="this.search()"
+        (input)="this.onFilter('search', $event)" />
+    </div>
+    <div class="col-md-3">
+      <select
+        class="form-select"
+        aria-label="Kind"
+        (change)="this.onFilter('kind', $event)">
+        <option value="">Tutti i kind</option>
+        @for (item of this.kinds(); track item) {
+          <option
+            [value]="item"
+            [selected]="item === this.kind()">
+            {{ item }}
+          </option>
+        }
+      </select>
+    </div>
+    <div class="col-md-3">
+      <select
+        class="form-select"
+        aria-label="Package"
+        (change)="this.onFilter('package', $event)">
+        <option value="">Tutti i package</option>
+        @for (pkg of this.packages(); track pkg) {
+          <option
+            [value]="pkg"
+            [selected]="pkg === this.package()">
+            {{ pkg }}
+          </option>
+        }
+      </select>
+    </div>
+  </div>
+
+  @if (this.loadError()) {
+    <div
+      class="alert alert-danger"
+      role="alert">
+      {{ this.loadError() }}
+    </div>
+  }
+
+  @if (this.loading()) {
+    <div class="text-muted">
+      <span class="spinner-border spinner-border-sm"></span>
+      Caricamento...
+    </div>
+  } @else if (this.total() === 0) {
+    <p class="text-muted">
+      Il workspace è vuoto:
+      <a routerLink="/import">importa un file</a>
+      per iniziare.
+    </p>
+  } @else if (this.visible().length === 0) {
+    <p class="text-muted">Nessun oggetto corrisponde ai filtri.</p>
+  } @else {
+    <ul class="soup-tree list-unstyled">
+      <ng-container *ngTemplateOutlet="tree; context: { $implicit: this.visible(), depth: 0 }"></ng-container>
+    </ul>
+  }
+</div>
+
+<ng-template
+  #tree
+  let-nodes
+  let-depth="depth">
+  @for (node of nodes; track node.object.id) {
+    <li
+      class="soup-node"
+      [attr.data-object]="node.object.id">
+      <div
+        class="soup-row"
+        [style.padding-left.px]="depth * 24">
+        <div class="soup-thumb">
+          @if (!this.noThumbnail().has(node.object.id)) {
+            <img
+              alt=""
+              loading="lazy"
+              [src]="this.api.thumbnailUrl(node.object.id, this.thumbnailVersion())"
+              (error)="this.hideThumbnail(node.object.id)" />
+          } @else {
+            <i class="bi bi-box"></i>
+          }
+        </div>
+        <div class="soup-main">
+          @if (this.renaming()?.id === node.object.id) {
+            <div class="input-group input-group-sm soup-rename">
+              <input
+                type="text"
+                class="form-control"
+                aria-label="Nuovo nome"
+                [value]="this.renaming()?.name"
+                (input)="this.onRenameInput($event)"
+                (keyup.enter)="this.saveRename()"
+                (keyup.escape)="this.cancelRename()" />
+              <button
+                type="button"
+                class="btn btn-primary"
+                (click)="this.saveRename()">
+                Salva
+              </button>
+              <button
+                type="button"
+                class="btn btn-outline-secondary"
+                (click)="this.cancelRename()">
+                Annulla
+              </button>
+            </div>
+          } @else {
+            <a
+              class="soup-name"
+              [routerLink]="['/o', node.object.id]">
+              {{ node.object.name }}
+            </a>
+          }
+          <div class="soup-meta">
+            <span class="badge text-bg-light">{{ node.object.kind }}</span>
+            <span
+              class="badge"
+              [class.text-bg-secondary]="!node.package_missing"
+              [class.text-bg-warning]="node.package_missing"
+              [title]="node.package_missing ? 'Package ' + node.package_status : ''">
+              {{ node.package }}
+              @if (node.package_missing) {
+                ({{ node.package_status }})
+              }
+            </span>
+            <span class="text-muted small">
+              {{ node.object.created_by.type }} {{ node.object.created_by.contributor_id }} ·
+              {{ node.object.created_at | date: 'short' }}
+            </span>
+          </div>
+        </div>
+        <div class="soup-actions">
+          <button
+            type="button"
+            class="btn btn-sm btn-link"
+            title="Rinomina"
+            (click)="this.startRename(node)">
+            <i class="bi bi-pencil"></i>
+          </button>
+          <button
+            type="button"
+            class="btn btn-sm btn-link text-danger"
+            title="Elimina"
+            (click)="this.askDelete(node)">
+            <i class="bi bi-trash"></i>
+          </button>
+        </div>
+      </div>
+      @if (node.children.length) {
+        <ul class="list-unstyled">
+          <ng-container *ngTemplateOutlet="tree; context: { $implicit: node.children, depth: depth + 1 }"></ng-container>
+        </ul>
+      }
+    </li>
+  }
+</ng-template>
+
+@if (this.pendingDelete(); as pending) {
+  <div
+    class="soup-dialog-backdrop"
+    role="dialog"
+    aria-modal="true">
+    <div class="soup-dialog">
+      <h5>Eliminare '{{ pending.node.object.name }}'?</h5>
+      <p class="text-muted">I dati dell'oggetto vengono eliminati dal package che lo ha creato.</p>
+      @if (pending.descendants > 0) {
+        <div class="form-check mb-2">
+          <input
+            id="soup-delete-cascade"
+            type="checkbox"
+            class="form-check-input"
+            [checked]="pending.cascade"
+            (change)="this.setCascade($event)" />
+          <label
+            class="form-check-label"
+            for="soup-delete-cascade">
+            Anche gli oggetti derivati ({{ pending.descendants }})
+          </label>
+        </div>
+      }
+      @if (pending.error) {
+        <div
+          class="alert alert-danger small"
+          role="alert">
+          {{ pending.error }}
+        </div>
+      }
+      <div class="d-flex justify-content-end gap-2">
+        <button
+          type="button"
+          class="btn btn-outline-secondary"
+          [disabled]="pending.busy"
+          (click)="this.cancelDelete()">
+          Annulla
+        </button>
+        @if (pending.missingPackages.length) {
+          <button
+            type="button"
+            class="btn btn-warning"
+            [disabled]="pending.busy"
+            (click)="this.confirmDelete(true)">
+            Rimuovi solo dal catalogo
+          </button>
+        }
+        <button
+          type="button"
+          class="btn btn-danger soup-confirm-delete"
+          [disabled]="pending.busy"
+          (click)="this.confirmDelete()">
+          Elimina
+        </button>
+      </div>
+    </div>
+  </div>
+}

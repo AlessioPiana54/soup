@@ -1,11 +1,13 @@
 # Build phase
 FROM node:20-alpine AS build
 
-# Set the working directory inside the container
-WORKDIR /usr/src/app
+# Built from the repository root (docker-compose: context ".", dockerfile
+# soup-app/Dockerfile): the app compiles @soup/sdk from ../soup-packages/sdk
+# (tsconfig.json "paths"), so the layout mirrors the repository.
+WORKDIR /usr/src/soup-app
 
 # Copy the package.json and package-lock.json files to install dependencies
-COPY package*.json ./
+COPY soup-app/package*.json ./
 
 # run npm install
 RUN npm install --force
@@ -13,8 +15,9 @@ RUN npm install --force
 # Install Angular CLI globally
 RUN npm install -g @angular/cli@18.2.0
 
-# Copy the rest of the application code
-COPY . .
+# Copy the rest of the application code and the SDK of the packages
+COPY soup-app/ .
+COPY soup-packages/sdk/ /usr/src/soup-packages/sdk/
 
 # Run npm linting
 RUN npm run lint
@@ -29,10 +32,10 @@ FROM nginx:alpine
 RUN rm -rf /usr/share/nginx/html
 
 # Copy the Nginx configuration file
-COPY nginx.conf /etc/nginx/nginx.conf
+COPY soup-app/nginx.conf /etc/nginx/nginx.conf
 
 # Copy the static build files from the build phase to Nginx's serving directory
-COPY --from=build /usr/src/app/dist/soup-app/browser /usr/share/nginx/html
+COPY --from=build /usr/src/soup-app/dist/soup-app/browser /usr/share/nginx/html
 
 # Expose port 80 for Nginx
 EXPOSE 80

@@ -1,0 +1,13 @@
+@use '../v3-page';
+
+.soup-subpanel {
+  padding: 12px;
+  margin-bottom: 12px;
+  border: 1px dashed #adb5bd;
+  border-radius: 6px;
+}
+
+.soup-export-menu {
+  right: 0;
+  left: auto;
+}

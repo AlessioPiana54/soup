@@ -1,0 +1,10 @@
+{
+  "name": "soup-pkg-template-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Frontend of the template package: the <soup-template-text> visualizer",
+  "type": "module",
+  "dependencies": {
+    "@soup/sdk": "*"
+  }
+}

@@ -60,10 +60,15 @@ export class AppComponent {
    */
   constructor(private renderer: Renderer2) {}
 
-  // Initialize the route
+  // The state of the route animation. A template binding, called at every
+  // change detection: it must not have side effects.
   public prepareRoute(outlet: RouterOutlet) {
-    this.renderer.setStyle(document.body, 'overflow', 'hidden');
     return outlet.isActivated ? outlet.activatedRoute : '';
+  }
+
+  // Hide the scrollbars while the pages slide
+  public onAnimationStart() {
+    this.renderer.setStyle(document.body, 'overflow', 'hidden');
   }
 
   // Handle the animation complete

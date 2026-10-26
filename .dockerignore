@@ -9,3 +9,7 @@
 soup-app
 soup-server/instance
 soup-server/tests
+# Rebuilt by the "packages" stage of soup-server/Dockerfile.
+soup-packages/dist
+soup-packages/sdk/dist
+soup-packages/*/app/dist

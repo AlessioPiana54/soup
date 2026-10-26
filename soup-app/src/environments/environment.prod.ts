@@ -1,3 +1,5 @@
 export const environment = {
-  production: true
+  production: true,
+  v3BaseUrl: '/api/v3',
+  backendOrigin: ''
 };

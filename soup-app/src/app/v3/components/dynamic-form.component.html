@@ -1,0 +1,354 @@
+<div class="soup-form">
+  @for (field of this.fields(); track field.name) {
+    <div
+      class="mb-3"
+      [attr.data-field]="field.name"
+      [attr.data-type]="field.type">
+      @if (field.type !== 'bool') {
+        <label
+          class="form-label"
+          [for]="this.id(field)">
+          {{ field.label }}
+          @if (field.required) {
+            <span class="text-danger">*</span>
+          }
+        </label>
+      }
+
+      @switch (field.type) {
+        @case ('textarea') {
+          <textarea
+            class="form-control"
+            rows="3"
+            [id]="this.id(field)"
+            [value]="this.text(field)"
+            (input)="this.onText(field, $event)"></textarea>
+        }
+        @case ('number') {
+          <input
+            type="number"
+            class="form-control"
+            [id]="this.id(field)"
+            [value]="this.text(field)"
+            (input)="this.onNumber(field, $event)" />
+        }
+        @case ('bool') {
+          <div class="form-check">
+            <input
+              type="checkbox"
+              class="form-check-input"
+              [id]="this.id(field)"
+              [checked]="!!this.values()[field.name]"
+              (change)="this.onBool(field, $event)" />
+            <label
+              class="form-check-label"
+              [for]="this.id(field)">
+              {{ field.label }}
+            </label>
+          </div>
+        }
+        @case ('select') {
+          <select
+            class="form-select"
+            [id]="this.id(field)"
+            (change)="this.onText(field, $event)">
+            @if (!field.required) {
+              <option
+                value=""
+                [selected]="this.text(field) === ''">
+                -
+              </option>
+            }
+            @for (choice of field.choices; track choice.value) {
+              <option
+                [value]="choice.value"
+                [selected]="this.text(field) === choice.value">
+                {{ choice.label }}
+              </option>
+            }
+          </select>
+        }
+        @case ('column') {
+          @if (this.options(field).length) {
+            <select
+              class="form-select"
+              [id]="this.id(field)"
+              (change)="this.onText(field, $event)">
+              <option
+                value=""
+                [selected]="this.text(field) === ''">
+                -
+              </option>
+              @for (option of this.options(field); track option.value) {
+                <option
+                  [value]="option.value"
+                  [selected]="this.text(field) === option.value">
+                  {{ option.label }}
+                </option>
+              }
+            </select>
+          } @else {
+            <input
+              type="text"
+              class="form-control"
+              [id]="this.id(field)"
+              [value]="this.text(field)"
+              (input)="this.onText(field, $event)" />
+          }
+        }
+        @case ('multiselect') {
+          <div [id]="this.id(field)">
+            @for (choice of field.choices; track choice.value) {
+              <div class="form-check form-check-inline">
+                <input
+                  type="checkbox"
+                  class="form-check-input"
+                  [id]="this.id(field, '-' + $index)"
+                  [checked]="this.list(field).includes(choice.value)"
+                  (change)="this.onToggle(field, choice.value, $event)" />
+                <label
+                  class="form-check-label"
+                  [for]="this.id(field, '-' + $index)">
+                  {{ choice.label }}
+                </label>
+              </div>
+            }
+          </div>
+        }
+        @case ('columns') {
+          @if (this.options(field).length) {
+            <div [id]="this.id(field)">
+              @for (option of this.options(field); track option.value) {
+                <div class="form-check form-check-inline">
+                  <input
+                    type="checkbox"
+                    class="form-check-input"
+                    [id]="this.id(field, '-' + $index)"
+                    [checked]="this.list(field).includes(option.value)"
+                    (change)="this.onToggle(field, option.value, $event)" />
+                  <label
+                    class="form-check-label"
+                    [for]="this.id(field, '-' + $index)">
+                    {{ option.label }}
+                  </label>
+                </div>
+              }
+            </div>
+          } @else {
+            <input
+              type="text"
+              class="form-control"
+              placeholder="colonna1, colonna2"
+              [id]="this.id(field)"
+              [value]="this.list(field).join(', ')"
+              (change)="this.onList(field, $event)" />
+          }
+        }
+        @case ('pairs') {
+          <div
+            class="soup-pairs"
+            [id]="this.id(field)">
+            @for (pair of this.pairs(field); track $index; let i = $index) {
+              <div class="input-group input-group-sm mb-1 soup-pair">
+                @if (this.options(field).length) {
+                  <select
+                    class="form-select"
+                    [attr.aria-label]="field.label + ' ' + (i + 1) + ' (1)'"
+                    (change)="this.setPair(field, i, 0, $event)">
+                    @for (option of this.options(field); track option.value) {
+                      <option
+                        [value]="option.value"
+                        [selected]="pair[0] === option.value">
+                        {{ option.label }}
+                      </option>
+                    }
+                  </select>
+                  <span class="input-group-text">→</span>
+                  <select
+                    class="form-select"
+                    [attr.aria-label]="field.label + ' ' + (i + 1) + ' (2)'"
+                    (change)="this.setPair(field, i, 1, $event)">
+                    @for (option of this.options(field); track option.value) {
+                      <option
+                        [value]="option.value"
+                        [selected]="pair[1] === option.value">
+                        {{ option.label }}
+                      </option>
+                    }
+                  </select>
+                } @else {
+                  <input
+                    type="text"
+                    class="form-control"
+                    [attr.aria-label]="field.label + ' ' + (i + 1) + ' (1)'"
+                    [value]="pair[0]"
+                    (change)="this.setPair(field, i, 0, $event)" />
+                  <span class="input-group-text">→</span>
+                  <input
+                    type="text"
+                    class="form-control"
+                    [attr.aria-label]="field.label + ' ' + (i + 1) + ' (2)'"
+                    [value]="pair[1]"
+                    (change)="this.setPair(field, i, 1, $event)" />
+                }
+                <button
+                  type="button"
+                  class="btn btn-outline-danger soup-remove-pair"
+                  title="Rimuovi"
+                  (click)="this.removePair(field, i)">
+                  <i class="bi bi-x"></i>
+                </button>
+              </div>
+            }
+            <button
+              type="button"
+              class="btn btn-sm btn-outline-secondary soup-add-pair"
+              (click)="this.addPair(field)">
+              <i class="bi bi-plus"></i>
+              Aggiungi coppia
+            </button>
+          </div>
+        }
+        @case ('date') {
+          <input
+            type="date"
+            class="form-control"
+            [id]="this.id(field)"
+            [value]="this.text(field)"
+            (change)="this.onText(field, $event)" />
+        }
+        @case ('datetime') {
+          <input
+            type="datetime-local"
+            class="form-control"
+            [id]="this.id(field)"
+            [value]="this.text(field)"
+            (change)="this.onText(field, $event)" />
+        }
+        @case ('file') {
+          @if (this.file(field); as chosen) {
+            <div class="d-flex align-items-center gap-2 soup-file">
+              <i class="bi bi-file-earmark"></i>
+              <span>{{ chosen.filename }}</span>
+              <button
+                type="button"
+                class="btn btn-sm btn-outline-danger"
+                (click)="this.clearFile(field)">
+                Rimuovi
+              </button>
+            </div>
+          } @else {
+            <input
+              type="file"
+              class="form-control"
+              [id]="this.id(field)"
+              (change)="this.onFile(field, $event)" />
+          }
+        }
+        @case ('items') {
+          <div
+            class="soup-items"
+            [id]="this.id(field)">
+            <div class="soup-tiles">
+              @for (item of this.items(field); track $index; let i = $index) {
+                <div
+                  class="soup-tile"
+                  [class.soup-tile-editing]="this.editor(field)?.index === i">
+                  <div class="soup-tile-head">
+                    <strong>{{ this.variantOf(field, item.variant)?.label ?? item.variant }}</strong>
+                    <span>
+                      <button
+                        type="button"
+                        class="btn btn-sm btn-link soup-edit-item"
+                        title="Modifica"
+                        (click)="this.startEdit(field, i)">
+                        <i class="bi bi-pencil"></i>
+                      </button>
+                      <button
+                        type="button"
+                        class="btn btn-sm btn-link text-danger soup-remove-item"
+                        title="Elimina"
+                        (click)="this.removeItem(field, i)">
+                        <i class="bi bi-trash"></i>
+                      </button>
+                    </span>
+                  </div>
+                  <div class="soup-tile-summary">{{ this.summary(field, item) }}</div>
+                </div>
+              }
+            </div>
+
+            @if (this.editor(field); as editor) {
+              <div class="soup-item-editor">
+                <h6>
+                  {{ editor.index === null ? 'Nuovo' : 'Modifica' }}:
+                  {{ this.variantOf(field, editor.variant)?.label }}
+                </h6>
+                @if (this.variantOf(field, editor.variant)?.description) {
+                  <p class="text-muted small">{{ this.variantOf(field, editor.variant)?.description }}</p>
+                }
+                <soup-dynamic-form
+                  [fields]="this.variantOf(field, editor.variant)?.fields ?? []"
+                  [columns]="this.columns()"
+                  [value]="editor.values"
+                  (valueChange)="this.onEditorChange(field, $event)"></soup-dynamic-form>
+                @for (error of editor.errors | keyvalue; track error.key) {
+                  <div class="text-danger small">{{ error.key }}: {{ error.value }}</div>
+                }
+                <button
+                  type="button"
+                  class="btn btn-sm btn-primary me-2 soup-save-item"
+                  (click)="this.saveEditor(field)">
+                  Salva
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-secondary"
+                  (click)="this.closeEditor(field)">
+                  Annulla
+                </button>
+              </div>
+            } @else {
+              <div class="input-group input-group-sm soup-add-item">
+                <select
+                  class="form-select"
+                  [attr.aria-label]="'Tipo di elemento per ' + field.label"
+                  (change)="this.pickVariant(field, $event)">
+                  @for (variant of field.variants; track variant.key) {
+                    <option
+                      [value]="variant.key"
+                      [selected]="this.pickedVariant(field) === variant.key">
+                      {{ variant.label }}
+                    </option>
+                  }
+                </select>
+                <button
+                  type="button"
+                  class="btn btn-outline-primary soup-add-item-button"
+                  (click)="this.startAdd(field)">
+                  <i class="bi bi-plus"></i>
+                  Aggiungi
+                </button>
+              </div>
+            }
+          </div>
+        }
+        @default {
+          <input
+            type="text"
+            class="form-control"
+            [id]="this.id(field)"
+            [value]="this.text(field)"
+            (input)="this.onText(field, $event)" />
+        }
+      }
+
+      @if (field.help) {
+        <div class="form-text">{{ field.help }}</div>
+      }
+      @if (this.errors()[field.name]; as error) {
+        <div class="text-danger small soup-field-error">{{ error }}</div>
+      }
+    </div>
+  }
+</div>
