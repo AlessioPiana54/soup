@@ -2,8 +2,9 @@
 ------------------------------------------------------------------------
 File : test_settings_defaults.py
 Description: Tests that Settings.from_env() activates every package
-             found by default - so both bundled packages (csv_reader and
-             causal_df) load and causal_df's build step actually ends up
+             found by default - so the bundled packages (csv_reader,
+             causal_df, tool_memgraph, tool_storage) load, with no I/O
+             until a tool is used, and causal_df's build step actually ends up
              in the pipeline (regression test for the bug where
              trigger/target pairs were silently ignored in production
              because causal_df was never loaded) - and the package
@@ -22,7 +23,6 @@ from soup.core.settings import (
     DEFAULT_INSTALLED_PACKAGES_DIR,
     Settings,
 )
-from tests.fakes import FakeDatabase, InMemoryFileStorage
 
 
 def test_default_settings_activate_every_package_found():
@@ -32,16 +32,21 @@ def test_default_settings_activate_every_package_found():
     assert settings.allow_package_install is False
 
 
-def test_from_env_with_no_overrides_loads_both_bundled_packages():
-    engine = build_engine(Settings.from_env({}), db=FakeDatabase(), storage=InMemoryFileStorage())
+BUNDLED = ["causal_df", "csv_reader", "tool_memgraph", "tool_storage"]
+
+
+def test_from_env_with_no_overrides_loads_every_bundled_package():
+    engine = build_engine(Settings.from_env({}))
 
     assert engine.report.failed == []
-    assert "csv_reader" in engine.report.loaded
-    assert "causal_df" in engine.report.loaded
+    assert set(BUNDLED) <= set(engine.report.loaded)
+    # Every tool the core relies on is provided by a bundled package.
+    assert engine.report.warnings == []
+    assert sorted(engine.ctx.tool_registry.keys()) == ["catalog", "memgraph", "preferences", "storage"]
 
 
 def test_causal_step_is_in_the_pipeline_by_default():
-    engine = build_engine(Settings.from_env({}), db=FakeDatabase(), storage=InMemoryFileStorage())
+    engine = build_engine(Settings.from_env({}))
 
     pipeline = engine.ekg_service.build_pipeline()
 
@@ -55,9 +60,9 @@ def test_explicit_empty_soup_packages_disables_everything():
     settings = Settings.from_env({"SOUP_PACKAGES": ""})
     assert settings.packages == ()
 
-    engine = build_engine(settings, db=FakeDatabase(), storage=InMemoryFileStorage())
+    engine = build_engine(settings)
     assert engine.report.loaded == []
-    assert sorted(engine.report.disabled) == ["causal_df", "csv_reader"]
+    assert sorted(engine.report.disabled) == BUNDLED
 
 
 def test_soup_plugins_is_still_read_as_an_alias_of_soup_packages():

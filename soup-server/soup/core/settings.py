@@ -3,7 +3,12 @@
 File : settings.py
 Description: Engine settings, read from the environment with explicit
              defaults - replacing the hard-coded `debug` flag that used
-             to live in Shared/support_config.py.
+             to live in Shared/support_config.py. Only what the host
+             itself needs: Memgraph and file storage are configured by
+             the packages providing those tools (tool_memgraph reads
+             MEMGRAPH_HOST/MEMGRAPH_PORT, tool_storage reads
+             SOUP_STORAGE_KIND, SOUP_CONTAINER_NAME and
+             SOUP_LOCAL_STORAGE_ROOT).
 Project : soup-server
 ------------------------------------------------------------------------
 """
@@ -16,11 +21,6 @@ from pathlib import Path
 from typing import Mapping, Optional
 
 DEFAULT_STRICT = False
-DEFAULT_STORAGE_KIND = "docker"  # "docker" | "local"
-DEFAULT_MEMGRAPH_HOST = "memgraph"
-DEFAULT_MEMGRAPH_PORT = 7687
-DEFAULT_CONTAINER_NAME = "soup-database"
-DEFAULT_LOCAL_STORAGE_ROOT = "/soup"
 
 # soup-server/ and the repository root, from this file's location
 # (soup-server/soup/core/settings.py). The Docker image keeps the same
@@ -28,7 +28,8 @@ DEFAULT_LOCAL_STORAGE_ROOT = "/soup"
 _SERVER_ROOT = Path(__file__).resolve().parents[2]
 _REPO_ROOT = _SERVER_ROOT.parent
 
-# The packages shipped with SOUP (csv_reader, causal_df, ...). Every
+# The packages shipped with SOUP (csv_reader, causal_df, tool_memgraph,
+# tool_storage, ...). Every
 # package found is active unless disabled at runtime (persisted state)
 # or SOUP_PACKAGES lists the active ones explicitly.
 DEFAULT_BUNDLED_PACKAGES_DIR = str(_REPO_ROOT / "soup-packages")
@@ -66,11 +67,6 @@ class Settings:
     installed_packages_dir: str = DEFAULT_INSTALLED_PACKAGES_DIR
     allow_package_install: bool = DEFAULT_ALLOW_PACKAGE_INSTALL
     strict: bool = DEFAULT_STRICT
-    storage_kind: str = DEFAULT_STORAGE_KIND
-    memgraph_host: str = DEFAULT_MEMGRAPH_HOST
-    memgraph_port: int = DEFAULT_MEMGRAPH_PORT
-    container_name: str = DEFAULT_CONTAINER_NAME
-    local_storage_root: str = DEFAULT_LOCAL_STORAGE_ROOT
 
     @classmethod
     def from_env(cls, env: Optional[Mapping[str, str]] = None) -> "Settings":
@@ -94,9 +90,4 @@ class Settings:
             installed_packages_dir=installed_dir,
             allow_package_install=_as_bool(source.get("SOUP_ALLOW_PACKAGE_INSTALL"), DEFAULT_ALLOW_PACKAGE_INSTALL),
             strict=_as_bool(source.get("SOUP_STRICT"), DEFAULT_STRICT),
-            storage_kind=source.get("SOUP_STORAGE_KIND", DEFAULT_STORAGE_KIND),
-            memgraph_host=source.get("MEMGRAPH_HOST", DEFAULT_MEMGRAPH_HOST),
-            memgraph_port=int(source.get("MEMGRAPH_PORT", DEFAULT_MEMGRAPH_PORT)),
-            container_name=source.get("SOUP_CONTAINER_NAME", DEFAULT_CONTAINER_NAME),
-            local_storage_root=source.get("SOUP_LOCAL_STORAGE_ROOT", DEFAULT_LOCAL_STORAGE_ROOT),
         )

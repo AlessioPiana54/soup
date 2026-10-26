@@ -1,0 +1,14 @@
+{
+  "name": "tool_memgraph",
+  "version": "1.0.0",
+  "api_version": "2.0",
+  "label": "Memgraph",
+  "description": "Provides the 'memgraph' tool: parameterized Cypher queries and the active graph.",
+  "author": "SOUP",
+  "requires": [],
+  "requires_tools": [],
+  "provides_tools": ["memgraph"],
+  "extension_points": [],
+  "python_dependencies": ["neo4j"],
+  "server": {"module": "server", "plugin": "plugin:Plugin"}
+}

@@ -6,8 +6,10 @@ Description: Static (AST-based) checks of the dependency rules: soup/core
              never import Flask, reach the host only through
              soup.core.contracts and another package only through its
              api.py, after declaring it in `requires`; soup/core/contracts
-             never imports pandas; and soup/api is the only package that
-             imports Flask.
+             never imports pandas; soup/api is the only package that
+             imports Flask; and nothing under soup/ imports the Memgraph
+             driver or the Docker SDK any more (they belong to the
+             tool_memgraph and tool_storage packages, commit 3).
 Project : soup-server
 ------------------------------------------------------------------------
 """
@@ -73,7 +75,28 @@ def _package_dirs() -> list[Path]:
 
 
 def test_bundled_packages_exist():
-    assert {path.name for path in _package_dirs()} >= {"csv_reader", "causal_df"}
+    assert {path.name for path in _package_dirs()} >= {"csv_reader", "causal_df", "tool_memgraph", "tool_storage"}
+
+
+def test_soup_infrastructure_is_gone():
+    # The adapters moved to soup-packages/tool_memgraph and tool_storage (commit 3).
+    assert not (SOUP_ROOT / "infrastructure").exists()
+
+
+def test_host_never_imports_the_database_driver_or_docker():
+    violations = []
+    for file_path in _py_files(SOUP_ROOT):
+        for module in _imported_modules(file_path):
+            if module.split(".")[0] in ("neo4j", "docker"):
+                violations.append(f"{file_path.relative_to(SOUP_ROOT)} imports {module}")
+    assert violations == []
+
+
+def test_tool_packages_have_no_app_part():
+    for name in ("tool_memgraph", "tool_storage"):
+        manifest = json.loads((PACKAGES_ROOT / name / "soup-package.json").read_text(encoding="utf-8"))
+        assert "app" not in manifest
+        assert not (PACKAGES_ROOT / name / "app").exists()
 
 
 def test_packages_never_import_flask():
@@ -118,6 +141,7 @@ MEDIATOR_PATHS = (
     "core/toolbox.py",
     "core/field_validation.py",
     "core/services/core_tools.py",
+    "core/services/legacy_tools.py",
     "core/services/import_router.py",
     "core/services/operation_router.py",
     "core/services/visualizer_router.py",
@@ -143,7 +167,7 @@ def test_mediator_imports_no_data_library_database_docker_or_flask():
         assert file_path.exists(), file_path
         for module in _imported_modules(file_path):
             root = module.split(".")[0]
-            if root in _FORBIDDEN_IN_MEDIATOR or root.startswith("flask_") or module.startswith("soup.infrastructure"):
+            if root in _FORBIDDEN_IN_MEDIATOR or root.startswith("flask_"):
                 violations.append(f"{file_path.relative_to(SOUP_ROOT)} imports {module}")
     assert violations == []
 

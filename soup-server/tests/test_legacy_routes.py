@@ -58,12 +58,11 @@ def _legacy_routes(legacy_routes_json):
 @pytest.fixture
 def new_app():
     from soup.api.flask_app import build_flask_app
-    from soup.core.engine import build_engine
     from soup.core.settings import Settings
-    from tests.fakes import FakeDatabase, InMemoryFileStorage
+    from tests.fakes import FakeDatabase, InMemoryFileStorage, fake_tool_engine
 
     settings = Settings.from_env({"SOUP_PACKAGES": "csv_reader"})
-    engine = build_engine(settings, db=FakeDatabase(), storage=InMemoryFileStorage())
+    engine = fake_tool_engine(settings, db=FakeDatabase(), files=InMemoryFileStorage())
     return build_flask_app(engine)
 
 

@@ -32,7 +32,7 @@ from soup.core.contracts import (
 from soup.core.contracts import report
 from soup.core.engine import build_engine
 from soup.core.settings import Settings
-from tests.fakes import CoreToolsPackage, FakeDatabase, InMemoryFileStorage
+from tests.fakes import CoreToolsPackage
 
 
 class FakeImporter(Importer):
@@ -211,8 +211,6 @@ def build_test_engine(*packages: SoupPlugin, with_core_tools: bool = True):
     extra = [core, *packages] if with_core_tools else list(packages)
     engine = build_engine(
         Settings.from_env({"SOUP_PACKAGES": ""}),
-        db=FakeDatabase(),
-        storage=InMemoryFileStorage(),
         extra_plugins=extra,
     )
     return engine, core

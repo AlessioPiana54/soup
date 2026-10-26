@@ -25,7 +25,6 @@ import pytest
 from soup.core.contracts import ExtensionPointError
 from soup.core.engine import build_engine
 from soup.core.settings import Settings
-from tests.fakes import FakeDatabase, InMemoryFileStorage
 from tests.package_builder import IMPORTER_PLUGIN, build_zip, write_package
 
 ITERATIONS = 200
@@ -70,7 +69,7 @@ def test_install_and_uninstall_while_reading_registries_and_publishing(tmp_path)
     settings = Settings(
         packages_path=(str(bundled), str(installed)), installed_packages_dir=str(installed), allow_package_install=True
     )
-    engine = build_engine(settings, db=FakeDatabase(), storage=InMemoryFileStorage())
+    engine = build_engine(settings)
     archive = build_zip(tmp_path, "busy", plugin_source=BUSY_PLUGIN, extension_points=["busy.point"])
     errors: list[BaseException] = []
     done = threading.Event()

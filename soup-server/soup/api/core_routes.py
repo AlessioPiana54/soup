@@ -20,7 +20,8 @@ Description: The routes the new host owns directly:
                reproduced from app.py so the new app is a full drop-in
                replacement; every other route keeps living in the
                legacy Controllers/* blueprints, registered unmodified
-               (soup/api/flask_app.py).
+               (soup/api/flask_app.py). memgraph-connect pings the
+               "memgraph" tool: without it the answer is 503.
 
              Domain errors (soup.core.contracts.DomainError) are not caught
              here - they propagate to the single error handler registered
@@ -107,7 +108,7 @@ def build_core_blueprint(engine: Engine) -> Blueprint:
 
     @blueprint.route("/api/v2/memgraph-connect", methods=["GET"])
     def connect_database():
-        rows = engine.db.run(_MEMGRAPH_PING_QUERY)
+        rows = engine.core_tools.graph().run(_MEMGRAPH_PING_QUERY)
 
         if not rows:
             result = Result(500, "Error while connecting to Memgraph")

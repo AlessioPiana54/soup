@@ -8,6 +8,9 @@ Description: EventLogHandler - the InputHandler the core registers for
              the error re-raised (compensating action, same intent as the
              legacy code's cleanup-on-failure in
              Services/Graph/graph_service.py's create_new_dataset_s).
+             Either way the memgraph tool's active state is invalidated:
+             the graph now holds this dataset (or a half-built one), not
+             whatever ensure_loaded loaded last.
 Project : soup-server
 ------------------------------------------------------------------------
 """
@@ -124,6 +127,8 @@ class EventLogHandler(InputHandler[EventLogData]):
             # either both the staged files AND the graph exist, or neither.
             self._repository.delete(dataset_name)
             raise
+        finally:
+            self._ekg_service.invalidate()
 
         config.update(self._ekg_service.counts())
         config["date_created"] = timer.started_at

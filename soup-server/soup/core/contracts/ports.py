@@ -1,9 +1,11 @@
 """
 ------------------------------------------------------------------------
 File : ports.py
-Description: Stable ports (abstract interfaces) between the core and the
-             infrastructure adapters that implement them
-             (soup/infrastructure). Depends only on the Query value
+Description: Stable ports (abstract interfaces) for the graph database
+             and file storage, implemented in the tool packages
+             (soup-packages/tool_memgraph: the "memgraph" tool is a
+             GraphDatabase; soup-packages/tool_storage: its backends and
+             each storage namespace are FileStorage). Depends only on the Query value
              object - no pandas, no neo4j driver, no Docker SDK, no Flask.
 Project : soup-server
 ------------------------------------------------------------------------

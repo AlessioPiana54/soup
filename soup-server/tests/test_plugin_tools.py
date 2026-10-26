@@ -25,6 +25,7 @@ from soup.core.contracts import (
 from soup.core.events import PACKAGE_LOADED, PACKAGE_UNLOADED
 from soup.core.plugin_context import DefaultPluginContext
 from soup.core.plugin_manager import PluginManager
+from tests.fakes import LegacyToolsPackage
 from tests.mediator_doubles import FakeImporter, FakeOperation, FakeTool, FeaturePackage, build_test_engine, upload
 
 
@@ -167,8 +168,8 @@ def test_engine_reports_missing_core_tools_and_still_starts():
         engine.core_tools.preferences()
 
 
-def test_engine_with_core_tools_has_no_warnings():
-    engine, core = build_test_engine()
+def test_engine_with_every_tool_has_no_warnings():
+    engine, core = build_test_engine(LegacyToolsPackage())
 
     assert engine.report.warnings == []
     engine.core_tools.preferences().set("theme", "dark")

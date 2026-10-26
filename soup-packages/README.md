@@ -86,6 +86,36 @@ class Plugin(SoupPlugin):
   non possono dichiarare lo stesso nome. Il conflitto viene rilevato prima di importare codice e
   nomina entrambi i package; il primo caricato (o quello già attivo) mantiene il nome.
 
+## Tool forniti
+
+Memgraph, i file, il catalogo degli oggetti e le preferenze non sono nel core: li forniscono due
+package di soli tool (nessuna parte `app/`), attivi di default come tutti i package trovati. Un
+package li usa dichiarandoli in `requires_tools` e prendendoli da `ctx.tools` (o dal `tools` passato
+a importer, operazioni, visualizzatori ed exporter); chiedere un tool non dichiarato solleva
+`ToolNotDeclaredError`. Per usare i tipi (`MemgraphTool`, `Query`, `StorageTool`...) si importa
+l'`api.py` del package, che va allora elencato anche in `requires`. Senza uno di questi package il
+server parte lo stesso: il report dei package dice quale tool manca e i servizi che ne hanno bisogno
+rispondono `503`.
+
+| Package | Tool | Cosa offre | Variabili d'ambiente |
+|---|---|---|---|
+| `tool_memgraph` | `memgraph` | `run(query) -> list[dict]`, `health()`; grafo attivo: `ensure_loaded(state_key, loader, force=False)`, `current_state()`, `clear()`, `invalidate()`. Un solo driver per processo, creato al primo uso e chiuso quando il package si ferma. | `MEMGRAPH_HOST` (`memgraph`), `MEMGRAPH_PORT` (`7687`) |
+| `tool_storage` | `storage` | `space(namespace)` → `read`, `write`, `exists`, `delete`, `list` relativi a `<root>/<namespace>/`; `path_for(namespace, name)`; `delete_space(namespace)`. | `SOUP_STORAGE_KIND` (`docker` o `local`), `SOUP_CONTAINER_NAME` (`soup-database`), `SOUP_LOCAL_STORAGE_ROOT` (`/soup`) |
+| `tool_storage` | `catalog` | Gli oggetti del workspace in `<root>/_catalog/objects/<id>.json`, anteprime SVG in `<root>/_catalog/thumbnails/<id>.svg`, `children(id)` per la provenienza. | come sopra |
+| `tool_storage` | `preferences` | Chiavi/valori JSON in `<root>/_catalog/preferences.json`. | come sopra |
+
+- **Grafo attivo.** Memgraph contiene un solo dataset alla volta. Chi deve interrogare un oggetto
+  chiama `ensure_loaded(state_key, loader)`: se lo stato caricato è diverso da `state_key` (una
+  stringa opaca scelta da chi chiama, es. l'id dell'oggetto) o se `force=True`, il tool svuota il
+  database e chiama `loader(run)`; altrimenti non fa nulla. Se `loader` fallisce non resta attivo
+  nessuno stato e la richiesta successiva ricarica.
+- **Spazi dei nomi.** Ogni package usa il proprio spazio (`storage.space("<nome>")`); spazi e nomi di
+  file sono validati come i nomi degli oggetti (vietati `""`, `..`, separatori, `_` iniziale), quindi
+  `_catalog` è irraggiungibile. `path_for` dà il percorso assoluto per chi lo passa a Memgraph: `LOAD
+  CSV` legge dallo stesso volume `/soup`. La cartella di un dataset EKG resta `/soup/<nome>/`.
+- **Cypher.** `Query` e `ident` stanno in `soup_pkg_tool_memgraph.api`; i valori viaggiano sempre come
+  parametri, gli identificatori passano da `ident()`.
+
 ## Regole per il codice del package
 
 - Dell'host si importa solo `soup.core.contracts`; i file interni del package si importano con

@@ -19,7 +19,6 @@ import pytest
 from soup.api.flask_app import build_flask_app
 from soup.core.engine import build_engine
 from soup.core.settings import Settings
-from tests.fakes import FakeDatabase, InMemoryFileStorage
 from tests.package_builder import build_zip, write_package
 
 
@@ -40,7 +39,7 @@ def _client(tmp_path, allow_install=True):
         installed_packages_dir=str(installed),
         allow_package_install=allow_install,
     )
-    app = build_flask_app(build_engine(settings, db=FakeDatabase(), storage=InMemoryFileStorage()))
+    app = build_flask_app(build_engine(settings))
     app.config["TESTING"] = True
     return app.test_client()
 

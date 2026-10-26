@@ -3,7 +3,7 @@
 File : __init__.py
 Description: Public surface of soup.core.contracts - the stable
              interfaces between the host (soup/core) and every extension
-             (packages in soup-packages/, soup/infrastructure). Nothing under
+             (the packages in soup-packages/). Nothing under
              soup/core/contracts imports pandas, neo4j, docker or Flask.
              Report blocks are built with the functions of the `report`
              submodule (from soup.core.contracts import report).

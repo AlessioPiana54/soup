@@ -1,19 +1,20 @@
 """
 ------------------------------------------------------------------------
 File : engine.py
-Description: build_engine() is the single composition root: it wires the
-             GraphDatabase/FileStorage adapters (or uses the ones injected
-             for testing), discovers/loads the packages (PackageManager,
-             from Settings.packages_path) and assembles the core's own services: the legacy
-             import path (DatasetRepository, EkgService, EventLogHandler,
-             ImportService, behind /api/v2/graph) and the mediator
+Description: build_engine() is the single composition root: it
+             discovers/loads the packages (PackageManager, from
+             Settings.packages_path, plus the ones tests pass in code)
+             and assembles the core's own services: the legacy import
+             path (DatasetRepository, EkgService, EventLogHandler,
+             ImportService, behind /api/v2/graph), which reaches the
+             "memgraph" and "storage" tools, and the mediator
              (ImportRouter, OperationRouter, VisualizerRouter,
              ExportRouter, WorkspaceService), which reaches the
-             catalog/preferences tools provided by packages. If those
-             tools are missing the engine still starts: the report lists
-             the problem and the services answer 503.
-             Nothing outside this module decides which concrete adapter,
-             plugin, or service wiring to use.
+             catalog/preferences tools. Every tool is provided by a
+             package (tool_memgraph, tool_storage): the core builds no
+             database or storage adapter. If a tool is missing the
+             engine still starts: the report lists the problem and the
+             services that need it answer 503.
 Project : soup-server
 ------------------------------------------------------------------------
 """
@@ -22,9 +23,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable
 
-from soup.core.contracts import CONTRACTS_API_VERSION, EVENT_LOG, FileStorage, GraphDatabase
+from soup.core.contracts import CONTRACTS_API_VERSION, EVENT_LOG
 from soup.core.dataset_repository import DatasetRepository
 from soup.core.event_bus import EventBus
 from soup.core.plugin_context import DefaultPluginContext
@@ -36,6 +37,7 @@ from soup.core.services.event_log_handler import EventLogHandler
 from soup.core.services.export_router import ExportRouter
 from soup.core.services.import_router import ImportRouter
 from soup.core.services.import_service import ImportService
+from soup.core.services.legacy_tools import ToolGraph, ToolStorage
 from soup.core.services.operation_router import OperationRouter
 from soup.core.services.orphaned_data import ORPHANED_DATA_FILE, OrphanedDataLog
 from soup.core.services.visualizer_router import VisualizerRouter
@@ -51,8 +53,6 @@ CORE_OWNER = "core"
 @dataclass
 class Engine:
     settings: Settings
-    db: GraphDatabase
-    storage: FileStorage
     ctx: DefaultPluginContext
     plugin_manager: PluginManager
     package_manager: PackageManager
@@ -69,51 +69,18 @@ class Engine:
     workspace_service: WorkspaceService
 
     def shutdown(self) -> None:
+        # The packages release their own resources in on_shutdown (e.g.
+        # tool_memgraph closes the Memgraph driver).
         self.plugin_manager.shutdown()
 
-        # GraphDatabase does not declare close() (not every adapter needs
-        # one - FakeDatabase doesn't), so call it only if the concrete
-        # instance actually has it (MemgraphDatabase does).
-        close = getattr(self.db, "close", None)
-        if callable(close):
-            close()
 
-
-def _build_default_database(settings: Settings) -> GraphDatabase:
-    from soup.infrastructure.memgraph import MemgraphDatabase
-
-    uri = f"bolt://{settings.memgraph_host}:{settings.memgraph_port}"
-    return MemgraphDatabase(uri=uri, auth=("", ""))
-
-
-def _build_default_storage(settings: Settings) -> FileStorage:
-    if settings.storage_kind == "local":
-        from soup.infrastructure.local_storage import LocalFileStorage
-
-        return LocalFileStorage(root=settings.local_storage_root)
-
-    from soup.infrastructure.docker_storage import DockerVolumeStorage
-
-    return DockerVolumeStorage(container_name=settings.container_name, root=settings.local_storage_root)
-
-
-def build_engine(
-    settings: Settings,
-    db: Optional[GraphDatabase] = None,
-    storage: Optional[FileStorage] = None,
-    extra_plugins: Iterable[Any] = (),
-) -> Engine:
+def build_engine(settings: Settings, extra_plugins: Iterable[Any] = ()) -> Engine:
     """
-    Single composition root. `db`/`storage` are normally omitted and built
-    from `settings`; tests inject fakes (tests.fakes.FakeDatabase,
-    tests.fakes.InMemoryFileStorage) instead. `extra_plugins` are loaded
-    together with the packages found on disk (SoupPlugin
-    instances/classes or specs); tests use it for packages defined in
-    the test itself.
+    Single composition root. `extra_plugins` are loaded together with the
+    packages found on disk (SoupPlugin instances/classes or specs); tests
+    use it for packages defined in the test itself, e.g. the in-memory
+    tools of tests.fakes.FakeToolsPackage.
     """
-
-    resolved_db = db if db is not None else _build_default_database(settings)
-    resolved_storage = storage if storage is not None else _build_default_storage(settings)
 
     manager = PluginManager(contracts_api_version=CONTRACTS_API_VERSION, strict=settings.strict)
     event_bus = EventBus()
@@ -136,8 +103,8 @@ def build_engine(
 
     core_tools = CoreTools(ctx.tool_registry)
 
-    repository = DatasetRepository(resolved_storage, root=settings.local_storage_root)
-    ekg_service = EkgService(resolved_db, plugin_build_steps=ctx.build_steps)
+    repository = DatasetRepository(ToolStorage(core_tools))
+    ekg_service = EkgService(ToolGraph(core_tools), plugin_build_steps=ctx.build_steps)
 
     # Core-registered, not plugin-attributed: the core ships the
     # event-log handler itself, the way a plugin ships a build step.
@@ -148,8 +115,6 @@ def build_engine(
 
     return Engine(
         settings=settings,
-        db=resolved_db,
-        storage=resolved_storage,
         ctx=ctx,
         plugin_manager=manager,
         package_manager=package_manager,

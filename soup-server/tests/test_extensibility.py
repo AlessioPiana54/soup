@@ -45,7 +45,7 @@ from soup.core.results import Result
 from soup.core.services.ekg_service import EkgService
 from soup.core.services.event_log_handler import EventLogHandler
 from soup.core.services.import_service import ImportCommand, ImportService
-from tests.fakes import FakeDatabase, InMemoryFileStorage
+from tests.fakes import FakeDatabase, InMemoryFileStorage, fake_storage_tool
 
 
 def _build_import_service(plugins, db, storage):
@@ -61,7 +61,7 @@ def _build_import_service(plugins, db, storage):
     report = manager.load(plugins, ctx=ctx)
     assert report.failed == [], report.failed
 
-    repository = DatasetRepository(storage, root="/soup")
+    repository = DatasetRepository(fake_storage_tool(storage))
     ekg_service = EkgService(db, plugin_build_steps=ctx.build_steps)
     ctx.input_handlers.register(EventLogHandler(repository, ekg_service), owner="core", key=EVENT_LOG)
 

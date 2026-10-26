@@ -15,15 +15,14 @@ from __future__ import annotations
 import pytest
 
 from soup.api.flask_app import build_flask_app
-from soup.core.engine import build_engine
 from soup.core.settings import Settings
-from tests.fakes import FakeDatabase, InMemoryFileStorage
+from tests.fakes import FakeDatabase, InMemoryFileStorage, fake_tool_engine
 
 
 @pytest.fixture
 def client():
     settings = Settings.from_env({"SOUP_PACKAGES": "csv_reader"})
-    engine = build_engine(settings, db=FakeDatabase(), storage=InMemoryFileStorage())
+    engine = fake_tool_engine(settings, db=FakeDatabase(), files=InMemoryFileStorage())
     app = build_flask_app(engine)
     app.config["TESTING"] = True
     return app.test_client()

@@ -1,8 +1,12 @@
 """
 ------------------------------------------------------------------------
-File : local_storage.py
-Description: FileStorage adapter backed by the local filesystem.
-Project : soup-server
+File : local.py
+Description: FileStorage backend on the local filesystem (moved here from
+             soup/infrastructure/local_storage.py). Paths are relative to
+             the root; a path that resolves outside it is refused.
+             list(prefix) returns the names of the entries directly under
+             prefix, like the Docker backend.
+Project : soup-packages/tool_storage
 ------------------------------------------------------------------------
 """
 
@@ -19,7 +23,11 @@ class LocalFileStorage(FileStorage):
         self._root = Path(root)
 
     def _resolve(self, path: str) -> Path:
-        return self._root / path.lstrip("/\\")
+        root = self._root.resolve()
+        target = (root / path.lstrip("/\\")).resolve()
+        if target != root and root not in target.parents:
+            raise ValueError(f"Path {path!r} is outside the storage root")
+        return target
 
     def read(self, path: str) -> bytes:
         return self._resolve(path).read_bytes()
@@ -40,7 +48,7 @@ class LocalFileStorage(FileStorage):
             target.unlink()
 
     def list(self, prefix: str = "") -> list[str]:
-        base = self._resolve(prefix) if prefix else self._root
-        if not base.exists():
+        base = self._resolve(prefix)
+        if not base.is_dir():
             return []
         return sorted(p.name for p in base.iterdir())

@@ -1,27 +1,29 @@
 """
 ------------------------------------------------------------------------
-File : memgraph.py
-Description: GraphDatabase adapter for Memgraph. Connection parameters
+File : database.py
+Description: GraphDatabase adapter for Memgraph (moved here from
+             soup/infrastructure/memgraph.py). Connection parameters
              and the session.run(...) call are taken as-is from
              Models/memgraph_connector_model.py (not modified by this
              session), but instead of a connect()/close() pair opened and
              closed on every request, this adapter keeps a single driver
              per process: created lazily on first use, thread-safe to
              create (double-checked locking), and closed only when the
-             engine shuts down.
-Project : soup-server
+             package shuts down (C31).
+Project : soup-packages/tool_memgraph
 ------------------------------------------------------------------------
 """
 
 from __future__ import annotations
 
 import threading
-from typing import Any, Optional
+from typing import Any
 
 from neo4j import GraphDatabase as Neo4jGraphDatabase
 
 from soup.core.contracts import GraphDatabase as GraphDatabasePort
-from soup.core.contracts import Query
+
+from .query import Query
 
 
 class MemgraphDatabase(GraphDatabasePort):

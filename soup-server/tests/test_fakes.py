@@ -38,12 +38,22 @@ def test_in_memory_file_storage_list_with_prefix():
     storage.write("orders/order_2.csv", b"y")
     storage.write("invoices/invoice_1.csv", b"z")
 
-    assert storage.list("orders/") == ["orders/order_1.csv", "orders/order_2.csv"]
-    assert storage.list() == [
-        "invoices/invoice_1.csv",
-        "orders/order_1.csv",
-        "orders/order_2.csv",
-    ]
+    # Like the local and Docker backends: the names directly under prefix.
+    assert storage.list("orders/") == ["order_1.csv", "order_2.csv"]
+    assert storage.list("orders") == ["order_1.csv", "order_2.csv"]
+    assert storage.list() == ["invoices", "orders"]
+    assert storage.list("missing") == []
+
+
+def test_in_memory_file_storage_delete_removes_a_whole_folder():
+    storage = InMemoryFileStorage()
+    storage.write("orders/order_1.csv", b"x")
+    storage.write("orders/nested/order_2.csv", b"y")
+    storage.write("orders_old/order.csv", b"z")
+
+    storage.delete("orders")
+
+    assert storage.paths == ["orders_old/order.csv"]
 
 
 def test_fake_database_records_text_and_params_in_order():

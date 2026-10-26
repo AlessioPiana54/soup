@@ -185,11 +185,11 @@ def test_force_removes_from_the_catalog_and_records_the_orphaned_data(tmp_path, 
 def test_engine_records_orphaned_data_in_the_installed_packages_folder(tmp_path):
     from soup.core.engine import build_engine
     from soup.core.settings import Settings
-    from tests.fakes import CoreToolsPackage, FakeDatabase, InMemoryFileStorage
+    from tests.fakes import CoreToolsPackage
 
     tools = CoreToolsPackage()
     settings = Settings(packages_path=(), installed_packages_dir=str(tmp_path))
-    engine = build_engine(settings, db=FakeDatabase(), storage=InMemoryFileStorage(), extra_plugins=[tools])
+    engine = build_engine(settings, extra_plugins=[tools])
     tools.catalog.add(_orphan())
 
     engine.workspace_service.delete(_orphan().id, force=True)

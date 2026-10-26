@@ -14,13 +14,13 @@ Description: DatasetRepository - the only place that knows the dataset
                  /soup/<name>/<name>_config.json     config
                  /soup/<name>/<name>_config.svg      svg (not written here)
 
-             Reads/writes go through the FileStorage port (so the actual
-             backend - Docker volume, local filesystem, in-memory fake -
-             is irrelevant to this class); the LOAD CSV path methods
-             return the fixed in-container path under `root` (default
-             "/soup") regardless of which FileStorage backend is wired up,
-             because Memgraph always reads from the volume mounted at
-             that path, not through our FileStorage abstraction.
+             Since commit 3 the files go through the "storage" tool
+             (tool_storage package), one namespace per dataset: the
+             namespace is the dataset name, so the folder stays
+             /soup/<name>/ and existing volumes remain readable. The
+             LOAD CSV paths come from storage.path_for(), the absolute
+             path under the volume Memgraph reads from.
+             TODO(commit 8): moves to the ekg package.
 Project : soup-server
 ------------------------------------------------------------------------
 """
@@ -28,72 +28,61 @@ Project : soup-server
 from __future__ import annotations
 
 import json
-import re
 from typing import Any
 
-from soup.core.contracts import FileStorage
-from soup.core.contracts.errors import ValidationError
-
-_INVALID_NAME_CHARS = re.compile(r"[\\/]")
+from soup.core.contracts import FileStorage, validate_name
+from soup.core.services.legacy_tools import StorageSpaceTool
 
 
-def _validate_name(name: str, *, label: str = "Dataset") -> str:
+def _validate_name(name: str) -> str:
     """
-    Reject "", ".", "..", path separators and any directory-traversal
-    attempt - the legacy code used dataset/analysis names directly in
-    filesystem paths with no validation at all.
+    Dataset names become folder names: "", "..", separators and a leading
+    "_" (reserved, e.g. for the catalog) are refused - the legacy code
+    used dataset names directly in filesystem paths with no validation.
     """
 
-    if not isinstance(name, str) or name == "":
-        raise ValidationError(f"{label} name must not be empty")
-    if name in (".", ".."):
-        raise ValidationError(f"Invalid {label.lower()} name: {name!r}")
-    if _INVALID_NAME_CHARS.search(name):
-        raise ValidationError(f"{label} name must not contain path separators: {name!r}")
-    if ".." in name:
-        raise ValidationError(f"{label} name must not contain '..': {name!r}")
-    return name
+    return validate_name(name, label="Dataset")
 
 
 class DatasetRepository:
-    def __init__(self, storage: FileStorage, root: str = "/soup"):
+    def __init__(self, storage: StorageSpaceTool):
         self._storage = storage
-        self._root = root.rstrip("/") or "/"
+
+    def _space(self, name: str) -> FileStorage:
+        return self._storage.space(_validate_name(name))
 
     # ------------------------------------------------------------------ #
-    # Paths (layout - the one thing this class knows)
+    # File names (layout - the one thing this class knows)
     # ------------------------------------------------------------------ #
-    def _dataset_dir(self, name: str) -> str:
-        return f"{name}/"
+    @staticmethod
+    def _events_csv(name: str) -> str:
+        return f"{name}.csv"
 
-    def _events_csv_path(self, name: str) -> str:
-        return f"{name}/{name}.csv"
+    @staticmethod
+    def _entities_csv(name: str) -> str:
+        return f"{name}_entity.csv"
 
-    def _entities_csv_path(self, name: str) -> str:
-        return f"{name}/{name}_entity.csv"
-
-    def _config_path(self, name: str) -> str:
-        return f"{name}/{name}_config.json"
+    @staticmethod
+    def _config(name: str) -> str:
+        return f"{name}_config.json"
 
     def events_csv_load_path(self, name: str) -> str:
         """Absolute in-container path for the events CSV, as used by LOAD CSV."""
 
-        _validate_name(name)
-        return f"{self._root}/{name}/{name}.csv"
+        return self._storage.path_for(_validate_name(name), self._events_csv(name))
 
     def entities_csv_load_path(self, name: str) -> str:
         """Absolute in-container path for the entities CSV, as used by LOAD CSV."""
 
-        _validate_name(name)
-        return f"{self._root}/{name}/{name}_entity.csv"
+        return self._storage.path_for(_validate_name(name), self._entities_csv(name))
 
     # ------------------------------------------------------------------ #
     # Operations
     # ------------------------------------------------------------------ #
     def save_event_log(self, name: str, events_csv: bytes, entities_csv: bytes) -> None:
-        _validate_name(name)
-        self._storage.write(self._events_csv_path(name), events_csv)
-        self._storage.write(self._entities_csv_path(name), entities_csv)
+        space = self._space(name)
+        space.write(self._events_csv(name), events_csv)
+        space.write(self._entities_csv(name), entities_csv)
 
     def save_config(self, name: str, config: dict) -> None:
         """
@@ -103,25 +92,15 @@ class DatasetRepository:
         so older configs already on the volume stay readable.
         """
 
-        _validate_name(name)
         payload = json.dumps(config, indent=4, ensure_ascii=False).encode("utf-8")
-        self._storage.write(self._config_path(name), payload)
+        self._space(name).write(self._config(name), payload)
 
     def load_config(self, name: str) -> dict[str, Any]:
-        _validate_name(name)
-        raw = self._storage.read(self._config_path(name))
+        raw = self._space(name).read(self._config(name))
         return json.loads(raw.decode("utf-8"))
 
     def exists(self, name: str) -> bool:
-        _validate_name(name)
-        return self._storage.exists(self._config_path(name))
+        return self._space(name).exists(self._config(name))
 
     def delete(self, name: str) -> None:
-        _validate_name(name)
-        prefix = self._dataset_dir(name)
-        for path in self._storage.list(prefix):
-            self._storage.delete(path)
-        # Directory-aware adapters (local filesystem, Docker volume) treat
-        # the bare dataset name as the whole directory; a no-op for
-        # key-value fakes where no such key was ever written.
-        self._storage.delete(name)
+        self._storage.delete_space(_validate_name(name))

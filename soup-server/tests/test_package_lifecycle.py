@@ -31,7 +31,7 @@ from soup.core.engine import build_engine
 from soup.core.events import PACKAGE_LOADED, PACKAGE_UNLOADED
 from soup.core.packages import ArchiveLimits
 from soup.core.settings import Settings
-from tests.fakes import CoreToolsPackage, FakeDatabase, InMemoryFileStorage
+from tests.fakes import CoreToolsPackage
 from tests.package_builder import FAILING_PLUGIN, build_zip, write_package, zip_entries
 
 
@@ -57,7 +57,7 @@ def _engine(bundled, installed, allow_install=True, extra=()):
         installed_packages_dir=str(installed),
         allow_package_install=allow_install,
     )
-    return build_engine(settings, db=FakeDatabase(), storage=InMemoryFileStorage(), extra_plugins=extra)
+    return build_engine(settings, extra_plugins=extra)
 
 
 def _events(engine, event):

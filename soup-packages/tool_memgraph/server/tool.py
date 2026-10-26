@@ -1,0 +1,93 @@
+"""
+------------------------------------------------------------------------
+File : tool.py
+Description: MemgraphTool - the "memgraph" tool. Runs parameterized
+             Cypher (run) and tracks the active graph: Memgraph holds one
+             dataset at a time, so ensure_loaded(state_key, loader)
+             empties the database and calls loader(run) only when the
+             loaded state differs from state_key (or with force).
+             state_key is an opaque string chosen by the caller (e.g. an
+             object id). Loads are serialized by a lock, so two requests
+             never load different states on top of each other.
+Project : soup-packages/tool_memgraph
+------------------------------------------------------------------------
+"""
+
+from __future__ import annotations
+
+import threading
+from typing import Any, Callable, Optional
+
+from soup.core.contracts import GraphDatabase, Tool
+
+from .query import Query
+
+MEMGRAPH_TOOL = "memgraph"
+
+Run = Callable[[Query], list[dict[str, Any]]]
+Loader = Callable[[Run], None]
+
+_PING_QUERY = Query("RETURN 1 AS ok")
+_CLEAR_QUERY = Query("MATCH (n) DETACH DELETE n")
+
+
+class MemgraphTool(Tool, GraphDatabase):
+    name = MEMGRAPH_TOOL
+
+    def __init__(self, db: GraphDatabase):
+        self._db = db
+        self._state: Optional[str] = None
+        self._lock = threading.RLock()
+
+    def run(self, query: Query) -> list[dict[str, Any]]:
+        return self._db.run(query)
+
+    def health(self) -> dict[str, Any]:
+        try:
+            self._db.run(_PING_QUERY)
+        except Exception as exc:  # noqa: BLE001 - health() must not raise
+            return {"ok": False, "error": str(exc)}
+        return {"ok": True, "state": self._state}
+
+    def ensure_loaded(self, state_key: str, loader: Loader, force: bool = False) -> bool:
+        """
+        Make `state_key` the active graph. Returns True if loader ran,
+        False if `state_key` was already active. If loader raises, the
+        database is in an unknown state: the active state becomes None
+        and the error propagates.
+        """
+
+        if not isinstance(state_key, str) or not state_key:
+            raise ValueError(f"state_key must be a non-empty string, got {state_key!r}")
+        with self._lock:
+            if not force and self._state == state_key:
+                return False
+            self.clear()
+            loader(self.run)
+            self._state = state_key
+            return True
+
+    def current_state(self) -> Optional[str]:
+        return self._state
+
+    def clear(self) -> None:
+        """Empty the database; no state is active afterwards."""
+
+        with self._lock:
+            self._state = None
+            self._db.run(_CLEAR_QUERY)
+
+    def invalidate(self) -> None:
+        """
+        Forget the active state without touching the data, for callers
+        that write to the database outside ensure_loaded (the legacy
+        /api/v2 pages): the next ensure_loaded always reloads.
+        """
+
+        with self._lock:
+            self._state = None
+
+    def close(self) -> None:
+        close = getattr(self._db, "close", None)
+        if callable(close):
+            close()

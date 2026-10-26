@@ -27,7 +27,7 @@ from soup.core.contracts import (
 )
 from soup.core.engine import build_engine
 from soup.core.settings import Settings
-from tests.fakes import CoreToolsPackage, FakeDatabase, InMemoryFileStorage
+from tests.fakes import CoreToolsPackage
 from tests.mediator_doubles import upload
 from tests.package_builder import (
     EXPLODING_INIT,
@@ -59,7 +59,7 @@ def _engine(bundled, installed, extra=()):
     settings = Settings(
         packages_path=(str(bundled), str(installed)), installed_packages_dir=str(installed), allow_package_install=True
     )
-    return build_engine(settings, db=FakeDatabase(), storage=InMemoryFileStorage(), extra_plugins=extra)
+    return build_engine(settings, extra_plugins=extra)
 
 
 def _failure(report, name):

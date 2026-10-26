@@ -11,7 +11,6 @@ Project : soup-server
 from soup.core.contracts import EVENT_LOG
 from soup.core.engine import build_engine
 from soup.core.settings import Settings
-from tests.fakes import FakeDatabase, InMemoryFileStorage
 from tests.packages import bundled_api
 
 CsvEventLogReader = bundled_api("csv_reader").CsvEventLogReader
@@ -55,7 +54,8 @@ def test_multi_value_entity_cell_is_read_intact():
 
 def test_csv_reader_is_registered_by_csv_reader_plugin():
     settings = Settings.from_env({})  # default plugins include csv_reader
-    engine = build_engine(settings, db=FakeDatabase(), storage=InMemoryFileStorage())
+    # The real tool packages load too: they do no I/O until first used.
+    engine = build_engine(settings)
 
     assert "csv_reader" in engine.report.loaded
     assert engine.report.failed == []

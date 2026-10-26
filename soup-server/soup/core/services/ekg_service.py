@@ -4,7 +4,9 @@ File : ekg_service.py
 Description: EkgService - build/reset/rebuild the EKG for one dataset,
              merging the core's build steps (soup/core/ekg/steps.py) with
              whatever steps plugins contributed (PluginContext.add_build_step,
-             e.g. soup-packages/causal_df), ordered by `.order`.
+             e.g. soup-packages/causal_df), ordered by `.order`. The
+             database is normally the "memgraph" tool, reached through
+             soup/core/services/legacy_tools.ToolGraph.
 Project : soup-server
 ------------------------------------------------------------------------
 """
@@ -50,6 +52,17 @@ class EkgService:
         self._db.run(schema.delete_entities_query())
         for factory in schema.DROPPED_INDEXES:
             self._db.run(factory())
+
+    def invalidate(self) -> None:
+        """
+        This service writes outside the memgraph tool's ensure_loaded:
+        tell the tool its active state is no longer what it loaded (a
+        no-op for databases that do not track one).
+        """
+
+        invalidate = getattr(self._db, "invalidate", None)
+        if callable(invalidate):
+            invalidate()
 
     def rebuild(self, ctx: BuildContext) -> None:
         self.reset()

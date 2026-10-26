@@ -1,46 +1,72 @@
 """
 ------------------------------------------------------------------------
 File : test_engine_shutdown.py
-Description: Tests that Engine.shutdown() closes the database when the
-             concrete adapter has a close() method (MemgraphDatabase
-             does), and does not blow up when it doesn't (fakes used in
-             tests, and any future adapter with no such resource).
+Description: Tests that Engine.shutdown() shuts down the packages, and
+             that the Memgraph driver - now owned by the tool_memgraph
+             package - is closed when the engine shuts down or the
+             package is disabled (C31), without the core knowing about it.
 Project : soup-server
 ------------------------------------------------------------------------
 """
 
 from __future__ import annotations
 
+import importlib
+
+import pytest
+
 from soup.core.engine import build_engine
 from soup.core.settings import Settings
-from tests.fakes import FakeDatabase, InMemoryFileStorage
+from tests.fakes import FakeDatabase
+from tests.packages import bundled_api
 
 
 class _DatabaseWithClose(FakeDatabase):
-    def __init__(self):
+    instances: list["_DatabaseWithClose"] = []
+
+    def __init__(self, uri: str = "", auth: tuple = ("", "")):
         super().__init__()
+        self.uri = uri
         self.closed = False
+        _DatabaseWithClose.instances.append(self)
 
     def close(self):
         self.closed = True
 
 
-def test_shutdown_closes_the_database_when_it_has_a_close_method():
-    db = _DatabaseWithClose()
-    engine = build_engine(Settings.from_env({"SOUP_PACKAGES": ""}), db=db, storage=InMemoryFileStorage())
+@pytest.fixture
+def memgraph_engine(monkeypatch, tmp_path):
+    """An engine with the real tool_memgraph package, on a database that records close()."""
 
-    engine.shutdown()
+    bundled_api("tool_memgraph")
+    plugin_module = importlib.import_module("soup_pkg_tool_memgraph.plugin")
+    monkeypatch.setattr(plugin_module, "MemgraphDatabase", _DatabaseWithClose)
+    _DatabaseWithClose.instances = []
+    settings = Settings.from_env({"SOUP_PACKAGES": "tool_memgraph", "SOUP_INSTALLED_PACKAGES_DIR": str(tmp_path)})
+    return build_engine(settings)
+
+
+def test_shutdown_closes_the_memgraph_driver(memgraph_engine):
+    [db] = _DatabaseWithClose.instances
+
+    memgraph_engine.shutdown()
 
     assert db.closed is True
 
 
-def test_shutdown_does_not_fail_when_the_database_has_no_close_method():
-    # FakeDatabase (used everywhere else in the suite) has no close() -
-    # shutdown() must not raise AttributeError over that.
-    db = FakeDatabase()
-    engine = build_engine(Settings.from_env({"SOUP_PACKAGES": ""}), db=db, storage=InMemoryFileStorage())
+def test_disabling_tool_memgraph_closes_the_driver(memgraph_engine):
+    [db] = _DatabaseWithClose.instances
 
-    engine.shutdown()  # must not raise
+    memgraph_engine.package_manager.disable("tool_memgraph")
+
+    assert db.closed is True
+    assert "memgraph" not in memgraph_engine.ctx.tool_registry
+
+
+def test_tool_memgraph_connects_where_the_environment_says(memgraph_engine):
+    [db] = _DatabaseWithClose.instances
+
+    assert db.uri == "bolt://memgraph:7687"
 
 
 def test_shutdown_still_shuts_down_the_plugin_manager():
@@ -58,9 +84,7 @@ def test_shutdown_still_shuts_down_the_plugin_manager():
         def on_shutdown(self, ctx: PluginContext) -> None:
             shutdown_calls.append("tracking_plugin_test_only")
 
-    db = FakeDatabase()
-    settings = Settings.from_env({"SOUP_PACKAGES": ""})
-    engine = build_engine(settings, db=db, storage=InMemoryFileStorage())
+    engine = build_engine(Settings.from_env({"SOUP_PACKAGES": ""}))
 
     # Load an extra plugin directly into the engine's own context/manager,
     # the same way build_engine wires the built-in ones.

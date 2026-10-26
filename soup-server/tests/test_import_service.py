@@ -17,12 +17,11 @@ import json
 import pytest
 
 from soup.core.contracts import EVENT_LOG, EventLogData, InputHandler, Table
-from soup.core.engine import build_engine
 from soup.core.contracts.errors import ValidationError
 from soup.core.registry import Registry
 from soup.core.services.import_service import ImportCommand, ImportService
 from soup.core.settings import Settings
-from tests.fakes import FakeDatabase, InMemoryFileStorage
+from tests.fakes import FakeDatabase, InMemoryFileStorage, fake_tool_engine
 from tests.packages import bundled_api
 
 CsvEventLogReader = bundled_api("csv_reader").CsvEventLogReader
@@ -42,7 +41,7 @@ def _fixture_options():
 
 def _engine(db=None, storage=None, plugins=("csv_reader",)):
     settings = Settings.from_env({"SOUP_PACKAGES": ",".join(plugins)})
-    return build_engine(settings, db=db or FakeDatabase(), storage=storage or InMemoryFileStorage())
+    return fake_tool_engine(settings, db=db or FakeDatabase(), files=storage or InMemoryFileStorage())
 
 
 # ---------------------------------------------------------------------- #
