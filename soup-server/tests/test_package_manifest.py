@@ -46,6 +46,14 @@ def test_app_entry_is_optional_but_must_stay_inside_the_package():
     assert "app" in error.value.details["fields"]
 
 
+def test_app_entry_must_be_inside_dist():
+    data = manifest_for("alpha")
+    for entry in ("index.js", "src/index.ts", "dist/", "distribution/index.js"):
+        with pytest.raises(ValidationError) as error:
+            parse_manifest({**data, "app": {"entry": entry}})
+        assert "dist" in error.value.details["fields"]["app"]
+
+
 @pytest.mark.parametrize(
     ("change", "field"),
     [

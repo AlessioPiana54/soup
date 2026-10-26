@@ -6,10 +6,14 @@ Description: build_flask_app(engine) assembles the Flask app: every
              modification, except Controllers/Graph/graph_controller.py's
              old POST /api/v2/graph, which core_routes.py replaces at the
              identical path/method with the new ImportService-backed
-             implementation (soup/core), plus the /api/v3/packages
-             routes (package_routes.py). soup/api is the only place
-             in soup/ that imports Flask; soup/core and the packages
-             never do.
+             implementation (soup/core), plus the /api/v3 routes
+             (workspace, import, operation, visualizer, package and
+             system blueprints), thin wrappers around the core routers
+             that serialize through serializers.py. Request bodies under
+             /api/v3 are capped at Settings.max_upload_mb (413); the v2
+             routes keep having no limit. soup/api is the only place in
+             soup/ that imports Flask; soup/core and the packages never
+             do.
 Project : soup-server
 ------------------------------------------------------------------------
 """
@@ -18,24 +22,56 @@ from __future__ import annotations
 
 import logging
 
-from flask import Flask, jsonify
+from typing import Optional
+
+from flask import Flask, Request, current_app, jsonify
 from flask_cors import CORS
 from flask_socketio import SocketIO
 from werkzeug.exceptions import HTTPException
 
 from soup.api.core_routes import build_core_blueprint
+from soup.api.import_routes import build_import_blueprint
+from soup.api.operation_routes import build_operation_blueprint
 from soup.api.package_routes import build_package_blueprint
+from soup.api.system_routes import build_system_blueprint
+from soup.api.visualizer_routes import build_visualizer_blueprint
+from soup.api.workspace_routes import build_workspace_blueprint
 from soup.core.engine import Engine
 from soup.core.contracts.errors import DomainError
 from soup.core.results import Result
 
 
+V3_PREFIX = "/api/v3/"
+V3_MAX_CONTENT_LENGTH = "SOUP_V3_MAX_CONTENT_LENGTH"
+
+
+class SoupRequest(Request):
+    """
+    Flask 2.3 has a single, app-wide MAX_CONTENT_LENGTH: this request
+    applies the upload limit to /api/v3 only, so the v2 routes behave as
+    before. Werkzeug answers 413 when the body is larger.
+    """
+
+    @property
+    def max_content_length(self) -> Optional[int]:  # type: ignore[override]
+        if self.path.startswith(V3_PREFIX):
+            return current_app.config.get(V3_MAX_CONTENT_LENGTH)
+        return super().max_content_length
+
+
 def build_flask_app(engine: Engine) -> Flask:
     app = Flask(__name__)
+    app.request_class = SoupRequest
+    app.config[V3_MAX_CONTENT_LENGTH] = engine.settings.max_upload_bytes
 
     _register_legacy_blueprints(app)
     app.register_blueprint(build_core_blueprint(engine))
     app.register_blueprint(build_package_blueprint(engine))
+    app.register_blueprint(build_workspace_blueprint(engine))
+    app.register_blueprint(build_import_blueprint(engine))
+    app.register_blueprint(build_operation_blueprint(engine))
+    app.register_blueprint(build_visualizer_blueprint(engine))
+    app.register_blueprint(build_system_blueprint(engine))
     _register_error_handlers(app)
 
     socketio = SocketIO(app, cors_allowed_origins="*")

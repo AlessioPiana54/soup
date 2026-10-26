@@ -8,7 +8,9 @@ Description: Writes throw-away packages (soup-package.json + server/) on
              packages with the same file names prove their imports are
              isolated), adds every tool its manifest provides and opens
              every extension point it declares. Other templates register
-             an importer "csv", or something they did not declare.
+             an importer "csv", an importer/operation/visualizer set for
+             the API tests (FEATURE_PLUGIN), or something they did not
+             declare. A package can also get app/ files (app_files).
 Project : soup-server
 ------------------------------------------------------------------------
 """
@@ -101,6 +103,59 @@ class Plugin(SoupPlugin):
         ctx.add_extension_point("hidden")
 '''
 
+# Registers an importer "csv", an operation "copy" (table -> table) and a
+# visualizer "view" (element "<package>-view"), for the API tests.
+FEATURE_PLUGIN = '''
+from soup.core.contracts import (
+    Importer, Inspection, ObjectDraft, Operation, OperationInput, PluginContext, SoupPlugin, Visualizer,
+)
+
+
+class CsvImporter(Importer):
+    id = "csv"
+    label = "CSV"
+    extensions = (".csv",)
+    produces = "table"
+
+    def inspect(self, upload, tools):
+        return Inspection()
+
+    def import_(self, upload, obj, options, tools):
+        return {}
+
+    def dispose(self, obj, tools):
+        pass
+
+
+class Copy(Operation):
+    id = "copy"
+    label = "Copy"
+    inputs = (OperationInput("source", ("table",)),)
+    produces = ("table",)
+
+    def run(self, inputs, params, tools):
+        return [ObjectDraft("copy", "table")]
+
+
+class View(Visualizer):
+    id = "view"
+    label = "View"
+    accepts = ("table",)
+
+    def __init__(self, package):
+        self.element = package.replace("_", "-") + "-view"
+
+    def data(self, obj, params, tools):
+        return {"id": obj.id}
+
+
+class Plugin(SoupPlugin):
+    def register(self, ctx: PluginContext) -> None:
+        ctx.add_importer(CsvImporter())
+        ctx.add_operation(Copy())
+        ctx.add_visualizer(View(self.name))
+'''
+
 FAILING_PLUGIN = '''
 from soup.core.contracts import SoupPlugin
 
@@ -124,8 +179,9 @@ def manifest_for(
     extension_points: Sequence[str] = (),
     python_dependencies: Sequence[str] = (),
     api_version: str = CONTRACTS_API_VERSION,
+    app_entry: Optional[str] = None,
 ) -> dict[str, Any]:
-    return {
+    data: dict[str, Any] = {
         "name": name,
         "version": version,
         "api_version": api_version,
@@ -139,6 +195,9 @@ def manifest_for(
         "python_dependencies": list(python_dependencies),
         "server": {"module": "server", "plugin": "plugin:Plugin"},
     }
+    if app_entry is not None:
+        data["app"] = {"entry": app_entry}
+    return data
 
 
 def write_package(
@@ -149,9 +208,13 @@ def write_package(
     init_source: str = "",
     marker: Optional[str] = None,
     manifest: Optional[Mapping[str, Any]] = None,
+    app_files: Optional[Mapping[str, bytes]] = None,
     **manifest_fields: Any,
 ) -> Path:
-    """Write <root>/<name>/ and return its folder."""
+    """
+    Write <root>/<name>/ and return its folder. `app_files` maps paths
+    relative to app/ (e.g. "dist/index.js") to their content.
+    """
 
     package_dir = Path(root) / name
     server = package_dir / "server"
@@ -162,6 +225,10 @@ def write_package(
     (server / "helper.py").write_text(f"MARKER = {(marker or name)!r}\n", encoding="utf-8")
     (server / "plugin.py").write_text(plugin_source, encoding="utf-8")
     (server / "api.py").write_text("from .helper import MARKER\n", encoding="utf-8")
+    for relative, content in (app_files or {}).items():
+        target = package_dir / "app" / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
     return package_dir
 
 

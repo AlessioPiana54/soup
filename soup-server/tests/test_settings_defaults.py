@@ -8,7 +8,8 @@ Description: Tests that Settings.from_env() activates every package
              in the pipeline (regression test for the bug where
              trigger/target pairs were silently ignored in production
              because causal_df was never loaded) - and the package
-             settings read from the environment.
+             settings and the upload limit (SOUP_MAX_UPLOAD_MB) read
+             from the environment.
 Project : soup-server
 ------------------------------------------------------------------------
 """
@@ -17,10 +18,13 @@ from __future__ import annotations
 
 import os
 
+import pytest
+
 from soup.core.engine import build_engine
 from soup.core.settings import (
     DEFAULT_BUNDLED_PACKAGES_DIR,
     DEFAULT_INSTALLED_PACKAGES_DIR,
+    DEFAULT_MAX_UPLOAD_MB,
     Settings,
 )
 
@@ -83,3 +87,12 @@ def test_package_settings_from_env(tmp_path):
     assert settings.packages_path == (str(first), str(second), str(installed))
     assert settings.installed_packages_dir == str(installed)
     assert settings.allow_package_install is True
+
+
+def test_max_upload_mb_from_env():
+    assert Settings.from_env({}).max_upload_mb == DEFAULT_MAX_UPLOAD_MB
+    settings = Settings.from_env({"SOUP_MAX_UPLOAD_MB": "5"})
+    assert (settings.max_upload_mb, settings.max_upload_bytes) == (5, 5 * 1024 * 1024)
+    for invalid in ("0", "-1", "lots"):
+        with pytest.raises(ValueError, match="SOUP_MAX_UPLOAD_MB"):
+            Settings.from_env({"SOUP_MAX_UPLOAD_MB": invalid})

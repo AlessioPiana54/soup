@@ -10,7 +10,9 @@ Description: build_engine() is the single composition root: it
              "memgraph" and "storage" tools, and the mediator
              (ImportRouter, OperationRouter, VisualizerRouter,
              ExportRouter, WorkspaceService), which reaches the
-             catalog/preferences tools. Every tool is provided by a
+             catalog/preferences tools, plus the packages' frontend
+             (PackageFrontend) and the server state (SystemService).
+             Every tool is provided by a
              package (tool_memgraph, tool_storage): the core builds no
              database or storage adapter. If a tool is missing the
              engine still starts: the report lists the problem and the
@@ -30,6 +32,7 @@ from soup.core.dataset_repository import DatasetRepository
 from soup.core.event_bus import EventBus
 from soup.core.plugin_context import DefaultPluginContext
 from soup.core.packages import PackageManager, PackageManagerConfig
+from soup.core.packages.frontend import PackageFrontend
 from soup.core.plugin_manager import PackageReport, PluginManager
 from soup.core.services.core_tools import CoreTools, missing_core_tools
 from soup.core.services.ekg_service import EkgService
@@ -40,6 +43,7 @@ from soup.core.services.import_service import ImportService
 from soup.core.services.legacy_tools import ToolGraph, ToolStorage
 from soup.core.services.operation_router import OperationRouter
 from soup.core.services.orphaned_data import ORPHANED_DATA_FILE, OrphanedDataLog
+from soup.core.services.system_service import SystemService
 from soup.core.services.visualizer_router import VisualizerRouter
 from soup.core.services.workspace_service import WorkspaceService
 from soup.core.settings import Settings
@@ -67,6 +71,8 @@ class Engine:
     visualizer_router: VisualizerRouter
     export_router: ExportRouter
     workspace_service: WorkspaceService
+    frontend: PackageFrontend
+    system: SystemService
 
     def shutdown(self) -> None:
         # The packages release their own resources in on_shutdown (e.g.
@@ -136,4 +142,6 @@ def build_engine(settings: Settings, extra_plugins: Iterable[Any] = ()) -> Engin
             package_status=package_manager.package_status,
             orphaned_data=OrphanedDataLog(Path(settings.installed_packages_dir) / ORPHANED_DATA_FILE),
         ),
+        frontend=PackageFrontend(package_manager),
+        system=SystemService(ctx.tool_registry, core_tools, package_manager),
     )

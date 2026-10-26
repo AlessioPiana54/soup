@@ -57,7 +57,7 @@ La cartella deve avere lo stesso nome del package.
 | `python_dependencies` | Requisiti PEP 508 (`"pandas>=2"`). Vengono **verificati**, mai installati: se una libreria manca o ha la versione sbagliata il package viene escluso con un messaggio che lo dice. Le librerie vanno aggiunte all'immagine del server (`soup-server/requirements.txt`). |
 | `server.module` | Cartella del modulo Python, relativa al package (di solito `server`). |
 | `server.plugin` | `"modulo:Attributo"` dentro `server.module`: una sottoclasse (o un'istanza) di `SoupPlugin`. |
-| `app.entry` | Facoltativo: bundle del frontend, relativo a `app/`. |
+| `app.entry` | Facoltativo: bundle del frontend, relativo a `app/` e dentro `app/dist/` (es. `dist/index.js`): al browser si serve solo `app/dist`. |
 
 Il manifest è la **fonte di verità**: nome, versione, `api_version`, `requires`, `requires_tools`,
 `provides_tools` ed `extension_points` vengono impostati sull'istanza del plugin, che quindi non li
@@ -154,10 +154,12 @@ A runtime, via `/api/v3/packages`:
 
 | Operazione | HTTP | Note |
 |---|---|---|
-| Elenco | `GET /api/v3/packages` | stato `active`, `disabled` o `failed`, con errore e dipendenti |
+| Elenco | `GET /api/v3/packages` | stato `active`, `disabled` o `failed`, con errore, dipendenti e contributi registrati (`contributions`) |
 | Installa | `POST /api/v3/packages` (multipart `file`) | Zip con il manifest alla radice o in un'unica cartella di primo livello. Rifiutati: zip oltre 50 MB (200 MB estratti), percorsi che escono dalla cartella, link simbolici, manifest non validi, librerie Python mancanti, `requires` non attivi. Un nome già usato da un package fornito richiede una versione superiore e `allow_override=true`; un package installato si aggiorna solo a una versione superiore. Il package viene caricato subito; se il caricamento fallisce si torna alla versione precedente. |
 | Disabilita | `POST /api/v3/packages/<nome>/disable` | Toglie i contributi senza riavvio. `409` con `dependents` se altri package attivi ne hanno bisogno; `cascade=true` disabilita anche quelli. |
 | Abilita | `POST /api/v3/packages/<nome>/enable` | `409` se un package richiesto non è attivo. |
+| File del frontend | `GET /api/v3/packages/<nome>/app/<percorso>` | Solo file di `app/dist` di un package attivo; ogni percorso che esce da `app/dist` (anche tramite link simbolici) risponde `404`. ETag basato sulla versione del package. |
+| Manifest frontend | `GET /api/v3/frontend/manifest` | `[{name, version, module_url, requires}]` dei package attivi con parte `app`, ognuno dopo i package che richiede: l'host li importa in quest'ordine. |
 | Disinstalla | `DELETE /api/v3/packages/<nome>` | Solo package installati (quelli forniti si disabilitano). Gli oggetti creati dal package restano nel workspace, segnalati come `package_status: "missing"`. |
 
 Un oggetto il cui package non è attivo (disabilitato o disinstallato) non si cancella normalmente,

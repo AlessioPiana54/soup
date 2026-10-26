@@ -34,7 +34,7 @@ import threading
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, BinaryIO, Iterable, Optional
+from typing import Any, BinaryIO, Iterable, Mapping, Optional
 
 from soup.core.contracts import (
     CONTRACTS_API_VERSION,
@@ -86,6 +86,8 @@ class PackageInfo:
     extension_points: tuple[str, ...] = ()
     dependents: tuple[str, ...] = ()
     app_entry: Optional[str] = None
+    # Contribution type -> keys this package registered (empty when not active).
+    contributions: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -103,6 +105,7 @@ class PackageInfo:
             "extension_points": list(self.extension_points),
             "dependents": list(self.dependents),
             "app_entry": self.app_entry,
+            "contributions": {kind: list(keys) for kind, keys in self.contributions.items()},
         }
 
 
@@ -212,7 +215,29 @@ class PackageManager:
                 extension_points=tuple(declared.extension_points) if declared else (),
                 dependents=tuple(self.dependents(name)),
                 app_entry=manifest.app_entry if manifest else None,
+                contributions=self._contributions(name),
             )
+
+    def source(self, name: str) -> Optional[PackageSource]:
+        """The package as found on disk (None for packages built in code)."""
+
+        with self._lock:
+            return self._sources.get(name)
+
+    def active_in_load_order(self) -> list[str]:
+        """
+        The active packages ordered so that each comes after the packages
+        it requires (stable on the load order).
+        """
+
+        with self._lock:
+            loaded = list(self.plugin_manager.loaded_names)
+            requires = {}
+            for name in loaded:
+                plugin = self.plugin_manager.get(name)
+                requires[name] = tuple(plugin.requires) if plugin is not None else ()
+            ordered, blocked = topological_order(loaded, requires)
+            return [*ordered, *blocked]
 
     def package_status(self, name: str) -> str:
         """active | disabled (known but not loaded, also after a failure) | missing."""
@@ -483,7 +508,11 @@ class PackageManager:
                     del candidates[name]
                     changed = True
 
-        ordered, blocked = _topological_order(list(candidates.values()))
+        by_name = {source.name: source for source in candidates.values()}
+        order, blocked = topological_order(
+            list(by_name), {name: source.manifest.requires for name, source in by_name.items()}
+        )
+        ordered = [by_name[name] for name in order]
         for name in blocked:
             self._fail(report, name, PluginCycleError(blocked))
 
@@ -570,6 +599,16 @@ class PackageManager:
             self._factories[name] = factory
         return factory
 
+    def _contributions(self, name: str) -> dict[str, tuple[str, ...]]:
+        registries = (
+            ("importers", self.ctx.importers),
+            ("operations", self.ctx.operations),
+            ("visualizers", self.ctx.visualizers),
+            ("exporters", self.ctx.exporters),
+            ("tools", self.ctx.tool_registry),
+        )
+        return {kind: tuple(registry.keys_of(name)) for kind, registry in registries}
+
     def _status(self, name: str) -> str:
         if self.plugin_manager.get(name) is not None:
             return STATUS_ACTIVE
@@ -621,33 +660,34 @@ def _same_instance(plugin: SoupPlugin) -> PluginFactory:
     return build
 
 
-def _topological_order(sources: list[PackageSource]) -> tuple[list[PackageSource], list[str]]:
+def topological_order(
+    names: list[str], requires: Mapping[str, Iterable[str]]
+) -> tuple[list[str], list[str]]:
     """
-    Kahn's algorithm on `requires`, stable on the input order. Returns
-    the ordered sources and the names left out: those in a cycle and
-    those depending on one.
+    Kahn's algorithm on `requires`, stable on the order of `names`.
+    Requirements outside `names` are ignored. Returns the ordered names
+    and the names left out: those in a cycle and those depending on one.
     """
 
-    by_name = {source.name: source for source in sources}
-    indegree = {name: 0 for name in by_name}
-    dependents: dict[str, list[str]] = {name: [] for name in by_name}
-    for source in sources:
-        for dep in dict.fromkeys(source.manifest.requires):
-            if dep in by_name:
-                dependents[dep].append(source.name)
-                indegree[source.name] += 1
+    indegree = {name: 0 for name in names}
+    dependents: dict[str, list[str]] = {name: [] for name in names}
+    for name in names:
+        for dep in dict.fromkeys(requires.get(name, ())):
+            if dep in indegree:
+                dependents[dep].append(name)
+                indegree[name] += 1
 
-    position = {name: index for index, name in enumerate(by_name)}
+    position = {name: index for index, name in enumerate(names)}
     queue = [name for name, degree in indegree.items() if degree == 0]
-    ordered: list[PackageSource] = []
+    ordered: list[str] = []
     while queue:
         queue.sort(key=position.__getitem__)
         name = queue.pop(0)
-        ordered.append(by_name[name])
+        ordered.append(name)
         for dependent in dependents[name]:
             indegree[dependent] -= 1
             if indegree[dependent] == 0:
                 queue.append(dependent)
 
-    done = {source.name for source in ordered}
-    return ordered, [name for name in by_name if name not in done]
+    done = set(ordered)
+    return ordered, [name for name in names if name not in done]

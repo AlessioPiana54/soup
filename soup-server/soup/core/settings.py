@@ -8,7 +8,8 @@ Description: Engine settings, read from the environment with explicit
              the packages providing those tools (tool_memgraph reads
              MEMGRAPH_HOST/MEMGRAPH_PORT, tool_storage reads
              SOUP_STORAGE_KIND, SOUP_CONTAINER_NAME and
-             SOUP_LOCAL_STORAGE_ROOT).
+             SOUP_LOCAL_STORAGE_ROOT). SOUP_MAX_UPLOAD_MB caps the
+             request body of /api/v3.
 Project : soup-server
 ------------------------------------------------------------------------
 """
@@ -39,6 +40,8 @@ DEFAULT_INSTALLED_PACKAGES_DIR = str(_SERVER_ROOT / "instance" / "packages")
 # Installing a package runs its code with the server's privileges: off
 # unless explicitly enabled (docker-compose turns it on for development).
 DEFAULT_ALLOW_PACKAGE_INSTALL = False
+# Largest request body accepted by /api/v3 (uploaded files, package zips).
+DEFAULT_MAX_UPLOAD_MB = 200
 
 _TRUE_VALUES = {"1", "true", "yes", "on"}
 
@@ -51,6 +54,18 @@ def _split_paths(value: str) -> tuple[str, ...]:
     # os.pathsep: ":" on Linux/Docker, ";" on Windows, where ":" would
     # split "C:\..." apart.
     return tuple(item.strip() for item in value.split(os.pathsep) if item.strip())
+
+
+def _positive_int(name: str, value: Optional[str], default: int) -> int:
+    if value is None or not value.strip():
+        return default
+    try:
+        number = int(value.strip())
+    except ValueError:
+        raise ValueError(f"{name} must be a positive integer, got {value!r}") from None
+    if number <= 0:
+        raise ValueError(f"{name} must be a positive integer, got {value!r}")
+    return number
 
 
 def _as_bool(value: Optional[str], default: bool) -> bool:
@@ -67,6 +82,11 @@ class Settings:
     installed_packages_dir: str = DEFAULT_INSTALLED_PACKAGES_DIR
     allow_package_install: bool = DEFAULT_ALLOW_PACKAGE_INSTALL
     strict: bool = DEFAULT_STRICT
+    max_upload_mb: int = DEFAULT_MAX_UPLOAD_MB
+
+    @property
+    def max_upload_bytes(self) -> int:
+        return self.max_upload_mb * 1024 * 1024
 
     @classmethod
     def from_env(cls, env: Optional[Mapping[str, str]] = None) -> "Settings":
@@ -90,4 +110,5 @@ class Settings:
             installed_packages_dir=installed_dir,
             allow_package_install=_as_bool(source.get("SOUP_ALLOW_PACKAGE_INSTALL"), DEFAULT_ALLOW_PACKAGE_INSTALL),
             strict=_as_bool(source.get("SOUP_STRICT"), DEFAULT_STRICT),
+            max_upload_mb=_positive_int("SOUP_MAX_UPLOAD_MB", source.get("SOUP_MAX_UPLOAD_MB"), DEFAULT_MAX_UPLOAD_MB),
         )

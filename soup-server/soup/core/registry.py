@@ -105,6 +105,11 @@ class Registry(Generic[T]):
     def owner_of(self, key: str) -> Optional[str]:
         return self._state.owners.get(key)
 
+    def keys_of(self, owner: str) -> list[str]:
+        """The keys registered by `owner`, in registration order."""
+
+        return [key for key, item_owner in self._state.owners.items() if item_owner == owner]
+
     def entries(self) -> list[Registered[T]]:
         """Every contribution with its key and package, ordered like iteration."""
 

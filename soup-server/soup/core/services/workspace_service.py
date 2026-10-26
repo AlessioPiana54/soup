@@ -16,7 +16,8 @@ Description: WorkspaceService - the objects of the workspace as a tree
              the leftovers can be cleaned up later. Each node also says
              whether the package that created the object is active,
              disabled or missing (uninstalled): the object stays in the
-             catalog either way.
+             catalog either way. Thumbnails are SVG markup of at most
+             MAX_THUMBNAIL_BYTES.
 Project : soup-server
 ------------------------------------------------------------------------
 """
@@ -31,6 +32,7 @@ from soup.core.contracts import (
     CREATED_BY_IMPORTER,
     ConflictError,
     Importer,
+    NotFoundError,
     ObjectRef,
     Operation,
     ValidationError,
@@ -46,6 +48,9 @@ _LOGGER = logging.getLogger("soup.workspace")
 
 # Package name -> "active" | "disabled" | "missing" (PackageManager.package_status).
 PackageStatus = Callable[[str], str]
+
+
+MAX_THUMBNAIL_BYTES = 1024 * 1024
 
 
 def _always_active(package: str) -> str:
@@ -117,6 +122,26 @@ class WorkspaceService:
     def get(self, object_id: str) -> ObjectRef:
         return self._core_tools.object(object_id)
 
+    def exists(self, name: str) -> bool:
+        """Whether an object is already called `name` (names are not unique: the UI warns)."""
+
+        if not isinstance(name, str) or not name:
+            raise ValidationError("Name must be a non-empty string")
+        return any(obj.name == name for obj in self._core_tools.catalog().list())
+
+    def update(self, object_id: str, name: Optional[str] = None, description: Optional[str] = None) -> ObjectRef:
+        """Change the name and/or the description; None leaves a value as it is."""
+
+        ref = self.get(object_id)
+        if name is not None:
+            validate_name(name)
+            ref = replace(ref, name=name)
+        if description is not None:
+            if not isinstance(description, str):
+                raise ValidationError("Description must be a string")
+            ref = replace(ref, description=description)
+        return self._update(ref)
+
     def rename(self, object_id: str, name: str) -> ObjectRef:
         validate_name(name)
         return self._update(replace(self.get(object_id), name=name))
@@ -130,9 +155,26 @@ class WorkspaceService:
         ref = self.get(object_id)
         return self._core_tools.catalog().get_thumbnail(ref.id)
 
+    def thumbnail(self, object_id: str) -> str:
+        """:raises NotFoundError: unknown object, or no thumbnail set"""
+
+        svg = self.get_thumbnail(object_id)
+        if svg is None:
+            raise NotFoundError(f"Object '{object_id}' has no thumbnail")
+        return svg
+
     def set_thumbnail(self, object_id: str, svg: Optional[str]) -> None:
+        """`svg` None (or empty) removes the thumbnail."""
+
         if svg is not None and not isinstance(svg, str):
             raise ValidationError("Thumbnail must be SVG text")
+        if svg is not None and not svg.strip():
+            svg = None
+        if svg is not None:
+            if len(svg.encode("utf-8")) > MAX_THUMBNAIL_BYTES:
+                raise ValidationError(f"Thumbnail must be at most {MAX_THUMBNAIL_BYTES // 1024} KB")
+            if "<svg" not in svg:
+                raise ValidationError("Thumbnail must be SVG markup")
         ref = self.get(object_id)
         self._core_tools.catalog().set_thumbnail(ref.id, svg)
 

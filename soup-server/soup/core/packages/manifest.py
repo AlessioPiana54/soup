@@ -29,6 +29,9 @@ from packaging.version import InvalidVersion, Version
 from soup.core.contracts import ValidationError, parse_api_version, validate_name
 
 MANIFEST_FILE = "soup-package.json"
+# The folder of app/ holding the built bundle: the only part served to the browser.
+APP_DIR = "app"
+APP_DIST_DIR = "dist"
 
 # A package name is also part of a Python module name (soup_pkg_<name>).
 _PACKAGE_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -235,6 +238,10 @@ def _parse_app(app: Any, errors: dict[str, str]) -> Optional[str]:
         return None
     if not is_safe_relative_path(entry):
         errors["app"] = f"entry must be a relative path inside app/, got {entry!r}"
+        return None
+    # Only app/dist is served (/api/v3/packages/<name>/app/<path>).
+    if not entry.startswith(f"{APP_DIST_DIR}/") or entry == f"{APP_DIST_DIR}/":
+        errors["app"] = f"entry must be inside app/{APP_DIST_DIR}/, got {entry!r}"
         return None
     return entry
 
