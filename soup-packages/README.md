@@ -95,7 +95,28 @@ class Plugin(SoupPlugin):
 |---|---|
 | `tool_memgraph`, `tool_storage` | I tool (vedi sotto). |
 | `soup_base` | Visualizzatore **Report** (kind `report`), exporter **Report in JSON** e gli elementi riusabili `soup-text`, `soup-markdown`, `soup-image`, `soup-table`, `soup-chart`, `soup-keyvalue`, `soup-file-link`, `soup-error`, `soup-report-view`, `soup-graph-view`. Disegna anche l'anteprima dell'import. Un package che usa questi elementi dichiara `requires: ["soup_base"]`. API in [soup_base/README.md](soup_base/README.md). |
+| `text` | Importer **Testo** (`.txt`, `.md`, `.log`, kind `text`): il file resta com'è nello spazio `text` dello storage, la `meta` ha dimensione, righe e codifica (UTF-8, altrimenti Latin-1). Visualizzatore **Testo** (`<soup-pkg-text-viewer>`): `<soup-text>` o, per i `.md`, `<soup-markdown>`; blocchi di righe con l'azione `lines` `{from, count}` e ricerca in tutto il file con `search` `{query}`. Exporter **File originale** (scarica `<nome>.txt`: l'estensione di un exporter è fissa). |
+| `csv_table` | Importer **CSV come tabella** (`.csv`, `.tsv`, kind `table`, modulo `csv`): separatore (`comma`, `semicolon`, `tab`) e intestazione proposti da `csv.Sniffer`; la tabella è salvata come CSV canonico nello spazio `csv_table`. Visualizzatori **Tabella CSV** (`<soup-pkg-csv-table-viewer>`, paginazione remota con l'azione `page` `{offset, limit, sort: {column, direction}, filter: [{column, value}], search}`, colonne per indice, ordinamento e un filtro per colonna) e **Profilo colonne** (`<soup-pkg-csv-profile>`, valori distinti, celle vuote, esempi e il grafico di `distribution` `{column, top}`). Operazione **Distribuzione di una colonna** (`table` → `report` con un grafico a barre e una tabella). Exporter **CSV** con separatore e intestazione a scelta. |
 | `csv_reader`, `causal_df` | Il lettore CSV e lo step EKG del grafo causale, per le pagine v2. |
+
+`text` e `csv_table` usano solo la libreria standard di Python e il tool `storage` (`requires:
+["soup_base", "tool_storage"]`, `requires_tools: ["storage"]`, niente pandas né Memgraph): sono
+l'esempio di un package che tiene i propri dati in uno spazio dello storage, li rilegge nelle azioni
+dei visualizzatori e li rimuove in `dispose`.
+
+Per non rileggere il file a ogni pagina, ordinamento, filtro o blocco di righe (con
+`DockerVolumeStorage` ogni lettura copia il file fuori dal container), ognuno dei due tiene una cache
+in memoria del contenuto già analizzato (`server/cache.py`: righe decodificate per `text`, colonne e
+righe per `csv_table`), con chiave l'id dell'oggetto. È una LRU limitata per numero di oggetti e per
+dimensione stimata, thread-safe, creata dal `Plugin` in `register()` e condivisa dai suoi contributi:
+non c'è stato globale di modulo, e un disable/enable riparte da una cache vuota (`on_shutdown` la
+svuota). `dispose` e ogni scrittura del file invalidano l'oggetto; un file la cui stima supera il
+limite di dimensione non entra in cache e si legge ogni volta. Limiti: `SOUP_TEXT_CACHE_OBJECTS`,
+`SOUP_TEXT_CACHE_MB`, `SOUP_CSV_TABLE_CACHE_OBJECTS`, `SOUP_CSV_TABLE_CACHE_MB` (default 8 oggetti e
+200 MB per package; un valore non intero positivo fa fallire il caricamento del package con un
+messaggio che lo dice). L'`api.py` dei due package espone i contributi e la cache. Nota per chi scrive campi `select`: un valore fatto solo
+di spazi (come `"\t"`) è considerato vuoto dalla validazione del core, per questo il separatore di
+`csv_table` usa i nomi `comma`, `semicolon`, `tab`.
 
 ## Tool forniti
 

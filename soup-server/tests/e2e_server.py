@@ -6,7 +6,12 @@ Description: The backend of the frontend end-to-end tests
              with the in-memory catalog and preferences (CoreToolsPackage)
              and no bundled package, in throw-away folders, with package
              installation allowed. No Docker, no Memgraph: the tests
-             install the packages they need from zips. Not a test module
+             install the packages they need from zips. A tool_storage
+             installed by a test keeps its files in the same throw-away
+             folder (SOUP_STORAGE_KIND=local, SOUP_LOCAL_STORAGE_ROOT=
+             <root>/storage, always); since it also provides
+             the catalog and the preferences, a test disables
+             test_core_tools before installing it. Not a test module
              (pytest does not collect it).
              Run from soup-server/: python -m tests.e2e_server
              (SOUP_E2E_PORT, default 8080; npm run e2e uses 8081).
@@ -30,6 +35,9 @@ def main() -> None:
     root = Path(tempfile.mkdtemp(prefix="soup-e2e-"))
     bundled, installed = root / "bundled", root / "installed"
     bundled.mkdir()
+    # Read by tool_storage when it is installed: local files, never a Docker volume.
+    os.environ["SOUP_STORAGE_KIND"] = "local"
+    os.environ["SOUP_LOCAL_STORAGE_ROOT"] = str(root / "storage")
     settings = Settings(
         packages_path=(str(bundled), str(installed)),
         installed_packages_dir=str(installed),

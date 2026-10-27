@@ -1,0 +1,15 @@
+{
+  "name": "text",
+  "version": "1.0.0",
+  "api_version": "2.0",
+  "label": "Testo",
+  "description": "Imports text files (.txt, .md, .log) into the package's storage space and shows them as text or markdown.",
+  "author": "SOUP",
+  "requires": ["soup_base", "tool_storage"],
+  "requires_tools": ["storage"],
+  "provides_tools": [],
+  "extension_points": [],
+  "python_dependencies": [],
+  "server": {"module": "server", "plugin": "plugin:Plugin"},
+  "app": {"entry": "dist/index.js"}
+}

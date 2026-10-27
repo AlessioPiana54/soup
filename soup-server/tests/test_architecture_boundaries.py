@@ -9,7 +9,9 @@ Description: Static (AST-based) checks of the dependency rules: soup/core
              never imports pandas; soup/api is the only package that
              imports Flask; and nothing under soup/ imports the Memgraph
              driver or the Docker SDK any more (they belong to the
-             tool_memgraph and tool_storage packages, commit 3).
+             tool_memgraph and tool_storage packages, commit 3); text
+             and csv_table use the standard library and the "storage"
+             tool only (no pandas, no Memgraph driver, commit 7).
 Project : soup-server
 ------------------------------------------------------------------------
 """
@@ -75,7 +77,9 @@ def _package_dirs() -> list[Path]:
 
 
 def test_bundled_packages_exist():
-    assert {path.name for path in _package_dirs()} >= {"csv_reader", "causal_df", "tool_memgraph", "tool_storage"}
+    assert {path.name for path in _package_dirs()} >= {
+        "csv_reader", "causal_df", "tool_memgraph", "tool_storage", "soup_base", "text", "csv_table",
+    }
 
 
 def test_soup_infrastructure_is_gone():
@@ -97,6 +101,27 @@ def test_tool_packages_have_no_app_part():
         manifest = json.loads((PACKAGES_ROOT / name / "soup-package.json").read_text(encoding="utf-8"))
         assert "app" not in manifest
         assert not (PACKAGES_ROOT / name / "app").exists()
+
+
+STDLIB_PACKAGES = ("text", "csv_table")
+
+
+def test_text_and_csv_table_import_neither_pandas_nor_the_database_driver():
+    violations = []
+    for name in STDLIB_PACKAGES:
+        for file_path in _py_files(PACKAGES_ROOT / name):
+            for module in _imported_modules(file_path):
+                if module.split(".")[0] in ("pandas", "neo4j", "docker") or module.startswith("soup_pkg_tool_memgraph"):
+                    violations.append(f"{file_path.relative_to(PACKAGES_ROOT)} imports {module}")
+    assert violations == []
+
+
+def test_text_and_csv_table_only_need_the_storage_tool():
+    for name in STDLIB_PACKAGES:
+        manifest = json.loads((PACKAGES_ROOT / name / "soup-package.json").read_text(encoding="utf-8"))
+        assert manifest["requires"] == ["soup_base", "tool_storage"]
+        assert manifest["requires_tools"] == ["storage"]
+        assert manifest["python_dependencies"] == []
 
 
 def test_packages_never_import_flask():

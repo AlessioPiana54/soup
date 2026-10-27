@@ -3,7 +3,8 @@
 File : test_settings_defaults.py
 Description: Tests that Settings.from_env() activates every package
              found by default - so the bundled packages (csv_reader,
-             causal_df, tool_memgraph, tool_storage) load, with no I/O
+             causal_df, tool_memgraph, tool_storage, soup_base, text,
+             csv_table) load, with no I/O
              until a tool is used, and causal_df's build step actually ends up
              in the pipeline (regression test for the bug where
              trigger/target pairs were silently ignored in production
@@ -36,7 +37,7 @@ def test_default_settings_activate_every_package_found():
     assert settings.allow_package_install is False
 
 
-BUNDLED = ["causal_df", "csv_reader", "soup_base", "tool_memgraph", "tool_storage"]
+BUNDLED = ["causal_df", "csv_reader", "csv_table", "soup_base", "text", "tool_memgraph", "tool_storage"]
 
 
 def test_from_env_with_no_overrides_loads_every_bundled_package():

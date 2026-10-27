@@ -1,0 +1,10 @@
+{
+  "name": "soup-pkg-csv-table-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Frontend of the csv_table package: <soup-pkg-csv-table-viewer> and <soup-pkg-csv-profile> (use the elements of soup_base by tag)",
+  "type": "module",
+  "dependencies": {
+    "@soup/sdk": "*"
+  }
+}

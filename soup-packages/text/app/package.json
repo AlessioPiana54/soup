@@ -1,0 +1,10 @@
+{
+  "name": "soup-pkg-text-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Frontend of the text package: the <soup-pkg-text-viewer> visualizer (uses the elements of soup_base by tag)",
+  "type": "module",
+  "dependencies": {
+    "@soup/sdk": "*"
+  }
+}
