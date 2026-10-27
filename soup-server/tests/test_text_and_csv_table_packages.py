@@ -17,8 +17,8 @@ Description: Tests for soup-packages/text and soup-packages/csv_table,
                whose parent is the table, the CSV export;
              - for a .csv the user chooses between csv_table and another
                importer of the same extension (a package defined in
-               code), and with csv_reader active the /api/v2 import still
-               reads .csv files with its reader;
+               code), and with csv_ekg active a .csv can also become an
+               "ekg";
              - the visualizers of "table" are not offered for a "text"
                object and vice versa.
 Project : soup-server
@@ -208,11 +208,10 @@ def test_for_a_csv_the_user_chooses_between_two_importers(tmp_path, monkeypatch)
     assert (fake["kind"], fake["meta"]) == ("other.table", {"source": "other"})
 
 
-def test_with_csv_reader_active_the_v2_import_still_reads_csv_files(tmp_path, monkeypatch):
-    _, engine, _ = _client(tmp_path, monkeypatch, packages=(*PACKAGES, "csv_reader"))
-    assert engine.ctx.input_readers.owner_of("csv") == "csv_reader"
-    reader = engine.import_service.reader_for("log.csv")
-    assert (reader.format_id, reader.kind) == ("csv", "event_log")
+def test_with_csv_ekg_active_a_csv_can_also_become_an_ekg(tmp_path, monkeypatch):
+    client, _, _ = _client(tmp_path, monkeypatch, packages=(*PACKAGES, "tool_memgraph", "ekg", "csv_ekg"))
+    importers = data_of(client.get("/api/v3/importers", query_string={"filename": "log.csv"}))
+    assert [(item["id"], item["produces"]) for item in importers] == [("csv_ekg.csv", "ekg"), ("csv_table.csv", "table")]
 
 
 # ---------------------------------------------------------------------- #

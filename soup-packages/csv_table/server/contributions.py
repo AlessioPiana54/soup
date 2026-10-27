@@ -72,6 +72,20 @@ SEPARATOR_CHOICES = (
 )
 
 
+def read_table(obj: ObjectRef, tools) -> tuple[list[str], list[table.Row]]:
+    """
+    The columns and rows of a "table" object imported by csv_table, read
+    from the storage (not from a plugin's cache). `tools` must give the
+    "storage" tool.
+    :raises ValidationError: `obj` is not a table
+    :raises NotFoundError: its file is missing
+    """
+
+    if obj.kind != KIND:
+        raise ValidationError(f"Object '{obj.name}' is a {obj.kind!r}, not a {KIND!r}")
+    return table.read_canonical(_space(tools).read(_file_of(obj)))
+
+
 def separator_name(separator: str) -> str:
     return next(name for name, char in SEPARATOR_NAMES.items() if char == separator)
 

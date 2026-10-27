@@ -32,7 +32,7 @@ from soup.core.events import PACKAGE_LOADED, PACKAGE_UNLOADED
 from soup.core.packages import ArchiveLimits
 from soup.core.settings import Settings
 from tests.fakes import CoreToolsPackage
-from tests.package_builder import FAILING_PLUGIN, build_zip, write_package, zip_entries
+from tests.package_builder import FAILING_PLUGIN, build_zip, markers, write_package, zip_entries
 
 
 @pytest.fixture(autouse=True)
@@ -76,7 +76,7 @@ def test_install_from_zip_makes_contributions_available_at_once(tmp_path, dirs):
     info = engine.package_manager.install(io.BytesIO(build_zip(tmp_path, "alpha", provides_tools=["thing"])))
 
     assert (info.name, info.status, info.origin) == ("alpha", "active", "installed")
-    assert "alpha" in engine.ctx.input_readers
+    assert "alpha" in markers(engine.ctx)
     assert engine.ctx.tool_registry.owner_of("thing") == "alpha"
     assert loaded == [{"package": "alpha", "version": "1.0.0"}]
     assert (dirs[1] / "alpha" / "soup-package.json").is_file()
@@ -181,7 +181,7 @@ def test_bundled_name_needs_a_higher_version_and_explicit_override(tmp_path, dir
     info = packages.install(io.BytesIO(build_zip(tmp_path, "alpha", version="2.0.0", marker="v2")), allow_override=True)
 
     assert (info.version, info.origin) == ("2.0.0", "installed")
-    assert "v2" in engine.ctx.input_readers and "bundled" not in engine.ctx.input_readers
+    assert "v2" in markers(engine.ctx) and "bundled" not in markers(engine.ctx)
 
 
 def test_installed_package_is_upgraded_only_to_a_higher_version(tmp_path, dirs):
@@ -193,7 +193,7 @@ def test_installed_package_is_upgraded_only_to_a_higher_version(tmp_path, dirs):
         packages.install(io.BytesIO(build_zip(tmp_path, "alpha", version="1.0.0")))
 
     assert packages.install(io.BytesIO(build_zip(tmp_path, "alpha", version="1.1.0", marker="v11"))).version == "1.1.0"
-    assert "v11" in engine.ctx.input_readers and "v1" not in engine.ctx.input_readers
+    assert "v11" in markers(engine.ctx) and "v1" not in markers(engine.ctx)
 
 
 def test_failing_upgrade_rolls_back_to_the_previous_version(tmp_path, dirs):
@@ -206,7 +206,7 @@ def test_failing_upgrade_rolls_back_to_the_previous_version(tmp_path, dirs):
 
     assert packages.info("alpha").version == "1.0.0"
     assert packages.info("alpha").status == "active"
-    assert "v1" in engine.ctx.input_readers
+    assert "v1" in markers(engine.ctx)
 
 
 def test_failing_new_package_leaves_nothing_behind(tmp_path, dirs):
@@ -230,13 +230,13 @@ def test_disable_removes_contributions_and_enable_restores_them(dirs):
 
     assert engine.package_manager.disable("alpha") == ["alpha"]
 
-    assert "alpha" not in engine.ctx.input_readers
+    assert "alpha" not in markers(engine.ctx)
     assert "thing" not in engine.ctx.tool_registry
     assert unloaded == [{"package": "alpha", "version": "1.0.0"}]
     assert engine.package_manager.info("alpha").status == "disabled"
 
     assert engine.package_manager.enable("alpha").status == "active"
-    assert "alpha" in engine.ctx.input_readers
+    assert "alpha" in markers(engine.ctx)
     assert engine.ctx.tool_registry.owner_of("thing") == "alpha"
 
 
@@ -254,7 +254,7 @@ def test_disable_of_a_required_package_is_409_with_its_dependents(dirs):
         packages.disable("alpha")
     assert error.value.http_status_code == 409
     assert error.value.details == {"dependents": ["gamma", "beta"]}
-    assert "alpha" in engine.ctx.input_readers
+    assert "alpha" in markers(engine.ctx)
 
     with pytest.raises(ConflictError) as tool_error:
         packages.disable("delta")
@@ -331,7 +331,7 @@ def test_uninstall_restores_the_bundled_package_of_the_same_name(tmp_path, dirs)
     packages.uninstall("alpha")
 
     assert (packages.info("alpha").version, packages.info("alpha").origin) == ("1.0.0", "bundled")
-    assert "bundled" in engine.ctx.input_readers
+    assert "bundled" in markers(engine.ctx)
 
 
 def test_bundled_packages_cannot_be_uninstalled(dirs):

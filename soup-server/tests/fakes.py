@@ -8,7 +8,11 @@ Description: In-memory fakes used by every test instead of Memgraph and
              and the "memgraph" and "storage" tools of the tool_memgraph
              and tool_storage packages built on them
              (fake_memgraph_tool, fake_storage_tool, LegacyToolsPackage,
-             fake_tool_engine).
+             fake_tool_engine, with the in-memory catalog too). The ekg
+             packages require tool_memgraph and tool_storage themselves:
+             ekg_engine loads the real ones, tool_storage on a throw-away
+             folder (no Docker) and the memgraph tool on a FakeDatabase
+             (use_database).
 Project : soup-server
 ------------------------------------------------------------------------
 """
@@ -216,9 +220,61 @@ def fake_tool_engine(
     """
     build_engine(settings) with the in-memory "memgraph" and "storage"
     tools (LegacyToolsPackage) in place of tool_memgraph and tool_storage,
-    which `settings` must therefore not activate.
+    which `settings` must therefore not activate, and the in-memory
+    catalog and preferences (CoreToolsPackage) unless `extra_plugins`
+    already has one.
     """
 
     from soup.core.engine import build_engine
 
-    return build_engine(settings, extra_plugins=[LegacyToolsPackage(db, files), *extra_plugins])
+    extra = [LegacyToolsPackage(db, files), *extra_plugins]
+    if not any(isinstance(plugin, CoreToolsPackage) for plugin in extra_plugins):
+        extra.append(CoreToolsPackage())
+    return build_engine(settings, extra_plugins=extra)
+
+
+# The packages of the EKG (commit 8) and what they require.
+EKG_PACKAGES = ("tool_memgraph", "tool_storage", "soup_base", "csv_table", "ekg", "csv_ekg", "causal_df")
+
+
+def use_database(engine, db: GraphDatabase) -> None:
+    """Point the real "memgraph" tool of `engine` (tool_memgraph) at `db` (white-box, tests only)."""
+
+    engine.ctx.tool_registry.get("memgraph")._db = db
+
+
+def ekg_engine(tmp_path, monkeypatch, packages: Iterable[str] = EKG_PACKAGES, db=None, extra_plugins=()):
+    """
+    build_engine with the bundled `packages`, tool_storage's local backend
+    on tmp_path/"volume" (the folders of the datasets and the catalog) and
+    the memgraph tool on `db` (a new FakeDatabase if None).
+    """
+
+    from soup.core.engine import build_engine
+    from soup.core.settings import Settings
+    from tests.packages import BUNDLED_PACKAGES_DIR
+
+    monkeypatch.setenv("SOUP_STORAGE_KIND", "local")
+    monkeypatch.setenv("SOUP_LOCAL_STORAGE_ROOT", str(tmp_path / "volume"))
+    installed = tmp_path / "installed"
+    settings = Settings(
+        packages=tuple(packages),
+        packages_path=(str(BUNDLED_PACKAGES_DIR), str(installed)),
+        installed_packages_dir=str(installed),
+    )
+    engine = build_engine(settings, extra_plugins=list(extra_plugins))
+    if "memgraph" in engine.ctx.tool_registry:
+        use_database(engine, db if db is not None else FakeDatabase())
+    return engine
+
+
+def volume_files(tmp_path) -> list[str]:
+    """The files on the ekg_engine volume, as "<folder>/<file>" paths, without the catalog's."""
+
+    root = tmp_path / "volume"
+    if not root.exists():
+        return []
+    return sorted(
+        path.relative_to(root).as_posix() for path in root.rglob("*")
+        if path.is_file() and not path.relative_to(root).as_posix().startswith("_")
+    )

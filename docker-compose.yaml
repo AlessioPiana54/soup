@@ -37,7 +37,9 @@ services:
     ports:
       - "7687:7687" # Expose Memgraph Bolt protocol port
       - "7444:7444" # Expose Memgraph HTTP protocol port
-      - "3000:3000" # Expose Memgraph's web interface port
+      # Memgraph Lab (web interface) on http://localhost:3300: Windows often
+      # reserves the host ports 2981-3080 (Hyper-V/WinNAT), so 3000 cannot be bound.
+      - "3300:3000"
     networks:
       - app-network
     volumes:

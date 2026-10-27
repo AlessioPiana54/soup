@@ -2,11 +2,12 @@
 ------------------------------------------------------------------------
 File : test_settings_defaults.py
 Description: Tests that Settings.from_env() activates every package
-             found by default - so the bundled packages (csv_reader,
-             causal_df, tool_memgraph, tool_storage, soup_base, text,
-             csv_table) load, with no I/O
-             until a tool is used, and causal_df's build step actually ends up
-             in the pipeline (regression test for the bug where
+             found by default - so the bundled packages (tool_memgraph,
+             tool_storage, ekg, csv_ekg, causal_df, soup_base, text,
+             csv_table) load, with no I/O until a tool is used (but the
+             ekg package's adoption of the datasets on the volume, which
+             fails quietly without Docker), and causal_df's build step
+             actually ends up in "ekg.build_steps" (regression test for the bug where
              trigger/target pairs were silently ignored in production
              because causal_df was never loaded) - and the package
              settings and the upload limit (SOUP_MAX_UPLOAD_MB) read
@@ -37,7 +38,7 @@ def test_default_settings_activate_every_package_found():
     assert settings.allow_package_install is False
 
 
-BUNDLED = ["causal_df", "csv_reader", "csv_table", "soup_base", "text", "tool_memgraph", "tool_storage"]
+BUNDLED = ["causal_df", "csv_ekg", "csv_table", "ekg", "soup_base", "text", "tool_memgraph", "tool_storage"]
 
 
 def test_from_env_with_no_overrides_loads_every_bundled_package():
@@ -53,10 +54,9 @@ def test_from_env_with_no_overrides_loads_every_bundled_package():
 def test_causal_step_is_in_the_pipeline_by_default():
     engine = build_engine(Settings.from_env({}))
 
-    pipeline = engine.ekg_service.build_pipeline()
+    steps = engine.ctx.contributions("ekg.build_steps")
 
-    assert [step.order for step in pipeline] == [100, 200, 300, 400, 450, 500]
-    assert "causal_directly_follows" in [step.key for step in pipeline]
+    assert [(step.key, step.order) for step in steps] == [("causal_directly_follows", 450)]
 
 
 def test_explicit_empty_soup_packages_disables_everything():
@@ -71,8 +71,8 @@ def test_explicit_empty_soup_packages_disables_everything():
 
 
 def test_soup_plugins_is_still_read_as_an_alias_of_soup_packages():
-    assert Settings.from_env({"SOUP_PLUGINS": "csv_reader"}).packages == ("csv_reader",)
-    assert Settings.from_env({"SOUP_PACKAGES": "causal_df", "SOUP_PLUGINS": "csv_reader"}).packages == ("causal_df",)
+    assert Settings.from_env({"SOUP_PLUGINS": "csv_ekg"}).packages == ("csv_ekg",)
+    assert Settings.from_env({"SOUP_PACKAGES": "causal_df", "SOUP_PLUGINS": "csv_ekg"}).packages == ("causal_df",)
 
 
 def test_package_settings_from_env(tmp_path):

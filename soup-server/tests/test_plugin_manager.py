@@ -12,6 +12,8 @@ import pytest
 
 from soup.core.contracts import (
     CONTRACTS_API_VERSION,
+    Importer,
+    Inspection,
     PluginApiVersionError,
     PluginConflictError,
     PluginCycleError,
@@ -19,6 +21,29 @@ from soup.core.contracts import (
     SoupPlugin,
 )
 from soup.core.plugin_manager import PluginManager
+
+
+class _Marker(Importer):
+    """An importer registered only to see a package's contributions come and go."""
+
+    extensions = (".marker",)
+    produces = "marker"
+
+    def __init__(self, marker_id):
+        self.id = marker_id
+
+    def inspect(self, upload, tools):
+        return Inspection()
+
+    def import_(self, upload, obj, options, tools):
+        return {}
+
+    def dispose(self, obj, tools):
+        pass
+
+
+def _mark(marker_id):
+    return lambda ctx: ctx.add_importer(_Marker(marker_id))
 
 
 class _Plugin(SoupPlugin):
@@ -32,10 +57,12 @@ class _Plugin(SoupPlugin):
         api_version=CONTRACTS_API_VERSION,
         on_register=None,
         on_shutdown_cb=None,
+        extension_points=(),
     ):
         self.name = name
         self.version = version
         self.requires = tuple(requires)
+        self.extension_points = tuple(extension_points)
         self.api_version = api_version
         self._on_register = on_register
         self._on_shutdown_cb = on_shutdown_cb
@@ -53,8 +80,8 @@ class _Plugin(SoupPlugin):
 
 def test_independent_plugins_all_register_successfully():
     manager = PluginManager()
-    a = _Plugin("plugin_a", on_register=lambda ctx: ctx.add_input_reader("a", object()))
-    b = _Plugin("plugin_b", on_register=lambda ctx: ctx.add_input_reader("b", object()))
+    a = _Plugin("plugin_a", on_register=_mark("a"))
+    b = _Plugin("plugin_b", on_register=_mark("b"))
 
     report = manager.load([a, b])
 
@@ -102,7 +129,11 @@ def test_self_dependency_is_a_cycle():
 def test_four_faulty_plugins_are_isolated_without_blocking_the_good_one():
     manager = PluginManager()
 
-    good = _Plugin("good", on_register=lambda ctx: ctx.add_input_reader("csv", object()))
+    def _open_and_contribute(ctx):
+        ctx.add_extension_point("inputs")
+        ctx.contribute("inputs", object(), key="csv")
+
+    good = _Plugin("good", on_register=_open_and_contribute, extension_points=("inputs",))
 
     def _raise(ctx):
         raise RuntimeError("boom")
@@ -110,7 +141,7 @@ def test_four_faulty_plugins_are_isolated_without_blocking_the_good_one():
     raises_exception = _Plugin("raises_exception", on_register=_raise)
 
     def _duplicate_key(ctx):
-        ctx.add_input_reader("csv", object())  # "csv" already owned by `good`
+        ctx.contribute("inputs", object(), key="csv")  # "csv" already contributed by `good`
 
     duplicate_key = _Plugin("duplicate_key", on_register=_duplicate_key)
 
@@ -208,7 +239,7 @@ def test_load_is_incremental_on_the_same_context():
 
 def test_loading_an_already_loaded_package_fails_without_touching_it():
     manager = PluginManager()
-    manager.load([_Plugin("a", on_register=lambda ctx: ctx.add_input_reader("a", object()))])
+    manager.load([_Plugin("a", on_register=_mark("a"))])
 
     report = manager.load([_Plugin("a")])
 
@@ -221,7 +252,7 @@ def test_unload_removes_contributions_and_publishes_package_unloaded():
     shutdowns = []
     plugin = _Plugin(
         "a",
-        on_register=lambda ctx: ctx.add_input_reader("a", object()),
+        on_register=_mark("a"),
         on_shutdown_cb=lambda ctx: shutdowns.append("a"),
     )
     manager.load([plugin])
@@ -231,7 +262,7 @@ def test_unload_removes_contributions_and_publishes_package_unloaded():
 
     assert manager.unload("a") is plugin
 
-    assert "a" not in ctx.input_readers
+    assert "a.a" not in ctx.importers
     assert manager.loaded_names == []
     assert shutdowns == ["a"]
     assert events == [{"package": "a", "version": "1.0.0"}]

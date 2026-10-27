@@ -57,11 +57,6 @@ class DefaultPluginContext:
     """
 
     def __init__(self, event_bus: Optional[EventBus] = None) -> None:
-        # Legacy event-log import (/api/v2/graph), moved out in commit 8.
-        self.input_readers: Registry[Any] = Registry("input_reader")
-        self.input_handlers: Registry[Any] = Registry("input_handler")
-        self.build_steps: Registry[Any] = Registry("build_step")
-
         self.importers: Registry[Importer] = Registry("importer")
         self.operations: Registry[Operation] = Registry("operation")
         self.visualizers: Registry[Visualizer] = Registry("visualizer")
@@ -76,10 +71,7 @@ class DefaultPluginContext:
         self._declared_points: frozenset[str] = frozenset()
 
     def _registries(self) -> tuple[Registry[Any], ...]:
-        return (
-            self.input_readers, self.input_handlers, self.build_steps,
-            self.importers, self.operations, self.visualizers, self.exporters, self.tool_registry,
-        )
+        return (self.importers, self.operations, self.visualizers, self.exporters, self.tool_registry)
 
     # --- used internally by PluginManager; not part of the package-facing API ---
     def _set_current_plugin(self, name: Optional[str]) -> None:
@@ -121,15 +113,6 @@ class DefaultPluginContext:
         """The tools the current package declared (requires_tools + provides_tools)."""
 
         return ToolBox(self.tool_registry, self._declared_tools, self._require_current_plugin())
-
-    def add_input_reader(self, key: str, reader: Any) -> None:
-        self.input_readers.register(reader, self._require_current_plugin(), key)
-
-    def add_input_handler(self, key: str, handler: Any) -> None:
-        self.input_handlers.register(handler, self._require_current_plugin(), key)
-
-    def add_build_step(self, key: str, step: Any) -> None:
-        self.build_steps.register(step, self._require_current_plugin(), key)
 
     def add_importer(self, importer: Importer) -> None:
         owner = self._require_current_plugin()

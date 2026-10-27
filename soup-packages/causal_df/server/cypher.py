@@ -16,7 +16,7 @@ Project : soup-packages/causal_df
 
 from __future__ import annotations
 
-from soup.core.contracts import Query
+from soup_pkg_ekg.api import Query
 
 
 def _find_causal_node_query(trigger: str, target: str, node_type: str) -> Query:

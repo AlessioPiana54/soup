@@ -9,10 +9,16 @@ Description: Version of the stable contracts exposed by the host to
              Compatibility rule: a package is compatible when it has the
              same MAJOR as the host and a MINOR lower than or equal to the
              host's. A minor release only adds to the contracts, so a
-             host "2.1" accepts packages "2.0" and "2.1"; it refuses
-             "2.2" (needs something the host does not have yet) and any
-             other major ("1.x", "3.0"), which may have removed or changed
+             host "3.1" accepts packages "3.0" and "3.1"; it refuses
+             "3.2" (needs something the host does not have yet) and any
+             other major ("2.x", "4.0"), which may have removed or changed
              something.
+
+             History: "3.0" (commit 8) removed add_input_reader,
+             add_input_handler and add_build_step from PluginContext (the
+             event log and the EKG moved to the ekg package; build steps
+             are contributed to its "ekg.build_steps" extension point), so
+             packages written for "2.x" no longer load.
 Project : soup-server
 ------------------------------------------------------------------------
 """
@@ -22,7 +28,7 @@ from __future__ import annotations
 import re
 from typing import Optional
 
-CONTRACTS_API_VERSION = "2.0"
+CONTRACTS_API_VERSION = "3.0"
 
 _API_VERSION_RE = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 

@@ -9,6 +9,9 @@ Description: StorageTool - the "storage" tool. Files are grouped in
              Memgraph (LOAD CSV reads from the same /soup volume). Each
              package uses its own namespace; an EKG dataset keeps its
              /soup/<name>/ folder (namespace = dataset name).
+             space.subspace(name) is a folder inside a namespace (e.g. an
+             EKG dataset's Analyses/), and namespaces() lists the entries
+             at the root with a valid namespace name.
              Namespaces and file names go through validate_name, so ""
              "..", separators and a leading "_" are refused: "_catalog",
              where the catalog and the preferences live, is out of reach.
@@ -26,6 +29,7 @@ from soup.core.contracts import (
     NotFoundError,
     ServiceUnavailableError,
     Tool,
+    ValidationError,
     validate_name,
 )
 
@@ -54,29 +58,37 @@ def guard_os_errors(what: str, call, *args):
 
 
 class StorageSpace(FileStorage):
-    """The files of one namespace. `list()` returns their names."""
+    """The files of one namespace (or of a folder in it). `list()` returns their names."""
 
-    def __init__(self, backend: FileStorage, namespace: str):
+    def __init__(self, backend: FileStorage, namespace: str, folder: str = ""):
         self._backend = backend
         self.namespace = _namespace(namespace)
+        self._folder = f"{self.namespace}/{folder}" if folder else self.namespace
+
+    def subspace(self, name: str) -> "StorageSpace":
+        """The folder `name` inside this one, e.g. space("orders").subspace("Analyses")."""
+
+        relative = self._folder[len(self.namespace) + 1:]
+        folder = f"{relative}/{_file_name(name)}" if relative else _file_name(name)
+        return StorageSpace(self._backend, self.namespace, folder)
 
     def _path(self, name: str) -> str:
-        return f"{self.namespace}/{_file_name(name)}"
+        return f"{self._folder}/{_file_name(name)}"
 
     def read(self, path: str) -> bytes:
-        return guard_os_errors(f"File '{self.namespace}/{path}'", self._backend.read, self._path(path))
+        return guard_os_errors(f"File '{self._folder}/{path}'", self._backend.read, self._path(path))
 
     def write(self, path: str, data: bytes) -> None:
-        guard_os_errors(f"File '{self.namespace}/{path}'", self._backend.write, self._path(path), bytes(data))
+        guard_os_errors(f"File '{self._folder}/{path}'", self._backend.write, self._path(path), bytes(data))
 
     def exists(self, path: str) -> bool:
-        return guard_os_errors(f"File '{self.namespace}/{path}'", self._backend.exists, self._path(path))
+        return guard_os_errors(f"File '{self._folder}/{path}'", self._backend.exists, self._path(path))
 
     def delete(self, path: str) -> None:
-        guard_os_errors(f"File '{self.namespace}/{path}'", self._backend.delete, self._path(path))
+        guard_os_errors(f"File '{self._folder}/{path}'", self._backend.delete, self._path(path))
 
     def list(self, prefix: str = "") -> list[str]:
-        names = guard_os_errors(f"Namespace '{self.namespace}'", self._backend.list, self.namespace)
+        names = guard_os_errors(f"Namespace '{self._folder}'", self._backend.list, self._folder)
         return sorted(name for name in names if name.startswith(prefix))
 
 
@@ -94,6 +106,18 @@ class StorageTool(Tool):
         """Absolute path of <namespace>/<name> under the root, e.g. for LOAD CSV."""
 
         return posixpath.join(self._root, _namespace(namespace), _file_name(name))
+
+    def namespaces(self) -> list[str]:
+        """The entries at the root whose name is a valid namespace ("_catalog" is not), by name."""
+
+        names = guard_os_errors("Storage root", self._backend.list, "")
+        valid = []
+        for name in names:
+            try:
+                valid.append(_namespace(name))
+            except ValidationError:
+                continue
+        return sorted(valid)
 
     def delete_space(self, namespace: str) -> None:
         """Remove the namespace and every file in it (no-op if it does not exist)."""

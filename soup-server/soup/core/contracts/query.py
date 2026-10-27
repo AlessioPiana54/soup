@@ -13,9 +13,8 @@ Description: Query value object and ident() helper. Together they are the
              TODO(commit 11): temporary copy. The canonical definition
              lives in soup-packages/tool_memgraph/server/query.py
              (soup_pkg_tool_memgraph.api); this one stays only for the
-             legacy core modules (ekg schema/steps, GraphDatabase,
-             EkgBuildStep, causal_df) and must not diverge from it
-             (tests/test_query_copy.py).
+             GraphDatabase port and the /api/v2 routes of soup/api, and
+             must not diverge from it (tests/test_query_copy.py).
 Project : soup-server
 ------------------------------------------------------------------------
 """

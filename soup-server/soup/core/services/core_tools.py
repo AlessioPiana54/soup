@@ -6,10 +6,9 @@ Description: CoreTools - how the core's own services reach the tools
              by packages), resolve object ids through the catalog and
              build the ToolBox handed to each contribution. A missing
              core tool is not a startup error: the services that need it
-             answer 503 with a clear message. The legacy import path
-             also reaches the "memgraph" and "storage" tools by name
-             (graph(), storage(); TODO(commit 8): it moves to the ekg
-             package, which declares them in requires_tools).
+             answer 503 with a clear message. Every other tool (memgraph,
+             storage, ...) is reached only by the packages that declare
+             it, through their ToolBox.
 Project : soup-server
 ------------------------------------------------------------------------
 """
@@ -24,7 +23,6 @@ from soup.core.contracts import (
     CATALOG_TOOL,
     PREFERENCES_TOOL,
     Catalog,
-    GraphDatabase,
     NotFoundError,
     ObjectRef,
     Preferences,
@@ -32,7 +30,6 @@ from soup.core.contracts import (
     Tool,
     ValidationError,
 )
-from soup.core.process_timer import DATE_FORMAT
 from soup.core.registry import Registry
 from soup.core.toolbox import ToolBox
 
@@ -47,15 +44,9 @@ CORE_TOOLS: tuple[tuple[str, type[Tool]], ...] = (
     (PREFERENCES_TOOL, Preferences),
 )
 
-# Tools the legacy import path reaches by name (TODO(commit 8): drop,
-# with the legacy path). Provided by tool_memgraph and tool_storage.
-MEMGRAPH_TOOL = "memgraph"
-STORAGE_TOOL = "storage"
-_STORAGE_METHODS = ("space", "path_for", "delete_space")
-LEGACY_TOOLS: tuple[tuple[str, str], ...] = (
-    (MEMGRAPH_TOOL, "/api/v2/graph and /api/v2/memgraph-connect"),
-    (STORAGE_TOOL, "/api/v2/graph"),
-)
+# The date format of created_at, the one of the legacy dataset configs:
+# datetime.now().strftime(DATE_FORMAT)[:-3], "2025-01-01T10:00:00.123".
+DATE_FORMAT = "%Y-%m-%dT%H:%M:%S.%f"
 
 
 def new_object_id() -> str:
@@ -63,7 +54,7 @@ def new_object_id() -> str:
 
 
 def timestamp(clock: Callable[[], datetime]) -> str:
-    """Same format as ProcessTimer: "2025-01-01T10:00:00.123"."""
+    """DATE_FORMAT with milliseconds: "2025-01-01T10:00:00.123"."""
 
     return clock().strftime(DATE_FORMAT)[:-3]
 
@@ -89,36 +80,6 @@ class CoreTools:
 
     def preferences(self) -> Preferences:
         return self._port(PREFERENCES_TOOL, Preferences, "user preferences")
-
-    def graph(self) -> GraphDatabase:
-        """The "memgraph" tool, for the legacy import path. :raises ServiceUnavailableError:"""
-
-        tool = self._tools.get(MEMGRAPH_TOOL)
-        if tool is None:
-            raise ServiceUnavailableError(
-                f"The graph database is not available: no loaded package provides the '{MEMGRAPH_TOOL}' tool"
-            )
-        if not isinstance(tool, GraphDatabase):
-            raise ServiceUnavailableError(
-                f"The graph database is not available: the '{MEMGRAPH_TOOL}' tool is a "
-                f"{type(tool).__name__}, not a GraphDatabase"
-            )
-        return tool
-
-    def storage(self) -> Tool:
-        """The "storage" tool, for the legacy import path. :raises ServiceUnavailableError:"""
-
-        tool = self._tools.get(STORAGE_TOOL)
-        if tool is None:
-            raise ServiceUnavailableError(
-                f"File storage is not available: no loaded package provides the '{STORAGE_TOOL}' tool"
-            )
-        missing = [method for method in _STORAGE_METHODS if not callable(getattr(tool, method, None))]
-        if missing:
-            raise ServiceUnavailableError(
-                f"File storage is not available: the '{STORAGE_TOOL}' tool has no {', '.join(missing)}"
-            )
-        return tool
 
     def object(self, obj: ObjectLike) -> ObjectRef:
         """Resolve an id (or pass an ObjectRef through). :raises NotFoundError:"""
@@ -163,9 +124,6 @@ def missing_core_tools(tools: Registry[Tool]) -> list[str]:
                 f"The '{name}' tool is a {type(tool).__name__}, not a {port.__name__}: "
                 "services that need it will answer 503"
             )
-    for name, routes in LEGACY_TOOLS:
-        if name not in tools:
-            problems.append(f"No package provides the '{name}' tool: {routes} will answer 503")
     return problems
 
 

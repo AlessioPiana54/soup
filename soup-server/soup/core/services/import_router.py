@@ -13,7 +13,7 @@ Description: ImportRouter - routes an uploaded file to the importer the
              Importers are addressed by their full key "<package>.<id>"
              (importers_for() lists them with their key and package),
              which is also what created_by.contributor_id records.
-             Separate from the legacy ImportService (/api/v2/graph).
+             /api/v2/graph also goes through it (the csv_ekg importer).
 Project : soup-server
 ------------------------------------------------------------------------
 """

@@ -35,7 +35,7 @@ def _object(name: str = "orders", parents=(), created_at: str = "2025-01-01T10:0
         id=str(uuid.uuid4()),
         name=name,
         kind="table",
-        created_by=CreatedBy("importer", "csv_reader.csv", "csv_reader"),
+        created_by=CreatedBy("importer", "csv_ekg.csv", "csv_ekg"),
         parents=tuple(parents),
         created_at=created_at,
         meta=dict(meta),

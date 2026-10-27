@@ -31,14 +31,14 @@ La cartella deve avere lo stesso nome del package.
 
 ```json
 {
-  "name": "csv_reader",
+  "name": "csv_ekg",
   "version": "1.0.0",
-  "api_version": "2.0",
-  "label": "CSV reader",
-  "description": "Reads flat CSV event logs.",
+  "api_version": "3.0",
+  "label": "CSV come event log (EKG)",
+  "description": "Imports CSV files as event logs and builds their EKG on Memgraph.",
   "author": "SOUP",
-  "requires": [],
-  "requires_tools": [],
+  "requires": ["ekg", "soup_base", "csv_table"],
+  "requires_tools": ["memgraph", "storage"],
   "provides_tools": [],
   "extension_points": [],
   "python_dependencies": ["pandas>=2"],
@@ -51,7 +51,7 @@ La cartella deve avere lo stesso nome del package.
 |---|---|
 | `name` | Lettere minuscole, cifre e `_`, inizia con una lettera (né `""`, né `..`, né separatori, né `_` iniziale). Diventa anche il nome del modulo Python `soup_pkg_<name>`. |
 | `version` | Versione PEP 440 (`1.0.0`). Serve per gli aggiornamenti. |
-| `api_version` | Versione dei contratti del core per cui il package è scritto, `"MAGGIORE.MINORE"`. È compatibile se ha lo stesso numero maggiore di `CONTRACTS_API_VERSION` dell'host e un minore uguale o inferiore: un host `"2.1"` accetta `"2.0"` e `"2.1"`, rifiuta `"2.2"`, `"1.x"` e `"3.0"`. |
+| `api_version` | Versione dei contratti del core per cui il package è scritto, `"MAGGIORE.MINORE"`. È compatibile se ha lo stesso numero maggiore di `CONTRACTS_API_VERSION` dell'host e un minore uguale o inferiore: un host `"3.1"` accetta `"3.0"` e `"3.1"`, rifiuta `"3.2"`, `"2.x"` e `"4.0"`. L'host attuale è `"3.0"`: il passaggio da `"2.0"` (commit 8) ha tolto da `PluginContext` `add_input_reader`, `add_input_handler` e `add_build_step`, quindi un package `"2.x"` va aggiornato (gli step EKG si contribuiscono a `ekg.build_steps`). |
 | `label`, `description`, `author` | Testi mostrati all'utente; `label` vale `name` se assente. |
 | `requires` | Package che devono essere attivi prima di questo. |
 | `requires_tools` | Tool usati (catalogo, Memgraph, storage, preferenze...). Un package non può usare un tool che non dichiara qui. |
@@ -69,18 +69,19 @@ ripete:
 ```python
 from soup.core.contracts import PluginContext, SoupPlugin
 
-from .reader import CsvEventLogReader
+from .contributions import CsvEkgImporter, TableToEkg
 
 
 class Plugin(SoupPlugin):
     def register(self, ctx: PluginContext) -> None:
-        ctx.add_input_reader(CsvEventLogReader.format_id, CsvEventLogReader())
+        ctx.add_importer(CsvEkgImporter())
+        ctx.add_operation(TableToEkg())
 ```
 
 ## Nomi dei contributi
 
 - Importer, operazioni, visualizzatori ed exporter hanno un `id` unico **solo dentro il package**:
-  il core li registra con la chiave `"<package>.<id>"` (es. `csv_reader.csv`), ed è questa chiave
+  il core li registra con la chiave `"<package>.<id>"` (es. `csv_ekg.csv`), ed è questa chiave
   completa che usano i router, le API e `created_by.contributor_id` degli oggetti. Due package
   possono quindi offrire entrambi un importer `csv`: per un file `.csv` compaiono tutti e due e
   sceglie l'utente.
@@ -97,7 +98,9 @@ class Plugin(SoupPlugin):
 | `soup_base` | Visualizzatore **Report** (kind `report`), exporter **Report in JSON** e gli elementi riusabili `soup-text`, `soup-markdown`, `soup-image`, `soup-table`, `soup-chart`, `soup-keyvalue`, `soup-file-link`, `soup-error`, `soup-report-view`, `soup-graph-view`. Disegna anche l'anteprima dell'import. Un package che usa questi elementi dichiara `requires: ["soup_base"]`. API in [soup_base/README.md](soup_base/README.md). |
 | `text` | Importer **Testo** (`.txt`, `.md`, `.log`, kind `text`): il file resta com'è nello spazio `text` dello storage, la `meta` ha dimensione, righe e codifica (UTF-8, altrimenti Latin-1). Visualizzatore **Testo** (`<soup-pkg-text-viewer>`): `<soup-text>` o, per i `.md`, `<soup-markdown>`; blocchi di righe con l'azione `lines` `{from, count}` e ricerca in tutto il file con `search` `{query}`. Exporter **File originale** (scarica `<nome>.txt`: l'estensione di un exporter è fissa). |
 | `csv_table` | Importer **CSV come tabella** (`.csv`, `.tsv`, kind `table`, modulo `csv`): separatore (`comma`, `semicolon`, `tab`) e intestazione proposti da `csv.Sniffer`; la tabella è salvata come CSV canonico nello spazio `csv_table`. Visualizzatori **Tabella CSV** (`<soup-pkg-csv-table-viewer>`, paginazione remota con l'azione `page` `{offset, limit, sort: {column, direction}, filter: [{column, value}], search}`, colonne per indice, ordinamento e un filtro per colonna) e **Profilo colonne** (`<soup-pkg-csv-profile>`, valori distinti, celle vuote, esempi e il grafico di `distribution` `{column, top}`). Operazione **Distribuzione di una colonna** (`table` → `report` con un grafico a barre e una tabella). Exporter **CSV** con separatore e intestazione a scelta. |
-| `csv_reader`, `causal_df` | Il lettore CSV e lo step EKG del grafo causale, per le pagine v2. |
+| `ekg` | Solo server. L'event log (`Table` e conversioni pandas, `EventLogData` piatto o separato, `ColumnMapping`, `EventLog` con normalizzazione, millisecondi, entità e CSV canonici), i dataset sul volume (`/soup/<nome>/<nome>.csv`, `_entity.csv`, `_config.json`, `Analyses/`) e l'EKG su Memgraph: step di costruzione 100-500, il punto di estensione `ekg.build_steps`, lo stato del grafo degli oggetti `ekg` (`ensure_loaded`, `ekg.state_providers`), gli eventi `ekg.before_reset` ed `ekg.built`, l'operazione **Carica in Memgraph**. All'avvio aggiunge al catalogo i dataset già presenti sul volume. Vedi sotto. |
+| `csv_ekg` | Importer **CSV come event log (EKG su Memgraph)** (`.csv`, kind `ekg`): anteprima, campi `event_id`, `timestamp`, `activity`, `entities`, `values`, `trigger_target`, `save_process_times` e, con almeno due colonne entità, il grafo delle molteplicità (1 a 1, 1 a N, N a 1, N a N). Operazione **Converti in EKG** (`table` di `csv_table` → `ekg` figlio). Serve anche `POST /api/v2/graph`. |
+| `causal_df` | Lo step del `:DF` causale per le coppie trigger/target, contribuito a `ekg.build_steps` con order 450. |
 
 `text` e `csv_table` usano solo la libreria standard di Python e il tool `storage` (`requires:
 ["soup_base", "tool_storage"]`, `requires_tools: ["storage"]`, niente pandas né Memgraph): sono
@@ -132,7 +135,7 @@ rispondono `503`.
 | Package | Tool | Cosa offre | Variabili d'ambiente |
 |---|---|---|---|
 | `tool_memgraph` | `memgraph` | `run(query) -> list[dict]`, `health()`; grafo attivo: `ensure_loaded(state_key, loader, force=False)`, `current_state()`, `clear()`, `invalidate()`. Un solo driver per processo, creato al primo uso e chiuso quando il package si ferma. | `MEMGRAPH_HOST` (`memgraph`), `MEMGRAPH_PORT` (`7687`) |
-| `tool_storage` | `storage` | `space(namespace)` → `read`, `write`, `exists`, `delete`, `list` relativi a `<root>/<namespace>/`; `path_for(namespace, name)`; `delete_space(namespace)`. | `SOUP_STORAGE_KIND` (`docker` o `local`), `SOUP_CONTAINER_NAME` (`soup-database`), `SOUP_LOCAL_STORAGE_ROOT` (`/soup`) |
+| `tool_storage` | `storage` | `space(namespace)` → `read`, `write`, `exists`, `delete`, `list` relativi a `<root>/<namespace>/`, e `subspace(nome)` per una cartella al suo interno; `path_for(namespace, name)`; `delete_space(namespace)`; `namespaces()`, le voci della radice con un nome valido. | `SOUP_STORAGE_KIND` (`docker` o `local`), `SOUP_CONTAINER_NAME` (`soup-database`), `SOUP_LOCAL_STORAGE_ROOT` (`/soup`) |
 | `tool_storage` | `catalog` | Gli oggetti del workspace in `<root>/_catalog/objects/<id>.json`, anteprime SVG in `<root>/_catalog/thumbnails/<id>.svg`, `children(id)` per la provenienza. | come sopra |
 | `tool_storage` | `preferences` | Chiavi/valori JSON in `<root>/_catalog/preferences.json`. | come sopra |
 
@@ -147,6 +150,35 @@ rispondono `503`.
   CSV` legge dallo stesso volume `/soup`. La cartella di un dataset EKG resta `/soup/<nome>/`.
 - **Cypher.** `Query` e `ident` stanno in `soup_pkg_tool_memgraph.api`; i valori viaggiano sempre come
   parametri, gli identificatori passano da `ident()`.
+
+## EKG: il package `ekg`
+
+Un oggetto di kind `ekg` è un grafo su Memgraph. La `meta` di un oggetto **radice** (un import, una
+conversione) ha `dataset` (la cartella sul volume), `graph_key` (lo stato del tool `memgraph` quando
+il suo grafo è quello caricato: un uuid generato da `build_ekg` o dall'adozione), `columns`, `mapping` (`event_id`, `timestamp`,
+`activity`, `entities`, `values`), `trigger_target`, `counts`, `process_info` (stessa forma della
+vecchia config), `date_created` e `source_format`. Un oggetto **derivato** (per esempio un'analisi)
+ha kind `ekg`, tra i `parents` il suo oggetto `ekg` di partenza, e in `meta.state`
+`{provider, spec}`: `provider` è la chiave di un `StateProvider` contribuito a `ekg.state_providers`,
+che sa applicare `spec` al grafo del genitore.
+
+L'API (`soup_pkg_ekg.api`, per chi elenca `ekg` in `requires`; chi chiama dichiara `memgraph` e
+`storage` in `requires_tools` e passa i propri `tools`):
+
+| Nome | |
+|---|---|
+| `build_ekg(obj, data, mapping, tools, *, dataset, description, all_columns, trigger_target, source_format, save_process_times)` | Normalizza `data` (`EventLogData`), salva il dataset (cartella `dataset` o, se assente, il nome dell'oggetto reso unico con `_2`, `_3`...), costruisce l'EKG e restituisce la `meta`. Lo stato del tool `memgraph` diventa una chiave nuova, restituita in `meta.graph_key`, anche con un `ObjectDraft` (da un'operazione, che non ha ancora un id): la prima apertura dell'oggetto non ricostruisce. Se la costruzione fallisce i file vengono rimossi. |
+| `ensure_loaded(obj, tools, force=False)` | Lo stato di `obj` è `meta.graph_key`, o il suo id per un derivato o un oggetto senza chiave (`graph_key_of(obj)`). Se non è lo stato attivo (o con `force`): pubblica `ekg.before_reset`, ricostruisce il dataset della radice (risalendo i `parents`), applica in ordine gli stati dei derivati fino a `obj`, salva conteggi e tempi nella config e imposta di nuovo la stessa chiave. Restituisce `True` se ha ricostruito. |
+| `dispose(obj, tools)` | Se `obj` è attivo pubblica `ekg.before_reset` e svuota il grafo; per una radice rimuove la cartella del dataset. |
+| `BUILD_STEPS_POINT` (`"ekg.build_steps"`) | Step `EkgBuildStep` (`key`, `order`, `phase`, `applies(ctx)`, `execute(ctx, db)`) contribuiti con `ctx.contribute(BUILD_STEPS_POINT, step, key=step.key, order=step.order)`. Gli step del package: 100 eventi, 200 entità, 300 indici, 400 `:CORR`, 500 `:DF` (salta i tipi in `ctx.df_handled_types`). `phase` (`event`, `entity`, `corr`, `df`) decide in quali tempi della `process_info` finisce lo step. |
+| `STATE_PROVIDERS_POINT` (`"ekg.state_providers"`) | `StateProvider` (`key`, `apply(spec, db)`). |
+| `EKG_BEFORE_RESET`, `EKG_BUILT` | `"ekg.before_reset"` `{object, active, reason: build\|load\|dispose}` prima di svuotare o ricostruire; `"ekg.built"` `{object, dataset, counts}` dopo una costruzione. |
+| `EKG_KIND`, `EventLogData`, `Table`, `ColumnMapping`, `EventLog`, `from_dataframe`, `to_dataframe`, `Query`, `ident` | |
+
+All'avvio il package aggiunge al catalogo, come oggetti `ekg` creati dall'importer `csv_ekg.csv`, le
+cartelle `/soup/<nome>/` con un `<nome>_config.json` non ancora presenti nel catalogo (stesso
+`meta.dataset`), leggendo la `meta` dalla config; un errore (per esempio storage irraggiungibile)
+finisce nel log e non ferma il package.
 
 ## Regole per il codice del package
 

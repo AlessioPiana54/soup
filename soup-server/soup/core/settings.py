@@ -29,8 +29,8 @@ DEFAULT_STRICT = False
 _SERVER_ROOT = Path(__file__).resolve().parents[2]
 _REPO_ROOT = _SERVER_ROOT.parent
 
-# The packages shipped with SOUP (csv_reader, causal_df, tool_memgraph,
-# tool_storage, soup_base, text, csv_table, ...). Every
+# The packages shipped with SOUP (tool_memgraph, tool_storage, ekg,
+# csv_ekg, causal_df, soup_base, text, csv_table, ...). Every
 # package found is active unless disabled at runtime (persisted state)
 # or SOUP_PACKAGES lists the active ones explicitly.
 DEFAULT_BUNDLED_PACKAGES_DIR = str(_REPO_ROOT / "soup-packages")

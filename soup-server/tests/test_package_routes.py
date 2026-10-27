@@ -58,8 +58,10 @@ def test_list_packages(tmp_path):
     assert response.status_code == 200
     [alpha] = response.get_json()["response_data"]
     assert (alpha["name"], alpha["status"], alpha["origin"]) == ("alpha", "active", "bundled")
-    # The default template registers an input reader and no v3 contribution.
-    assert alpha["contributions"] == {"importers": [], "operations": [], "visualizers": [], "exporters": [], "tools": []}
+    # The default template registers only its marker importer.
+    assert alpha["contributions"] == {
+        "importers": ["alpha.alpha"], "operations": [], "visualizers": [], "exporters": [], "tools": [],
+    }
 
 
 def test_install_disable_enable_uninstall(tmp_path):

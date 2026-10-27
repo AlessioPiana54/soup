@@ -87,9 +87,9 @@ def test_bundled_package_provides_the_tools_on_one_backend(tmp_path, monkeypatch
     engine = build_engine(settings)
 
     assert engine.report.failed == []
-    # catalog and preferences are present: only the memgraph warning remains.
-    assert [w for w in engine.report.warnings if "'catalog'" in w or "'preferences'" in w or "'storage'" in w] == []
+    # catalog and preferences are present: nothing is missing.
+    assert engine.report.warnings == []
     engine.core_tools.preferences().set("theme", "dark")
-    engine.core_tools.storage().space("orders").write("orders.csv", b"x")
+    engine.ctx.tool_registry.get("storage").space("orders").write("orders.csv", b"x")
     assert (root / "_catalog" / "preferences.json").is_file()
     assert (root / "orders" / "orders.csv").read_bytes() == b"x"

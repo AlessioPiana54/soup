@@ -3,11 +3,12 @@
 File : package_builder.py
 Description: Writes throw-away packages (soup-package.json + server/) on
              disk and packs them into zips, for the tests of the
-             PackageManager. The generated plugin registers an input
-             reader keyed by a constant of its own helper module (so two
-             packages with the same file names prove their imports are
-             isolated), adds every tool its manifest provides and opens
-             every extension point it declares. Other templates register
+             PackageManager. The generated plugin registers a marker
+             importer whose id is a constant of its own helper module (so
+             two packages with the same file names prove their imports
+             are isolated; markers(ctx) lists them), adds every tool its
+             manifest provides and opens every extension point it
+             declares. Other templates register
              an importer "csv", an importer/operation/visualizer set for
              the API tests (FEATURE_PLUGIN), or something they did not
              declare. A package can also get app/ files (app_files).
@@ -26,10 +27,33 @@ from typing import Any, Mapping, Optional, Sequence
 
 from soup.core.contracts import CONTRACTS_API_VERSION
 
+MARKER_PRODUCES = "marker"
+
+
+def markers(ctx) -> set[str]:
+    """The MARKER of every package built from DEFAULT_PLUGIN that is loaded in `ctx`."""
+
+    return {importer.id for importer in ctx.importers if importer.produces == MARKER_PRODUCES}
+
 DEFAULT_PLUGIN = '''
-from soup.core.contracts import PluginContext, SoupPlugin, Tool
+from soup.core.contracts import Importer, Inspection, PluginContext, SoupPlugin, Tool
 
 from .helper import MARKER
+
+
+class _Marker(Importer):
+    id = MARKER
+    extensions = (".marker",)
+    produces = "marker"
+
+    def inspect(self, upload, tools):
+        return Inspection()
+
+    def import_(self, upload, obj, options, tools):
+        return {}
+
+    def dispose(self, obj, tools):
+        pass
 
 
 class _Tool(Tool):
@@ -42,7 +66,7 @@ class _Tool(Tool):
 
 class Plugin(SoupPlugin):
     def register(self, ctx: PluginContext) -> None:
-        ctx.add_input_reader(MARKER, object())
+        ctx.add_importer(_Marker())
         for tool in self.provides_tools:
             ctx.add_tool(_Tool(tool))
         for point in self.extension_points:

@@ -118,6 +118,32 @@ def test_delete_space_removes_only_that_namespace(storage):
     assert storage.space("orders_old").list() == ["a.csv"]
 
 
+def test_a_subspace_is_a_folder_inside_the_namespace(storage, backend):
+    analyses = storage.space("orders").subspace("Analyses")
+    analyses.write("a1.json", b"{}")
+
+    assert backend.read("orders/Analyses/a1.json") == b"{}"
+    assert analyses.list() == ["a1.json"]
+    assert storage.space("orders").list() == ["Analyses"]
+    assert analyses.subspace("deeper").namespace == "orders"
+    analyses.delete("a1.json")
+    assert analyses.list() == []
+
+
+@pytest.mark.parametrize("name", HOSTILE)
+def test_hostile_subspace_names_are_refused(storage, name):
+    with pytest.raises(ValidationError):
+        storage.space("orders").subspace(name)
+
+
+def test_namespaces_lists_the_valid_names_at_the_root(storage, backend):
+    storage.space("orders").write("orders.csv", b"x")
+    storage.space("invoices").write("invoices.csv", b"x")
+    backend.write("_catalog/objects/x.json", b"{}")
+
+    assert storage.namespaces() == ["invoices", "orders"]
+
+
 def test_health(storage):
     assert storage.health() == {"ok": True}
 

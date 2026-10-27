@@ -2,7 +2,7 @@
 ------------------------------------------------------------------------
 File : step.py
 Description: CausalDirectlyFollowsStep - inserted between CorrelationStep
-             (400) and the core's DirectlyFollowsStep (500). Only applies
+             (400) and the ekg package's DirectlyFollowsStep (500). Only applies
              when the build context carries trigger/target pairs
              (ctx.trigger_target_rows, from the request's trigger_N/
              target_N form fields); for each pair it runs the causal
@@ -16,14 +16,16 @@ Project : soup-packages/causal_df
 
 from __future__ import annotations
 
-from soup.core.contracts import BuildContext, EkgBuildStep, GraphDatabase
+from soup.core.contracts import GraphDatabase
+from soup_pkg_ekg.api import BuildContext, EkgBuildStep
+
 from .cypher import reveal_causal_relationships_queries
 
 
 class CausalDirectlyFollowsStep(EkgBuildStep):
     key = "causal_directly_follows"
     order = 450
-    phase = "directly_follows"
+    phase = "df"
 
     def applies(self, ctx: BuildContext) -> bool:
         return bool(ctx.trigger_target_rows)

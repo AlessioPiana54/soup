@@ -64,9 +64,11 @@ def test_tools_and_healthy_server():
         ("preferences", "test_core_tools", True),
     ]
     health = data_of(client.get("/api/v3/health"))
-    # The legacy "memgraph"/"storage" tools are not loaded here.
-    assert health["status"] == "degraded"
-    assert any("'memgraph'" in problem for problem in health["problems"])
+    # Only the catalog and the preferences are the core's: without the
+    # "memgraph"/"storage" tools the server is healthy (since commit 8 the
+    # ekg package, which needs them, reports their absence itself).
+    assert health["status"] == "ok"
+    assert health["problems"] == []
 
 
 def test_health_ok_with_every_tool():

@@ -1,23 +1,22 @@
 import { expect, Page, test } from '@playwright/test';
 import { execSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 
-import { E2E_API_PORT } from '../playwright.config';
+import { API, PackageChanges, PACKAGES_DIR, zipOf } from './backend';
 
 /**
- * The packages of soup-packages, packed as zips, on the e2e backend (which
- * starts empty): soup_base installed through the API, the template from
- * /packages. Then a file imported with the template's importer (preview
- * drawn by soup_base), shown by the template's visualizer, turned into a
- * report by the template's operation and shown by <soup-report-view>.
- * Last, soup_base disabled: the host says again that nothing draws reports.
+ * The packages of soup-packages, packed as zips, on the e2e backend. The
+ * spec first brings the backend to the state it needs - only the in-memory
+ * catalog and preferences (test_core_tools), whatever the other specs left
+ * - and puts back in afterAll what it found. Then soup_base installed
+ * through the API, the template from /packages, a file imported with the
+ * template's importer (preview drawn by soup_base), shown by the template's
+ * visualizer, turned into a report by the template's operation and shown by
+ * <soup-report-view>. Last, soup_base disabled: the host says again that
+ * nothing draws reports.
  */
 
-const API = `http://127.0.0.1:${E2E_API_PORT}/api/v3`;
-const PACKAGES_DIR = join(__dirname, '..', '..', 'soup-packages');
-const TEMPLATE_ZIP = join(PACKAGES_DIR, 'dist', 'template-1.0.0.zip');
-const SOUP_BASE_ZIP = join(PACKAGES_DIR, 'dist', 'soup_base-1.0.0.zip');
+const TEMPLATE_ZIP = zipOf('template');
+const changes = new PackageChanges();
 const NO_REPORT_VISUALIZER = 'nessun visualizzatore installato per report';
 
 let reportUrl = '';
@@ -37,13 +36,13 @@ test.describe.serial('packages installed at runtime', () => {
     execSync('npm run pack -- _template', { cwd: PACKAGES_DIR, stdio: 'inherit' });
     execSync('npm run pack -- soup_base', { cwd: PACKAGES_DIR, stdio: 'inherit' });
 
-    const packages = await (await request.get(`${API}/packages`)).json();
     // Only the in-memory catalog and preferences of the e2e server.
-    expect(packages.response_data.map((pkg: { name: string }) => pkg.name)).toEqual(['test_core_tools']);
-    const installed = await request.post(`${API}/packages`, {
-      multipart: { file: { name: 'soup_base-1.0.0.zip', mimeType: 'application/zip', buffer: readFileSync(SOUP_BASE_ZIP) } }
-    });
-    expect(installed.status()).toBe(201);
+    await changes.onlyCoreTools(request);
+    await changes.activate(request, 'soup_base');
+  });
+
+  test.afterAll(async ({ request }) => {
+    await changes.restore(request);
   });
 
   test('the template installed from a zip opens, and soup_base draws previews and reports', async ({ page, request }) => {
@@ -53,6 +52,7 @@ test.describe.serial('packages installed at runtime', () => {
 
     const card = page.locator('[data-package="template"]');
     await expect(card.locator('.soup-status')).toHaveText('active');
+    changes.installedByTheSpec('template');
     await expect(card).toContainText('template.text');
     await expect(card.locator('.soup-frontend-error')).toHaveCount(0);
     await expect(page.locator('[data-package="soup_base"] .soup-status')).toHaveText('active');

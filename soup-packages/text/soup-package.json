@@ -1,7 +1,7 @@
 {
   "name": "text",
   "version": "1.0.0",
-  "api_version": "2.0",
+  "api_version": "3.0",
   "label": "Testo",
   "description": "Imports text files (.txt, .md, .log) into the package's storage space and shows them as text or markdown.",
   "author": "SOUP",

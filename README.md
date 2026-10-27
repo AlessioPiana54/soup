@@ -53,7 +53,7 @@ Docker Compose will spin up the following containers:
 |------------------|----------------------------------------------|--------------------------------|
 | **Angular**    | Frontend WebApp                              | [http://localhost:4200](http://localhost:4200) |
 | **Python/Flask** | Backend logic and API engine                 | [http://localhost:8080](http://localhost:8080) |
-| **Memgraph**   | Graph DB for storing and querying EKGs       | [http://localhost:3000](http://localhost:3000) *(Memgraph Lab)* |
+| **Memgraph**   | Graph DB for storing and querying EKGs       | [http://localhost:3300](http://localhost:3300) *(Memgraph Lab)* |
 
 
 

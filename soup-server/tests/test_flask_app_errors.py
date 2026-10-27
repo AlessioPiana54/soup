@@ -21,7 +21,7 @@ from tests.fakes import FakeDatabase, InMemoryFileStorage, fake_tool_engine
 
 @pytest.fixture
 def client():
-    settings = Settings.from_env({"SOUP_PACKAGES": "csv_reader"})
+    settings = Settings.from_env({"SOUP_PACKAGES": ""})
     engine = fake_tool_engine(settings, db=FakeDatabase(), files=InMemoryFileStorage())
     app = build_flask_app(engine)
     app.config["TESTING"] = True

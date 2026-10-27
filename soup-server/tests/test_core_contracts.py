@@ -31,13 +31,15 @@ from soup.core.contracts import report
 from tests.packages import bundled_plugin
 
 CAUSAL_DF = bundled_plugin("causal_df")
-CSV_READER = bundled_plugin("csv_reader")
+CSV_EKG = bundled_plugin("csv_ekg")
+EKG = bundled_plugin("ekg")
 
 
-def test_contracts_version_is_2_0_and_built_in_plugins_declare_it():
-    assert CONTRACTS_API_VERSION == "2.0"
-    assert CSV_READER.api_version == "2.0"
-    assert CAUSAL_DF.api_version == "2.0"
+def test_contracts_version_is_3_0_and_built_in_plugins_declare_it():
+    assert CONTRACTS_API_VERSION == "3.0"
+    assert CSV_EKG.api_version == "3.0"
+    assert EKG.api_version == "3.0"
+    assert CAUSAL_DF.api_version == "3.0"
 
 
 def test_block_factories_produce_the_documented_shapes():

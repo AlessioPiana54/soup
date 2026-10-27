@@ -26,7 +26,7 @@ from soup.core.event_bus import EventBus
 from soup.core.packages import PackageManager, PackageManagerConfig
 from soup.core.plugin_context import DefaultPluginContext
 from soup.core.plugin_manager import PluginManager
-from tests.package_builder import EXPLODING_INIT, write_package
+from tests.package_builder import EXPLODING_INIT, markers, write_package
 
 
 @pytest.fixture(autouse=True)
@@ -72,7 +72,7 @@ def test_discovery_from_two_folders(dirs):
 
     assert sorted(report.loaded) == ["alpha", "beta"]
     assert {info.name: info.origin for info in manager.list()} == {"alpha": "bundled", "beta": "installed"}
-    assert {"alpha", "beta"} <= set(ctx.input_readers.keys())
+    assert {"alpha", "beta"} <= markers(ctx)
 
 
 def test_same_name_in_two_folders_keeps_the_higher_version(dirs):
@@ -84,7 +84,7 @@ def test_same_name_in_two_folders_keeps_the_higher_version(dirs):
     report = manager.load_all()
 
     assert manager.info("alpha").version == "1.2.0"
-    assert "new" in ctx.input_readers and "old" not in ctx.input_readers
+    assert "new" in markers(ctx) and "old" not in markers(ctx)
     assert any("found twice" in warning for warning in report.warnings)
 
 
@@ -202,7 +202,7 @@ def test_server_modules_are_imported_under_isolated_names(dirs):
     manager, ctx = _manager(bundled, installed)
     manager.load_all()
 
-    assert {"from-alpha", "from-beta"} <= set(ctx.input_readers.keys())
+    assert {"from-alpha", "from-beta"} <= markers(ctx)
     assert sys.modules["soup_pkg_alpha.helper"].MARKER == "from-alpha"
     assert sys.modules["soup_pkg_beta.helper"].MARKER == "from-beta"
 
