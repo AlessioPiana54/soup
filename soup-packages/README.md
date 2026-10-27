@@ -51,7 +51,7 @@ La cartella deve avere lo stesso nome del package.
 |---|---|
 | `name` | Lettere minuscole, cifre e `_`, inizia con una lettera (né `""`, né `..`, né separatori, né `_` iniziale). Diventa anche il nome del modulo Python `soup_pkg_<name>`. |
 | `version` | Versione PEP 440 (`1.0.0`). Serve per gli aggiornamenti. |
-| `api_version` | Versione dei contratti del core per cui il package è scritto, `"MAGGIORE.MINORE"`. È compatibile se ha lo stesso numero maggiore di `CONTRACTS_API_VERSION` dell'host e un minore uguale o inferiore: un host `"3.1"` accetta `"3.0"` e `"3.1"`, rifiuta `"3.2"`, `"2.x"` e `"4.0"`. L'host attuale è `"3.0"`: il passaggio da `"2.0"` (commit 8) ha tolto da `PluginContext` `add_input_reader`, `add_input_handler` e `add_build_step`, quindi un package `"2.x"` va aggiornato (gli step EKG si contribuiscono a `ekg.build_steps`). |
+| `api_version` | Versione dei contratti del core per cui il package è scritto, `"MAGGIORE.MINORE"`. È compatibile se ha lo stesso numero maggiore di `CONTRACTS_API_VERSION` dell'host e un minore uguale o inferiore: un host `"3.1"` accetta `"3.0"` e `"3.1"`, rifiuta `"3.2"`, `"2.x"` e `"4.0"`. L'host attuale è `"3.1"` (vedi "Versioni dei contratti" sotto). |
 | `label`, `description`, `author` | Testi mostrati all'utente; `label` vale `name` se assente. |
 | `requires` | Package che devono essere attivi prima di questo. |
 | `requires_tools` | Tool usati (catalogo, Memgraph, storage, preferenze...). Un package non può usare un tool che non dichiara qui. |
@@ -61,6 +61,15 @@ La cartella deve avere lo stesso nome del package.
 | `server.module` | Cartella del modulo Python, relativa al package (di solito `server`). |
 | `server.plugin` | `"modulo:Attributo"` dentro `server.module`: una sottoclasse (o un'istanza) di `SoupPlugin`. |
 | `app.entry` | Facoltativo: bundle del frontend, relativo a `app/` e dentro `app/dist/` (es. `dist/index.js`): al browser si serve solo `app/dist`. |
+
+### Versioni dei contratti
+
+| Versione | Commit | Cambiamento |
+|---|---|---|
+| `"3.0"` | 8 | Tolti da `PluginContext` `add_input_reader`, `add_input_handler` e `add_build_step`: l'event log e l'EKG sono nel package `ekg` e gli step si contribuiscono a `ekg.build_steps`. Un package `"2.x"` va aggiornato. |
+| `"3.1"` | 10 | Aggiunto `Exporter.applies(obj, tools) -> bool` (facoltativo, default `True`): un exporter si offre solo per alcuni oggetti dei kind che accetta. Un exporter che non si applica non compare nell'elenco e il suo export risponde `404` come uno sconosciuto; un `applies` che solleva esclude l'exporter e finisce nel log con il nome del package. I package `"3.0"` si caricano senza modifiche; serve `"3.1"` solo a chi usa `applies` (es. `ekg_analysis`). |
+
+Visualizzatori e operazioni restano filtrati solo per kind.
 
 Il manifest è la **fonte di verità**: nome, versione, `api_version`, `requires`, `requires_tools`,
 `provides_tools` ed `extension_points` vengono impostati sull'istanza del plugin, che quindi non li
@@ -101,7 +110,9 @@ class Plugin(SoupPlugin):
 | `ekg` | Solo server. L'event log (`Table` e conversioni pandas, `EventLogData` piatto o separato, `ColumnMapping`, `EventLog` con normalizzazione, millisecondi, entità e CSV canonici), i dataset sul volume (`/soup/<nome>/<nome>.csv`, `_entity.csv`, `_config.json`, `Analyses/`) e l'EKG su Memgraph: step di costruzione 100-500, il punto di estensione `ekg.build_steps`, lo stato del grafo degli oggetti `ekg` (`ensure_loaded`, `ekg.state_providers`), gli eventi `ekg.before_reset` ed `ekg.built`, l'operazione **Carica in Memgraph**. All'avvio aggiunge al catalogo i dataset già presenti sul volume. Vedi sotto. |
 | `csv_ekg` | Importer **CSV come event log (EKG su Memgraph)** (`.csv`, kind `ekg`): anteprima, campi `event_id`, `timestamp`, `activity`, `entities`, `values`, `trigger_target`, `save_process_times` e, con almeno due colonne entità, il grafo delle molteplicità (1 a 1, 1 a N, N a 1, N a N). Operazione **Converti in EKG** (`table` di `csv_table` → `ekg` figlio). Serve anche `POST /api/v2/graph`. |
 | `causal_df` | Lo step del `:DF` causale per le coppie trigger/target, contribuito a `ekg.build_steps` con order 450. |
-| `ekg_views` | Visualizzatori **Grafo** (`<soup-pkg-ekg-graph>`), **Statistiche** (`<soup-pkg-ekg-stats>`) e **Interrogazioni** (`<soup-pkg-ekg-queries>`) ed exporter **JSON del grafo** per il kind `ekg`, con i punti di estensione `ekg.graph_views`, `ekg.queries` ed `ekg.json_parts`. Vedi sotto. |
+| `ekg_views` | Visualizzatori **Grafo** (`<soup-pkg-ekg-graph>`), **Statistiche** (`<soup-pkg-ekg-stats>`) e **Interrogazioni** (`<soup-pkg-ekg-queries>`) ed exporter **JSON del grafo** per il kind `ekg` (Interrogazioni e JSON anche per `ekg_class`, finché `ekg_class_graph` vi contribuisce), con i punti di estensione `ekg.graph_views`, `ekg.queries` ed `ekg.json_parts`. Vedi sotto. |
+| `ekg_analysis` | Le analisi come operazioni sugli oggetti `ekg`: **Nuova analisi**, **Importa configurazione di analisi**, **Esempio di configurazione**, il punto di estensione `ekg.analysis_filters` con i sei filtri del vecchio codice, il rollback compensativo, l'evento `analysis.before_apply`, il visualizzatore **Indicatori di processo** (`<soup-pkg-ekg-insights>`) e l'exporter **Configurazione dell'analisi**. All'avvio aggiunge al catalogo le analisi già sul volume. Vedi sotto. |
+| `ekg_class_graph` | Il grafo aggregato: operazione **Costruisci grafo aggregato** (`ekg` → `ekg_class`), visualizzatori **Grafo aggregato** (`<soup-pkg-ekg-class-graph>`) e **Statistiche del grafo aggregato** (`<soup-pkg-ekg-class-stats>`), la vista `class`, le interrogazioni e le parti JSON delle classi; cancella i propri nodi prima di un reset o di un'analisi (Observer). Vedi sotto. |
 
 `text` e `csv_table` usano solo la libreria standard di Python e il tool `storage` (`requires:
 ["soup_base", "tool_storage"]`, `requires_tools: ["storage"]`, niente pandas né Memgraph): sono
@@ -135,7 +146,7 @@ rispondono `503`.
 
 | Package | Tool | Cosa offre | Variabili d'ambiente |
 |---|---|---|---|
-| `tool_memgraph` | `memgraph` | `run(query) -> list[dict]`, `health()`; grafo attivo: `ensure_loaded(state_key, loader, force=False)`, `current_state()`, `clear()`, `invalidate()`. Un solo driver per processo, creato al primo uso e chiuso quando il package si ferma. | `MEMGRAPH_HOST` (`memgraph`), `MEMGRAPH_PORT` (`7687`) |
+| `tool_memgraph` | `memgraph` | `run(query) -> list[dict]`, `health()`; grafo attivo: `ensure_loaded(state_key, loader, force=False)`, `advance(from_state, to_state, mutate)`, `current_state()`, `clear()`, `invalidate()`. Un solo driver per processo, creato al primo uso e chiuso quando il package si ferma. | `MEMGRAPH_HOST` (`memgraph`), `MEMGRAPH_PORT` (`7687`) |
 | `tool_storage` | `storage` | `space(namespace)` → `read`, `write`, `exists`, `delete`, `list` relativi a `<root>/<namespace>/`, e `subspace(nome)` per una cartella al suo interno; `path_for(namespace, name)`; `delete_space(namespace)`; `namespaces()`, le voci della radice con un nome valido. | `SOUP_STORAGE_KIND` (`docker` o `local`), `SOUP_CONTAINER_NAME` (`soup-database`), `SOUP_LOCAL_STORAGE_ROOT` (`/soup`) |
 | `tool_storage` | `catalog` | Gli oggetti del workspace in `<root>/_catalog/objects/<id>.json`, anteprime SVG in `<root>/_catalog/thumbnails/<id>.svg`, `children(id)` per la provenienza. | come sopra |
 | `tool_storage` | `preferences` | Chiavi/valori JSON in `<root>/_catalog/preferences.json`. | come sopra |
@@ -145,6 +156,11 @@ rispondono `503`.
   stringa opaca scelta da chi chiama, es. l'id dell'oggetto) o se `force=True`, il tool svuota il
   database e chiama `loader(run)`; altrimenti non fa nulla. Se `loader` fallisce non resta attivo
   nessuno stato e la richiesta successiva ricarica.
+- **Modifiche sul posto.** `advance(from_state, to_state, mutate)` modifica il grafo caricato senza
+  ricostruirlo (un'analisi sul padre già caricato): sotto lo stesso lock dei caricamenti, se lo stato
+  attivo non è `from_state` solleva `ConflictError` senza eseguire nulla; altrimenti esegue
+  `mutate(run)` e lo stato diventa `to_state`; se `mutate` fallisce lo stato resta sconosciuto
+  (`None`) e la richiesta successiva ricarica.
 - **Spazi dei nomi.** Ogni package usa il proprio spazio (`storage.space("<nome>")`); spazi e nomi di
   file sono validati come i nomi degli oggetti (vietati `""`, `..`, separatori, `_` iniziale), quindi
   `_catalog` è irraggiungibile. `path_for` dà il percorso assoluto per chi lo passa a Memgraph: `LOAD
@@ -161,16 +177,22 @@ il suo grafo è quello caricato: un uuid generato da `build_ekg` o dall'adozione
 vecchia config), `date_created` e `source_format`. Un oggetto **derivato** (per esempio un'analisi)
 ha kind `ekg`, tra i `parents` il suo oggetto `ekg` di partenza, e in `meta.state`
 `{provider, spec}`: `provider` è la chiave di un `StateProvider` contribuito a `ekg.state_providers`,
-che sa applicare `spec` al grafo del genitore.
+che sa applicare `spec` al grafo del genitore. Un derivato può avere anche un altro kind (il grafo
+aggregato, `ekg_class`): conta solo `meta.state`. Il genitore è il primo dei `parents` che è un `ekg` o
+a sua volta un derivato; la catena finisce sempre in un `ekg` radice con il suo dataset. Un derivato
+creato da un'operazione con `derive_state` ha anche `meta.graph_key`.
 
-L'API (`soup_pkg_ekg.api`, per chi elenca `ekg` in `requires`; chi chiama dichiara `memgraph` e
-`storage` in `requires_tools` e passa i propri `tools`):
+L'API (`soup_pkg_ekg.api`, per chi elenca `ekg` in `requires`; chi chiama passa i propri `tools`:
+`build_ekg` vuole `memgraph` e `storage`, `ensure_loaded`, `derive_state` e `dispose` solo `memgraph`,
+perché i file dei dataset si leggono con lo storage del package `ekg`):
 
 | Nome | |
 |---|---|
 | `build_ekg(obj, data, mapping, tools, *, dataset, description, all_columns, trigger_target, source_format, save_process_times)` | Normalizza `data` (`EventLogData`), salva il dataset (cartella `dataset` o, se assente, il nome dell'oggetto reso unico con `_2`, `_3`...), costruisce l'EKG e restituisce la `meta`. Lo stato del tool `memgraph` diventa una chiave nuova, restituita in `meta.graph_key`, anche con un `ObjectDraft` (da un'operazione, che non ha ancora un id): la prima apertura dell'oggetto non ricostruisce. Se la costruzione fallisce i file vengono rimossi. |
-| `ensure_loaded(obj, tools, force=False)` | Lo stato di `obj` è `meta.graph_key`, o il suo id per un derivato o un oggetto senza chiave (`graph_key_of(obj)`). Se non è lo stato attivo (o con `force`): pubblica `ekg.before_reset`, ricostruisce il dataset della radice (risalendo i `parents`), applica in ordine gli stati dei derivati fino a `obj`, salva conteggi e tempi nella config e imposta di nuovo la stessa chiave. Restituisce `True` se ha ricostruito. |
+| `ensure_loaded(obj, tools, force=False)` | Lo stato di `obj` è `meta.graph_key`, o il suo id per un oggetto senza chiave (vecchio o adottato; `graph_key_of(obj)`). Se non è lo stato attivo (o con `force`): pubblica `ekg.before_reset`, ricostruisce il dataset della radice (risalendo i `parents`), applica in ordine gli stati dei derivati fino a `obj`, salva conteggi e tempi nella config e imposta di nuovo la stessa chiave. Restituisce `True` se ha ricostruito. |
+| `derive_state(parent, mutate, tools)` | Azione compensativa (C26) per un oggetto derivato nuovo: `ensure_loaded(parent)`, una chiave nuova, `memgraph.advance(chiave del padre, chiave nuova, mutate)`; restituisce la chiave, da mettere in `meta.graph_key` del draft (la prima apertura non ricostruisce). Se `mutate` fallisce il grafo del padre viene ricostruito (lo stato torna la sua chiave) e l'errore rilanciato; un `ConflictError` di `advance` (un altro grafo caricato nel frattempo) arriva senza ricostruzioni. |
 | `dispose(obj, tools)` | Se `obj` è attivo pubblica `ekg.before_reset` e svuota il grafo; per una radice rimuove la cartella del dataset. |
+| `root_of(obj)`, `new_graph_key()`, `DatasetRepository` | L'oggetto `ekg` radice di `obj`; una chiave nuova; i file di un dataset, `Analyses/<nome>.json` compresi (`analyses`, `save_analysis`, `load_analysis`, `delete_analysis`). |
 | `BUILD_STEPS_POINT` (`"ekg.build_steps"`) | Step `EkgBuildStep` (`key`, `order`, `phase`, `applies(ctx)`, `execute(ctx, db)`) contribuiti con `ctx.contribute(BUILD_STEPS_POINT, step, key=step.key, order=step.order)`. Gli step del package: 100 eventi, 200 entità, 300 indici, 400 `:CORR`, 500 `:DF` (salta i tipi in `ctx.df_handled_types`). `phase` (`event`, `entity`, `corr`, `df`) decide in quali tempi della `process_info` finisce lo step. |
 | `STATE_PROVIDERS_POINT` (`"ekg.state_providers"`) | `StateProvider` (`key`, `apply(spec, db)`). |
 | `EKG_BEFORE_RESET`, `EKG_BUILT` | `"ekg.before_reset"` `{object, active, reason: build\|load\|dispose}` prima di svuotare o ricostruire; `"ekg.built"` `{object, dataset, counts}` dopo una costruzione. |
@@ -207,9 +229,100 @@ contribuisce con `ctx.contribute(POINT, item, key=item.key)`):
 | `QUERIES_POINT` (`"ekg.queries"`) | `GraphQuery`: `key`, `label`, `group`, `fields`, `build(params) -> Query`, `transform(records, params) -> [blocco]`. `values(raw)` controlla i params con i `fields` e limita `limit` a `max_limit` (1000). | `CountQuery` (blocco `keyvalue`, legge sempre la colonna `count`), `NodeListQuery` (tabella paginata con `total`), `RelationshipListQuery`; `where` e `filter_params` per restringerle. |
 | `JSON_PARTS_POINT` (`"ekg.json_parts"`) | `JsonPart`: `key`, `label` (la chiave nel JSON), `query() -> Query`, `transform(records)`. | `NodesPart`, `RelationshipsPart`. |
 
+Ogni contributo dichiara i kind degli oggetti a cui si applica, `kinds` (default `("ekg",)`); quelli di
+ekg_views dichiarano `STANDARD_KINDS` = `("ekg", "ekg_class")`, perché il grafo di un `ekg_class`
+contiene anche l'EKG del padre. **Grafo** e **Statistiche** accettano solo `ekg`, e Grafo mostra le
+viste il cui `kinds` contiene `ekg`. **Interrogazioni** e **JSON del grafo** accettano `ekg` più ogni
+altro kind che ha almeno un contributo *dedicato* (con `kinds` senza `ekg`): con `ekg_class_graph`
+attivo anche `ekg_class`, disattivato no. Per ogni oggetto mostrano solo i contributi il cui `kinds`
+contiene il suo kind. `data()` di Grafo, Statistiche e Interrogazioni porta `notice`, il
+`meta.notice` dell'oggetto (es. "L'analisi non ha modificato il grafo"), mostrato in un riquadro.
+`GraphVisualizer` è esportato dall'api per i visualizzatori di altri kind con un proprio elemento
+(es. **Grafo aggregato**).
+
 I contributi si rileggono a ogni richiesta: un package abilitato o disabilitato a runtime aggiunge o
 toglie subito le sue viste, interrogazioni e parti. Le rotte `/api/v2` di lettura restano servite dai
 vecchi controller fino al commit 11.
+
+## Analisi: il package `ekg_analysis`
+
+`requires: ["ekg", "ekg_views", "soup_base"]`, `requires_tools: ["memgraph", "storage", "catalog"]`
+(il catalogo serve per adottare le analisi già sul volume), `api_version: "3.1"`.
+
+Un'analisi è un oggetto `ekg` **derivato**: `parents` = l'oggetto `ekg` di partenza, `meta.state` =
+`{provider: "analysis", spec: {name, description, filters: {chiave del filtro: [condizione, ...]}}}`
+(il modello generico, C29), `meta.graph_key`, `meta.analysis` = `{dataset, name}` (il file),
+`meta.counts` = `{before, after}` (nodi e relazioni) e `meta.result` = `"changed"` o `"unchanged"`.
+La configurazione è salvata anche in `/soup/<dataset>/Analyses/<nome>.json` nel vecchio formato (le
+chiavi `timestamp`, `performance`, `includeActivities`, `excludeActivities`, `frequence`, `variant`
+sempre presenti, più `dataset_name`, `analysis_name`, `analysis_description`), così le pagine `/api/v2`
+la leggono ancora.
+
+| Contributo | |
+|---|---|
+| **Nuova analisi** (`ekg_analysis.new`, `ekg` → `ekg`) | Campi `name`, `description` e `filters` (tipo `items`, una variante per ogni `AnalysisFilter` di `ekg.analysis_filters` di qualunque package, con i campi e le scelte presi dal grafo dell'oggetto: tipi di entità, attività, primo e ultimo timestamp). I filtri si applicano nell'ordine dei filtri (`order`), non in quello della lista: l'ordine cambia il risultato. |
+| **Importa configurazione di analisi** (`ekg_analysis.import`) | Campi `name` e `file` (JSON nel vecchio formato), validato filtro per filtro (`performance[1]: seconds ...`); una chiave sconosciuta è un `400`. Poi come Nuova analisi. |
+| **Esempio di configurazione** (`ekg_analysis.example`, `ekg` → `report`) | Un blocco markdown che spiega ogni chiave e un blocco file `analysis_example.json` costruito sull'oggetto (sostituisce `getExampleJSON` e `help/file_configuration_example.json`); si importa così com'è. |
+| **Indicatori di processo** (`<soup-pkg-ekg-insights>`, kind `ekg`) | Tipi di entità, frequenza delle attività e, per tipo di entità, durata media delle tracce, occorrenze delle attività e varianti con la loro durata media. Azioni `entity` `{entity}` (un tipo del grafo, altrimenti `400`) e `frequency` `{min}`. |
+| **Configurazione dell'analisi** (exporter, `.json`) | Solo per gli oggetti di un'analisi (`applies`): il file nel vecchio formato. |
+
+`AnalysisService` (Azione compensativa, C26): controlla che il nome non sia già usato (`409`), salva
+il file, poi con `ekg.derive_state` sul grafo caricato del padre conta nodi e relazioni, pubblica
+`analysis.before_apply` (`{object, analysis, spec}`, dichiarato in `soup_pkg_ekg_analysis.api`: chi si
+iscrive lo fa come critical), applica i filtri e conta di nuovo. Se qualcosa fallisce nessun oggetto
+viene creato, il file viene rimosso e il grafo del padre ricostruito. Se nulla cambia l'oggetto viene
+creato con `meta.result: "unchanged"` e `meta.notice`, e il file resta (come il vecchio "Nothing
+changed"). Dopo aver aperto altro, lo `StateProvider` `analysis` riapplica i filtri al padre
+ricostruito con la stessa `meta.graph_key`. Cancellare un'analisi ne rimuove anche il file.
+
+I filtri (Command, C25) sono `AnalysisFilter`: `key`, `label`, `description`, `order`,
+`fields(obj, tools)`, `validate(spec)` e `to_queries(spec, ctx) -> list[Query]` (`ctx`:
+`FilterContext`, con `run` e `activities()`); `EntityConditionFilter` è la base "tipo di entità,
+operatore, valore". Ne vengono contribuiti sei, nell'ordine del vecchio `process_analysis`:
+`timestamp` (100), `performance` (200), `includeActivities` (300), `excludeActivities` (400),
+`frequence` (500), `variant` (600). Il testo Cypher è fisso: etichette e tipi con `ident()`,
+l'operatore dalla lista chiusa `OPERATORS` (`<`, `<=`, `=`, `!=` che diventa `<>`, `>`, `>=`), ogni
+valore come parametro. Un altro package aggiunge un filtro con
+`ctx.contribute(ANALYSIS_FILTERS_POINT, item, key=item.key, order=item.order)`: diventa una variante di
+Nuova analisi e una chiave dei file di configurazione.
+
+All'avvio, ogni `Analyses/<nome>.json` di un dataset nel catalogo senza un oggetto diventa un oggetto
+`ekg` derivato della sua radice (creato da `ekg_analysis.new`, senza chiave: la prima apertura lo
+ricostruisce); un file illeggibile o con un nome non valido finisce nel log.
+
+Un'analisi fatta su un'altra analisi ne è figlia e il suo file ha in più `"based_on": "<padre>"`;
+l'adozione segue quest'ordine (prima i padri) e, se il padre manca o c'è un ciclo, adotta l'analisi
+sotto la radice con `meta.warning` e un avviso nel log. Dettagli, prova su Memgraph
+(`tests/memgraph_smoke.py`) e verifica manuale in [ekg_analysis/README.md](ekg_analysis/README.md).
+
+Le rotte `/api/v2/analyses/*` restano servite dai vecchi controller fino al commit 11.
+
+## Grafo aggregato: il package `ekg_class_graph`
+
+`requires: ["ekg", "ekg_views", "soup_base"]`, `requires_tools: ["memgraph"]`.
+
+**Costruisci grafo aggregato** (`ekg_class_graph.build`, `ekg` → `ekg_class`): campi `name` ed
+`entity_types` (multiselect dei tipi di entità del grafo, i vecchi `filtered_columns`). Con
+`ekg.derive_state` costruisce sul grafo caricato i nodi `:Class` (uno per combinazione distinta dei
+valori dei tipi scelti, con il peso `Count`), le relazioni `:OBSERVED` dagli eventi e `:DF_C` tra classi.
+L'oggetto `ekg_class` è un derivato: `meta.state` = `{provider: "ekg_class_graph.classes", spec:
+{entity_types}}`, il suo `ekg` tra i `parents`, `meta.graph_key`, `meta.counts` (`class_nodes`,
+`obs_rel`, `dfc_rel`) e i tempi delle fasi in `meta.process_info`; `ekg.ensure_loaded` ricostruisce il
+padre e applica le classi con lo `StateProvider` del package.
+
+| Contributo | |
+|---|---|
+| **Grafo aggregato** (`<soup-pkg-ekg-class-graph>`) | `GraphVisualizer` di ekg_views sulle viste per `ekg_class`: prima la vista `class` (`DF_C` di default, `OBSERVED`), poi quella standard. Azioni `graph`, `search`, `node`. |
+| **Statistiche del grafo aggregato** (`<soup-pkg-ekg-class-stats>`) | Conteggi, tipi di entità e le due torte della vecchia pagina (Class Nodes/OBS/DF_C e i secondi delle fasi). |
+| `ekg.graph_views`, `ekg.queries`, `ekg.json_parts` | La vista `class`; le interrogazioni dei nodi Class, delle relazioni OBSERVED e DF_C e dei loro conteggi (gruppo "Grafo aggregato"); le parti `Class nodes`, `OBS relationships` (`obs_data`, `obs_count`) e `DF_C relationships` (`dfc_data`, `dfc_count`). Tutte con `kinds ("ekg_class",)`. |
+
+Observer (C6): si iscrive a `ekg.before_reset` e, come critical, ad `analysis.before_apply` (basta il
+nome dell'evento, non richiede `ekg_analysis`) e cancella i propri nodi `:Class`, verificando che non
+ne restino. Nessun altro package chiama il suo codice. Con il package disattivato le analisi
+funzionano, le interrogazioni e le parti delle classi spariscono e gli oggetti `ekg_class` restano
+senza operazioni, visualizzatori ed exporter.
+
+Le rotte `/api/v2/graph/class*` restano servite dai vecchi controller fino al commit 11.
 
 ## Regole per il codice del package
 

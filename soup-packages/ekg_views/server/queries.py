@@ -4,7 +4,8 @@ File : queries.py
 Description: The queries of the "Interrogazioni" visualizer, contributed
              to the "ekg.queries" extension point (contribution key =
              `key`):
-             - GraphQuery: key, label, group, fields (the form shown to
+             - GraphQuery: key, label, group, the object kinds it applies
+               to (`kinds`, kinds.py), fields (the form shown to
                the user), build(params) -> Query and transform(records,
                params) -> list of report blocks. values(raw) checks the
                params against `fields` (the core validates only the
@@ -38,6 +39,7 @@ from typing import Any, Iterable, Mapping, Optional, Sequence
 from soup.core.contracts import Field, ValidationError, report
 from soup_pkg_ekg.api import Query, ident
 
+from .kinds import DEFAULT_KINDS
 from .values import as_choice, as_int, as_limit, as_text, clean
 
 DEFAULT_ROWS = 100
@@ -93,6 +95,7 @@ class GraphQuery(ABC):
     label: str = ""
     group: str = ""
     description: str = ""
+    kinds: Sequence[str] = DEFAULT_KINDS
     fields: Sequence[Field] = ()
     max_limit: int = MAX_ROWS
 

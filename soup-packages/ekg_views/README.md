@@ -8,6 +8,11 @@ nella sezione "Viste dell'EKG" di [../README.md](../README.md).
 `requires: ["ekg", "soup_base"]`, `requires_tools: ["memgraph", "storage"]`. Ogni contributo
 chiama prima `ensure_loaded(obj, tools)` del package `ekg`.
 
+Ogni vista, interrogazione e parte dichiara i kind a cui si applica (`kinds`, `kinds.py`): quelle di
+ekg_views valgono per `ekg` ed `ekg_class` (il grafo aggregato contiene anche l'EKG del padre).
+Interrogazioni e JSON del grafo accettano `ekg_class` solo mentre un package (`ekg_class_graph`)
+contribuisce qualcosa di dedicato a quel kind; Grafo e Statistiche restano per `ekg`.
+
 ## Come sono scritte le query
 
 - **Etichette e tipi nel pattern**, come il vecchio `MATCH (e1:Event)-[r:DF]->(e2:Event) ... LIMIT`:

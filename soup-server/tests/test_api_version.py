@@ -5,8 +5,9 @@ Description: Tests for the contracts version rule
              (soup.core.contracts.version): same major as the host, minor
              not above the host's - applied by the PluginManager and by
              the PackageManager (before importing any code); the host is
-             at "3.0" since commit 8, so a "2.0" manifest is refused, and
-             every bundled package declares "3.0".
+             at "3.1" since commit 10 (Exporter.applies), so a "2.0"
+             manifest is refused, a "3.0" one still loads, and every
+             bundled package declares a compatible version.
 Project : soup-server
 ------------------------------------------------------------------------
 """
@@ -101,27 +102,27 @@ def _load_on_the_real_host(tmp_path, versions):
                 del sys.modules[module]
 
 
-def test_the_host_is_at_3_0_and_refuses_a_2_0_manifest(tmp_path):
-    assert CONTRACTS_API_VERSION == "3.0"
+def test_the_host_is_at_3_1_and_refuses_a_2_0_manifest(tmp_path):
+    assert CONTRACTS_API_VERSION == "3.1"
 
-    report = _load_on_the_real_host(tmp_path, {"old": "2.0", "current": "3.0"})
+    report = _load_on_the_real_host(tmp_path, {"old": "2.0", "previous": "3.0", "current": "3.1", "next": "3.2"})
 
-    assert report.loaded == ["current"]
-    [failure] = report.failed
-    assert failure.plugin_name == "old"
-    assert isinstance(failure.error, PluginApiVersionError)
-    message = str(failure.error)
-    assert "'2.0'" in message and "'3.0'" in message and "same major" in message
-
-
-def test_a_3_1_manifest_needs_a_3_1_host(tmp_path):
-    # Minor releases only add: a "3.1" package loads on a "3.1" host (see
-    # test_package_manager_applies_the_rule), not on the current "3.0".
-    assert is_api_compatible("3.1", "3.1")
-    assert not is_api_compatible("3.1")
+    assert sorted(report.loaded) == ["current", "previous"]
+    failures = {failure.plugin_name: failure.error for failure in report.failed}
+    assert sorted(failures) == ["next", "old"]
+    assert all(isinstance(error, PluginApiVersionError) for error in failures.values())
+    message = str(failures["old"])
+    assert "'2.0'" in message and "'3.1'" in message and "same major" in message
 
 
-def test_every_bundled_manifest_declares_the_host_version():
+def test_a_3_0_package_still_loads_on_the_3_1_host():
+    # Minor releases only add: "3.0" packages need nothing that was removed.
+    assert is_api_compatible("3.0")
+    assert is_api_compatible("3.1")
+    assert not is_api_compatible("3.2")
+
+
+def test_every_bundled_manifest_declares_a_compatible_version():
     import json
 
     from tests.packages import BUNDLED_PACKAGES_DIR
@@ -129,4 +130,4 @@ def test_every_bundled_manifest_declares_the_host_version():
     manifests = sorted(BUNDLED_PACKAGES_DIR.glob("*/soup-package.json"))
     assert len(manifests) >= 9
     for path in manifests:
-        assert json.loads(path.read_text(encoding="utf-8"))["api_version"] == CONTRACTS_API_VERSION, path
+        assert is_api_compatible(json.loads(path.read_text(encoding="utf-8"))["api_version"]), path

@@ -3,7 +3,8 @@
 File : views.py
 Description: The views of the "Grafo" visualizer, contributed to the
              "ekg.graph_views" extension point (contribution key = `key`):
-             - GraphView: key, label, the relationship types it can show
+             - GraphView: key, label, the object kinds it draws (`kinds`,
+               kinds.py), the relationship types it can show
                (relationship_types, default_relations), edges_query(limit,
                relations) -> Query and to_graph(records) -> the data of a
                "graph" block {nodes, edges, directed}; optionally the
@@ -26,9 +27,10 @@ Description: The views of the "Grafo" visualizer, contributed to the
                as the legacy query); ORDER BY is kept only for the
                incremental search, which pages with an offset. Subclasses
                only say how a node and an edge are labelled and grouped;
-             - StandardGraphView ("standard"): Event-[:DF]->Event and
-               Event-[:CORR]->Entity (only :DF by default, like the old
-               graph page), from get_complete_standard_graph_query and
+             - StandardGraphView ("standard", kinds "ekg" and
+               "ekg_class"): Event-[:DF]->Event and Event-[:CORR]->Entity
+               (only :DF by default, like the old graph page), from
+               get_complete_standard_graph_query and
                SupportService.extract_graph_data.
              The "max data" query counts the distinct nodes in pure Cypher
              (the legacy get_max_standard_graph_data needed APOC's
@@ -45,6 +47,7 @@ from typing import Any, Iterable, Mapping, Optional, Sequence
 from soup.core.contracts import ValidationError, report
 from soup_pkg_ekg.api import Query, ident
 
+from .kinds import DEFAULT_KINDS, STANDARD_KINDS
 from .values import as_list, clean
 
 NODE = "node"
@@ -57,6 +60,8 @@ Graph = dict[str, Any]
 class GraphView(ABC):
     key: str = ""
     label: str = ""
+    # The object kinds whose graph the view draws (kinds.py).
+    kinds: Sequence[str] = DEFAULT_KINDS
     relationship_types: Sequence[str] = ()
     default_relations: Sequence[str] = ()
     node_labels: Sequence[str] = ()
@@ -291,6 +296,7 @@ DF = "DF"
 class StandardGraphView(EdgeListGraphView):
     key = "standard"
     label = "Grafo standard"
+    kinds = STANDARD_KINDS
     relationships = {DF: (EVENT, EVENT), CORR: (EVENT, ENTITY)}
     default_relations = (DF,)
 

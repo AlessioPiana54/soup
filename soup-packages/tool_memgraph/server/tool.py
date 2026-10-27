@@ -9,6 +9,10 @@ Description: MemgraphTool - the "memgraph" tool. Runs parameterized
              state_key is an opaque string chosen by the caller (e.g. an
              object id). Loads are serialized by a lock, so two requests
              never load different states on top of each other.
+             advance(from_state, to_state, mutate) changes the active
+             graph in place (an analysis on the loaded parent): only if
+             from_state is active, and the state becomes to_state only
+             if mutate succeeds.
 Project : soup-packages/tool_memgraph
 ------------------------------------------------------------------------
 """
@@ -18,7 +22,7 @@ from __future__ import annotations
 import threading
 from typing import Any, Callable, Optional
 
-from soup.core.contracts import GraphDatabase, Tool
+from soup.core.contracts import ConflictError, GraphDatabase, Tool
 
 from .query import Query
 
@@ -66,6 +70,31 @@ class MemgraphTool(Tool, GraphDatabase):
             loader(self.run)
             self._state = state_key
             return True
+
+    def advance(self, from_state: str, to_state: str, mutate: Loader) -> None:
+        """
+        Run mutate(run) on the graph of `from_state`, which then becomes
+        `to_state`. Atomic under the lock of the loads.
+
+        :raises ConflictError: `from_state` is not the active state
+            (mutate does not run, the graph is untouched); the caller
+            loads it first
+        If mutate raises, the graph is in an unknown state: the active
+        state becomes None (the next ensure_loaded reloads) and the error
+        propagates.
+        """
+
+        for name, value in (("from_state", from_state), ("to_state", to_state)):
+            if not isinstance(value, str) or not value:
+                raise ValueError(f"{name} must be a non-empty string, got {value!r}")
+        with self._lock:
+            if self._state != from_state:
+                raise ConflictError(
+                    f"The graph in Memgraph changed meanwhile (expected state {from_state!r}); retry"
+                )
+            self._state = None
+            mutate(self.run)
+            self._state = to_state
 
     def current_state(self) -> Optional[str]:
         return self._state

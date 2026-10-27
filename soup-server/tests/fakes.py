@@ -235,6 +235,8 @@ def fake_tool_engine(
 
 # The packages of the EKG (commits 8 and 9) and what they require.
 EKG_PACKAGES = ("tool_memgraph", "tool_storage", "soup_base", "csv_table", "ekg", "csv_ekg", "causal_df", "ekg_views")
+# ... and the analyses and the aggregate graph (commit 10).
+ANALYSIS_PACKAGES = (*EKG_PACKAGES, "ekg_analysis", "ekg_class_graph")
 
 
 def use_database(engine, db: GraphDatabase) -> None:

@@ -6,7 +6,8 @@ Description: The visualizers and the exporter of ekg_views, for objects of
              Memgraph (ekg's ensure_loaded), then reads it with Query
              objects only:
              - GraphVisualizer ("graph", <soup-pkg-ekg-graph>): the views
-               contributed to "ekg.graph_views" by any package; data() is
+               contributed to "ekg.graph_views" by any package that draw
+               the object's kind (their `kinds`); data() is
                the first drawing of the first view (200 edges, like
                getGraphDetails(200)) with the max data to show
                (getMaxDataToShow); actions "graph" {view, limit,
@@ -29,6 +30,14 @@ Description: The visualizers and the exporter of ekg_views, for objects of
              - GraphJsonExporter ("json", "JSON del grafo"): the parts
                contributed to "ekg.json_parts" chosen in the multiselect
                "parts", each under its own key (downloadJsonSelected).
+             Grafo and Statistiche accept "ekg" objects; Interrogazioni and
+             JSON del grafo accept the kinds of their contributions
+             (kinds.accepted_kinds: "ekg", and "ekg_class" while
+             ekg_class_graph contributes to them) and offer, for an
+             object, only the contributions whose `kinds` contain its
+             kind. data() of Grafo, Statistiche and Interrogazioni carries
+             meta.notice of the object (e.g. an analysis that changed
+             nothing), shown by the elements.
              The contributions to the extension points are read again at
              every request (`contributions`, the PluginContext's), so a
              package enabled or disabled at runtime takes effect at once.
@@ -47,6 +56,7 @@ import soup_pkg_ekg.api as ekg
 
 from . import builtin_queries as builtin
 from .json_parts import JsonPart
+from .kinds import accepted_kinds, applies_to
 from .queries import GraphQuery, count_of
 from .values import as_choice, as_int, as_limit, as_list, as_text
 from .views import SEARCH_KINDS, GraphView
@@ -71,19 +81,28 @@ def _run(tools, query) -> list[dict[str, Any]]:
     return tools.get(MEMGRAPH).run(query)
 
 
-def _keyed(items: Sequence[Any], kind: str) -> dict[str, Any]:
+def _keyed(items: Sequence[Any], what: str, kind: str) -> dict[str, Any]:
+    """The contributions that apply to objects of `kind`, by key (the first one of each key)."""
+
     found: dict[str, Any] = {}
     for item in items:
         key = getattr(item, "key", "")
-        if key and key not in found:
+        if key and key not in found and applies_to(item, kind):
             found[key] = item
     if not found:
-        raise NotFoundError(f"No active package contributes {kind}")
+        raise NotFoundError(f"No active package contributes {what} for '{kind}' objects")
     return found
 
 
+def notice_of(obj: ObjectRef) -> Optional[str]:
+    """meta.notice: a message the elements show above the data (e.g. an analysis that changed nothing)."""
+
+    notice = obj.meta.get("notice")
+    return notice if isinstance(notice, str) and notice else None
+
+
 class _EkgContribution:
-    accepts = (ekg.EKG_KIND,)
+    accepts: Any = (ekg.EKG_KIND,)
     requires_tools = TOOLS
 
     def __init__(self, contributions: Contributions):
@@ -105,11 +124,11 @@ class GraphVisualizer(_EkgContribution, Visualizer):
         super().__init__(contributions)
         self.max_limit = max_limit
 
-    def views(self) -> dict[str, GraphView]:
-        return _keyed(self._contributions(GRAPH_VIEWS_POINT), "graph views")
+    def views(self, kind: str = ekg.EKG_KIND) -> dict[str, GraphView]:
+        return _keyed(self._contributions(GRAPH_VIEWS_POINT), "graph views", kind)
 
-    def _view(self, params: Mapping[str, Any]) -> GraphView:
-        views = self.views()
+    def _view(self, params: Mapping[str, Any], kind: str) -> GraphView:
+        views = self.views(kind)
         key = as_choice(params.get("view"), "view", list(views), next(iter(views)))
         return views[key]
 
@@ -138,15 +157,16 @@ class GraphVisualizer(_EkgContribution, Visualizer):
             {"key": view.key, "label": view.label or view.key,
              "relationship_types": list(view.relationship_types), "default_relations": list(view.default_relations),
              "node_labels": list(view.node_labels)}
-            for view in self.views().values()
+            for view in self.views(obj.kind).values()
         ]
-        return {"views": views, "max_limit": self.max_limit, **self._graph(self._view(params), params, tools)}
+        return {"views": views, "max_limit": self.max_limit, "notice": notice_of(obj),
+                **self._graph(self._view(params, obj.kind), params, tools)}
 
     def action(self, obj: ObjectRef, name: str, params: Mapping[str, Any], tools) -> Any:
         if name not in ("graph", "search", "node"):
             raise NotFoundError(f"Visualizer '{self.id}' has no action '{name}'")
         self._loaded(obj, tools)
-        view = self._view(params)
+        view = self._view(params, obj.kind)
         if name == "graph":
             return self._graph(view, params, tools)
         if name == "search":
@@ -241,6 +261,7 @@ class StatsVisualizer(_EkgContribution, Visualizer):
             "activities": activities.rows(rows(activities)),
             "entities": entities,
             "charts": {"data": composition, "process": phase_times(obj.meta.get("process_info"))},
+            "notice": notice_of(obj),
         }
 
 
@@ -252,19 +273,24 @@ class QueriesVisualizer(_EkgContribution, Visualizer):
     label = "Interrogazioni"
     element = "soup-pkg-ekg-queries"
 
-    def queries(self) -> dict[str, GraphQuery]:
-        return _keyed(self._contributions(QUERIES_POINT), "queries")
+    @property  # type: ignore[override]
+    def accepts(self) -> tuple[str, ...]:
+        return accepted_kinds(self._contributions(QUERIES_POINT))
+
+    def queries(self, kind: str = ekg.EKG_KIND) -> dict[str, GraphQuery]:
+        return _keyed(self._contributions(QUERIES_POINT), "queries", kind)
 
     def data(self, obj: ObjectRef, params: Mapping[str, Any], tools) -> Any:
         groups: dict[str, list[dict[str, Any]]] = {}
-        for query in self.queries().values():
+        for query in self.queries(obj.kind).values():
             groups.setdefault(query.group or "Altro", []).append(query.describe())
-        return {"groups": [{"group": group, "queries": items} for group, items in groups.items()]}
+        return {"groups": [{"group": group, "queries": items} for group, items in groups.items()],
+                "notice": notice_of(obj)}
 
     def action(self, obj: ObjectRef, name: str, params: Mapping[str, Any], tools) -> Any:
         if name != "query":
             raise NotFoundError(f"Visualizer '{self.id}' has no action '{name}'")
-        queries = self.queries()
+        queries = self.queries(obj.kind)
         key = params.get("key")
         if key not in queries:
             raise NotFoundError(f"No active package contributes the query {key!r}")
@@ -284,17 +310,21 @@ class GraphJsonExporter(_EkgContribution, Exporter):
     extension = ".json"
     mime = "application/json"
 
-    def parts(self) -> dict[str, JsonPart]:
-        return _keyed(self._contributions(JSON_PARTS_POINT), "JSON parts")
+    @property  # type: ignore[override]
+    def accepts(self) -> tuple[str, ...]:
+        return accepted_kinds(self._contributions(JSON_PARTS_POINT))
+
+    def parts(self, kind: str = ekg.EKG_KIND) -> dict[str, JsonPart]:
+        return _keyed(self._contributions(JSON_PARTS_POINT), "JSON parts", kind)
 
     def fields(self, obj: ObjectRef, tools) -> list[Field]:
-        parts = self.parts()
+        parts = self.parts(obj.kind)
         return [Field("parts", "Contenuto", type="multiselect", required=True,
                       choices=tuple(Choice(key, part.label or key) for key, part in parts.items()),
                       default=list(parts), help="Le parti del grafo da esportare, ognuna sotto la propria chiave.")]
 
     def export(self, obj: ObjectRef, params: Mapping[str, Any], tools) -> bytes:
-        parts = self.parts()
+        parts = self.parts(obj.kind)
         chosen = as_list(params.get("parts"), "parts", parts, list(parts))
         if not chosen:
             raise ValidationError("Choose at least one part of the graph")

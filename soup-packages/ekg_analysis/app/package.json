@@ -1,0 +1,10 @@
+{
+  "name": "soup-pkg-ekg-analysis-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Frontend of the ekg_analysis package: <soup-pkg-ekg-insights> (uses the elements of soup_base by tag)",
+  "type": "module",
+  "dependencies": {
+    "@soup/sdk": "*"
+  }
+}

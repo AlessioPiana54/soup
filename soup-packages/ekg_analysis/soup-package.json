@@ -1,0 +1,15 @@
+{
+  "name": "ekg_analysis",
+  "version": "1.0.0",
+  "api_version": "3.1",
+  "label": "Analisi dell'EKG",
+  "description": "Analyses of 'ekg' objects as operations (filters contributed to ekg.analysis_filters, applied with a compensating rollback), the legacy analyses on the volume, the example and the export of a configuration, and the process indicators.",
+  "author": "SOUP",
+  "requires": ["ekg", "ekg_views", "soup_base"],
+  "requires_tools": ["memgraph", "storage", "catalog"],
+  "provides_tools": [],
+  "extension_points": ["ekg.analysis_filters"],
+  "python_dependencies": [],
+  "server": {"module": "server", "plugin": "plugin:Plugin"},
+  "app": {"entry": "dist/index.js"}
+}

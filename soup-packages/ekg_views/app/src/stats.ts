@@ -10,7 +10,7 @@
 
 import { SoupVisualizerElement, VisualizerContext } from '@soup/sdk';
 
-import { h } from './dom';
+import { h, NOTICE_CSS, noticeBox } from './dom';
 import { ChartData, SoupChartElement, SoupKeyValueElement, SoupTableElement } from './soup-base';
 
 export interface EntityStat {
@@ -25,6 +25,7 @@ export interface StatsData {
   activities: string[];
   entities: EntityStat[];
   charts: { data: ChartData; process: ChartData | null };
+  notice?: string | null;
 }
 
 const CSS = `
@@ -77,7 +78,8 @@ export class SoupPkgEkgStats extends HTMLElement implements SoupVisualizerElemen
     else charts.append(h('p', { className: 'info', text: 'Tempi di costruzione non salvati per questo grafo.' }));
 
     this.root.replaceChildren(
-      h('style', { text: CSS }),
+      h('style', { text: CSS + NOTICE_CSS }),
+      ...noticeBox(this.data.notice),
       summary,
       charts,
       h('h4', { text: 'Entità' }),

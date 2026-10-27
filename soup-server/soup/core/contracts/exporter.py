@@ -22,7 +22,8 @@ class Exporter(ABC):
     `id` is unique among loaded exporters; `accepts` lists object kinds;
     `extension` (e.g. ".csv") and `mime` describe the produced file;
     `requires_tools` must be among the tools its package requires or
-    provides.
+    provides. applies() narrows `accepts` to some objects of those kinds
+    (since contracts "3.1").
     """
 
     id: str = ""
@@ -31,6 +32,15 @@ class Exporter(ABC):
     extension: str = ""
     mime: str = "application/octet-stream"
     requires_tools: Sequence[str] = ()
+
+    def applies(self, obj: ObjectRef, tools: ToolAccess) -> bool:
+        """
+        Whether the exporter is offered for `obj`, an object of an accepted
+        kind. Default: always. An exporter that does not apply is neither
+        listed nor run for that object.
+        """
+
+        return True
 
     def fields(self, obj: ObjectRef, tools: ToolAccess) -> list[Field]:
         """Export options for `obj`. Default: none."""

@@ -11,26 +11,34 @@ Description: Public API of the ekg_views package. Other packages import it
              - QUERIES_POINT ("ekg.queries"): GraphQuery, or the bases
                CountQuery, NodeListQuery, RelationshipListQuery;
              - JSON_PARTS_POINT ("ekg.json_parts"): JsonPart;
-             with ctx.contribute(POINT, item, key=item.key). clean() makes
-             the values read from Memgraph JSON-ready.
+             with ctx.contribute(POINT, item, key=item.key). Each item
+             declares the object kinds it applies to (`kinds`, default
+             ("ekg",); STANDARD_KINDS for the ones of ekg_views).
+             GraphVisualizer is the "Grafo" visualizer, to subclass for
+             the objects of another kind with its own element. clean()
+             makes the values read from Memgraph JSON-ready.
 Project : soup-packages/ekg_views
 ------------------------------------------------------------------------
 """
 
-from .contributions import GRAPH_VIEWS_POINT, JSON_PARTS_POINT, QUERIES_POINT
+from .contributions import GRAPH_VIEWS_POINT, JSON_PARTS_POINT, QUERIES_POINT, GraphVisualizer, notice_of
+from .kinds import DEFAULT_KINDS, STANDARD_KINDS
 from .json_parts import JsonPart, NodesPart, RelationshipsPart
 from .queries import CountQuery, GraphQuery, NodeListQuery, RelationshipListQuery, count_of
 from .values import clean
 from .views import EdgeListGraphView, GraphView, StandardGraphView
 
 __all__ = [
+    "DEFAULT_KINDS",
     "GRAPH_VIEWS_POINT",
     "JSON_PARTS_POINT",
     "QUERIES_POINT",
+    "STANDARD_KINDS",
     "CountQuery",
     "EdgeListGraphView",
     "GraphQuery",
     "GraphView",
+    "GraphVisualizer",
     "JsonPart",
     "NodeListQuery",
     "NodesPart",
@@ -39,4 +47,5 @@ __all__ = [
     "StandardGraphView",
     "clean",
     "count_of",
+    "notice_of",
 ]

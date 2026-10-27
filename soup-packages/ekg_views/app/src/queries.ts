@@ -8,7 +8,7 @@
 
 import { Block, Field, SoupVisualizerElement, VisualizerContext } from '@soup/sdk';
 
-import { errorMessage, h } from './dom';
+import { errorMessage, h, NOTICE_CSS, noticeBox } from './dom';
 import { SoupReportViewElement } from './soup-base';
 
 export interface QueryInfo {
@@ -21,6 +21,7 @@ export interface QueryInfo {
 
 export interface QueriesData {
   groups: { group: string; queries: QueryInfo[] }[];
+  notice?: string | null;
 }
 
 export interface QueryResult {
@@ -59,7 +60,11 @@ export class SoupPkgEkgQueries extends HTMLElement implements SoupVisualizerElem
     if (this.nav) return;
     this.nav = h('nav');
     this.main = h('div', { className: 'main' });
-    this.root.replaceChildren(h('style', { text: CSS }), h('div', { className: 'layout' }, this.nav, this.main));
+    this.root.replaceChildren(
+      h('style', { text: CSS + NOTICE_CSS }),
+      ...noticeBox(this.data.notice),
+      h('div', { className: 'layout' }, this.nav, this.main)
+    );
     const first = this.data.groups[0]?.queries[0];
     if (first) this.choose(first.key);
     else this.draw();

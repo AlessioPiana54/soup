@@ -4,7 +4,8 @@ File : json_parts.py
 Description: The parts of the "JSON del grafo" export, contributed to the
              "ekg.json_parts" extension point (contribution key = `key`):
              JsonPart has key, label (the key of the part in the exported
-             JSON and the label of its choice), query() -> Query and
+             JSON and the label of its choice), the object kinds it applies
+             to (`kinds`, kinds.py), query() -> Query and
              transform(records) -> the data of the part. ekg_views
              contributes the four parts of the old downloadJsonSelected
              (pages/graph-dataset), in the format of the /api/v2/json/graph/*
@@ -31,6 +32,7 @@ from typing import Any, Mapping, Sequence
 
 from soup_pkg_ekg.api import Query, ident
 
+from .kinds import DEFAULT_KINDS, STANDARD_KINDS
 from .values import clean
 from .views import CORR, DF, ENTITY, EVENT
 
@@ -38,6 +40,7 @@ from .views import CORR, DF, ENTITY, EVENT
 class JsonPart(ABC):
     key: str = ""
     label: str = ""
+    kinds: Sequence[str] = DEFAULT_KINDS
 
     @abstractmethod
     def query(self) -> Query:
@@ -51,10 +54,11 @@ class JsonPart(ABC):
 class NodesPart(JsonPart):
     """The properties of every node with `node_label` (get_event_nodes_s, get_entity_nodes_s)."""
 
-    def __init__(self, key: str, label: str, node_label: str):
+    def __init__(self, key: str, label: str, node_label: str, kinds: Sequence[str] = DEFAULT_KINDS):
         self.key = key
         self.label = label
         self.node_label = node_label
+        self.kinds = tuple(kinds)
 
     def query(self) -> Query:
         return Query(f"MATCH (n:{ident(self.node_label)}) RETURN properties(n) AS node")
@@ -70,8 +74,10 @@ class RelationshipsPart(JsonPart):
     numbered from 1.
     """
 
-    def __init__(self, key: str, label: str, source_label: str, relationship: str, target_label: str, prefix: str):
+    def __init__(self, key: str, label: str, source_label: str, relationship: str, target_label: str, prefix: str,
+                 kinds: Sequence[str] = DEFAULT_KINDS):
         self.key = key
+        self.kinds = tuple(kinds)
         self.label = label
         self.source_label = source_label
         self.relationship = relationship
@@ -98,8 +104,8 @@ class RelationshipsPart(JsonPart):
 
 def builtin_parts() -> list[JsonPart]:
     return [
-        NodesPart("event_nodes", "Event nodes", EVENT),
-        NodesPart("entity_nodes", "Entity nodes", ENTITY),
-        RelationshipsPart("corr", "CORR relationships", EVENT, CORR, ENTITY, "corr"),
-        RelationshipsPart("df", "DF relationships", EVENT, DF, EVENT, "df"),
+        NodesPart("event_nodes", "Event nodes", EVENT, STANDARD_KINDS),
+        NodesPart("entity_nodes", "Entity nodes", ENTITY, STANDARD_KINDS),
+        RelationshipsPart("corr", "CORR relationships", EVENT, CORR, ENTITY, "corr", STANDARD_KINDS),
+        RelationshipsPart("df", "DF relationships", EVENT, DF, EVENT, "df", STANDARD_KINDS),
     ]

@@ -3,7 +3,8 @@
 File : test_tool_memgraph.py
 Description: Tests for the tool_memgraph package's "memgraph" tool on a
              FakeDatabase: run, health, the active graph
-             (ensure_loaded / current_state / clear / invalidate),
+             (ensure_loaded / advance / current_state / clear /
+             invalidate),
              MemgraphConfig from the environment and the public api.py.
 Project : soup-server
 ------------------------------------------------------------------------
@@ -113,6 +114,49 @@ def test_a_failed_load_leaves_no_active_state(tool):
     retry = _Loader()
     assert tool.ensure_loaded("obj-2", retry) is True
     assert retry.calls == 1
+
+
+def test_advance_mutates_the_active_graph_and_moves_to_the_new_state(tool, db):
+    tool.ensure_loaded("parent", lambda run: None)
+    db.received_queries.clear()
+
+    tool.advance("parent", "child", lambda run: run(Query("MATCH (n:`Event`) DETACH DELETE n")))
+
+    assert tool.current_state() == "child"
+    # In place: no clear of the database.
+    assert _texts(db) == ["MATCH (n:`Event`) DETACH DELETE n"]
+
+
+def test_advance_from_a_state_that_is_not_active_does_not_touch_the_graph(tool, db):
+    from soup.core.contracts import ConflictError
+
+    tool.ensure_loaded("other", lambda run: None)
+    db.received_queries.clear()
+    calls = []
+
+    with pytest.raises(ConflictError, match="parent"):
+        tool.advance("parent", "child", lambda run: calls.append(run))
+
+    assert calls == [] and db.received_queries == []
+    assert tool.current_state() == "other"
+
+
+def test_a_failed_advance_leaves_the_state_unknown(tool, db):
+    tool.ensure_loaded("parent", lambda run: None)
+
+    def mutate(run):
+        raise RuntimeError("filter failed")
+
+    with pytest.raises(RuntimeError, match="filter failed"):
+        tool.advance("parent", "child", mutate)
+    assert tool.current_state() is None
+    assert tool.ensure_loaded("parent", lambda run: None) is True
+
+
+@pytest.mark.parametrize("states", [("", "b"), ("a", ""), (None, "b")])
+def test_advance_states_must_be_non_empty_strings(tool, states):
+    with pytest.raises(ValueError):
+        tool.advance(*states, lambda run: None)
 
 
 @pytest.mark.parametrize("state_key", ["", None, 3])

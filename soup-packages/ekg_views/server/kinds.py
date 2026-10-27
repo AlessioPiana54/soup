@@ -1,0 +1,44 @@
+"""
+------------------------------------------------------------------------
+File : kinds.py
+Description: The object kinds a contribution to "ekg.graph_views",
+             "ekg.queries" or "ekg.json_parts" applies to: its `kinds`
+             attribute, ("ekg",) by default. The standard contributions of
+             ekg_views declare STANDARD_KINDS, because the graph of an
+             "ekg_class" object (ekg_class_graph) also holds the EKG of its
+             parent. accepted_kinds() is what "Interrogazioni" and "JSON
+             del grafo" accept: "ekg", plus every other kind that has at
+             least one contribution dedicated to it (whose kinds do not
+             include "ekg") - so with ekg_class_graph disabled an
+             "ekg_class" object gets neither of them.
+Project : soup-packages/ekg_views
+------------------------------------------------------------------------
+"""
+
+from __future__ import annotations
+
+from typing import Any, Iterable
+
+from soup_pkg_ekg.api import EKG_KIND
+
+DEFAULT_KINDS = (EKG_KIND,)
+STANDARD_KINDS = (EKG_KIND, "ekg_class")
+
+
+def kinds_of(item: Any) -> tuple[str, ...]:
+    kinds = getattr(item, "kinds", DEFAULT_KINDS)
+    return (kinds,) if isinstance(kinds, str) else tuple(kinds or ())
+
+
+def applies_to(item: Any, kind: str) -> bool:
+    return kind in kinds_of(item)
+
+
+def accepted_kinds(items: Iterable[Any]) -> tuple[str, ...]:
+    accepted = [EKG_KIND]
+    for item in items:
+        kinds = kinds_of(item)
+        if EKG_KIND in kinds:
+            continue
+        accepted.extend(kind for kind in kinds if kind not in accepted)
+    return tuple(accepted)

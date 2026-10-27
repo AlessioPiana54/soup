@@ -11,7 +11,9 @@ Description: The graph state of "ekg" objects (ekg package, state.py and
              "ekg.before_reset" is published before every emptying or
              rebuild, "ekg.built" after a build; dispose empties the
              graph of an active object and removes its files; the "load"
-             operation.
+             operation; derive_state changes the loaded parent in place
+             (a failure rebuilds the parent); a derived object of another
+             kind loads through a derived parent with only "memgraph".
 Project : soup-packages/ekg
 ------------------------------------------------------------------------
 """
@@ -26,12 +28,14 @@ from soup.core.contracts import (
     GraphDatabase,
     NotFoundError,
     ObjectDraft,
+    ObjectRef,
     Operation,
     OperationInput,
     PluginContext,
     ServiceUnavailableError,
     SoupPlugin,
     Upload,
+    ValidationError,
 )
 from tests.fakes import FakeDatabase, ekg_engine, volume_files
 from tests.packages import bundled_api
@@ -253,3 +257,74 @@ def test_a_rebuild_saves_the_counts_and_times_in_the_config(setup, tmp_path):
     assert config["event_nodes"] == 7
     assert config["process_info"]["init_df_time"] is not None
     assert config["date_created"] == obj.meta["date_created"]
+
+
+def test_derive_state_changes_the_loaded_parent_in_place_and_keeps_its_key(setup):
+    engine, db, _package = setup
+    root = _import(engine)
+    start = len(db.received_queries)
+
+    graph_key = ekg.derive_state(root, lambda run: run(ekg.Query("MATCH (n:`Event`) RETURN n LIMIT $limit", {"limit": 1})), _tools(engine))
+
+    # The parent was active: no rebuild, only the change.
+    assert _texts(db, start) == ["MATCH (n:`Event`) RETURN n LIMIT $limit"]
+    assert _memgraph(engine).current_state() == graph_key != root.meta["graph_key"]
+
+    # The derived object keeps that key: its first opening does not
+    # rebuild; after another graph its provider rebuilds it with the same key.
+    state = {"provider": _FilterProvider.key, "spec": {"activity": "Create"}}
+    derived = ObjectRef(
+        id="derived-1", name="derived", kind=ekg.EKG_KIND, created_by=root.created_by, parents=(root.id,),
+        meta={"state": state, "graph_key": graph_key},
+    )
+    engine.core_tools.catalog().add(derived)
+    assert ekg.graph_key_of(derived) == graph_key
+    assert ekg.ensure_loaded(derived, _tools(engine)) is False
+    assert ekg.ensure_loaded(root, _tools(engine)) is True
+    assert ekg.ensure_loaded(derived, _tools(engine)) is True
+    assert _memgraph(engine).current_state() == graph_key
+
+
+def test_a_failed_derive_state_rebuilds_the_parent(setup):
+    engine, db, _package = setup
+    root = _import(engine)
+
+    def mutate(run):
+        run(ekg.Query("MATCH (n:`Event`) DETACH DELETE n"))
+        raise RuntimeError("filter failed")
+
+    start = len(db.received_queries)
+    with pytest.raises(RuntimeError, match="filter failed"):
+        ekg.derive_state(root, mutate, _tools(engine))
+
+    assert any(text.startswith("LOAD CSV") for text in _texts(db, start))
+    assert _memgraph(engine).current_state() == root.meta["graph_key"]
+
+
+def test_a_derived_object_of_another_kind_is_loaded_through_a_derived_parent(setup):
+    engine, db, _package = setup
+    root = _import(engine)
+    [derived] = engine.operation_router.run("state_test.derive", [root.id])
+    other = ObjectRef(
+        id="other-1", name="other", kind="other_kind", created_by=derived.created_by, parents=(derived.id,),
+        meta={"state": {"provider": _FilterProvider.key, "spec": {"activity": "Ship"}}},
+    )
+    engine.core_tools.catalog().add(other)
+
+    assert ekg.root_of(other).id == root.id
+    start = len(db.received_queries)
+    # Only "memgraph": the dataset is read with the ekg package's own storage.
+    assert ekg.ensure_loaded(other, engine.core_tools.toolbox("test", ("memgraph",))) is True
+
+    activities = [query.params.get("activity") for query in db.received_queries[start:] if "activity" in query.params]
+    assert activities == ["Create", "Ship"]
+    assert _memgraph(engine).current_state() == other.id
+
+
+def test_an_object_of_another_kind_without_a_state_is_not_an_ekg(setup):
+    engine, _db, _package = setup
+    root = _import(engine)
+    plain = ObjectRef(id="plain-1", name="plain", kind="other_kind", created_by=root.created_by, parents=(root.id,))
+
+    with pytest.raises(ValidationError, match="other_kind"):
+        ekg.ensure_loaded(plain, _tools(engine))

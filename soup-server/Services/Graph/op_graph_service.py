@@ -617,7 +617,11 @@ class OperationGraphService:
             verification_query = get_count_nodes_event_query()
             result_event = database_connector.run_query_memgraph(verification_query)
 
-            if result_entity and result_event and result_entity[0]['count'] == 0 and result_event[0]['count'] == 0:
+            # Each verification reads its own count: entity_count for the
+            # :Entity nodes, node_count for the :Event nodes (both were read
+            # as ['count'], a column neither query returns).
+            if (result_entity and result_event and result_entity[0]['entity_count'] == 0
+                    and result_event[0]['node_count'] == 0):
                 response.http_status_code = 200
                 response.message = 'Standard Graph deleted successfully'
                 response.response_data = None

@@ -18,7 +18,10 @@ Description: Version of the stable contracts exposed by the host to
              add_input_handler and add_build_step from PluginContext (the
              event log and the EKG moved to the ekg package; build steps
              are contributed to its "ekg.build_steps" extension point), so
-             packages written for "2.x" no longer load.
+             packages written for "2.x" no longer load. "3.1" (commit 10)
+             added Exporter.applies(obj, tools), so an exporter can be
+             offered only for some objects of a kind; "3.0" packages load
+             unchanged.
 Project : soup-server
 ------------------------------------------------------------------------
 """
@@ -28,7 +31,7 @@ from __future__ import annotations
 import re
 from typing import Optional
 
-CONTRACTS_API_VERSION = "3.0"
+CONTRACTS_API_VERSION = "3.1"
 
 _API_VERSION_RE = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 

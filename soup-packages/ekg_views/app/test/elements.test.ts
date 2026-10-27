@@ -284,3 +284,25 @@ describe('<soup-pkg-ekg-queries>', () => {
     expect(element.shadowRoot!.querySelector('soup-report-view')).toBeNull();
   });
 });
+
+describe('the notice of an object', () => {
+  const NOTICE = "L'analisi non ha modificato il grafo: è uguale a quello di partenza.";
+
+  it('is shown above the data of the three visualizers, as text', () => {
+    const graph = mount<SoupPkgEkgGraph>('soup-pkg-ekg-graph', { ...GRAPH_DATA, notice: NOTICE }, fakeContext());
+    const stats = mount<SoupPkgEkgStats>('soup-pkg-ekg-stats', { ...STATS, notice: '<b>x</b>' }, fakeContext());
+    const queries = mount<SoupPkgEkgQueries>('soup-pkg-ekg-queries', { ...QUERIES, notice: NOTICE }, fakeContext());
+
+    expect(graph.shadowRoot!.querySelector('.notice')!.textContent).toBe(NOTICE);
+    expect(stats.shadowRoot!.querySelector('.notice')!.textContent).toBe('<b>x</b>');
+    expect(stats.shadowRoot!.querySelector('b')).toBeNull();
+    expect(queries.shadowRoot!.querySelector('.notice')!.getAttribute('role')).toBe('status');
+  });
+
+  it('is absent when the object has none', () => {
+    const graph = mount<SoupPkgEkgGraph>('soup-pkg-ekg-graph', { ...GRAPH_DATA, notice: null }, fakeContext());
+    const stats = mount<SoupPkgEkgStats>('soup-pkg-ekg-stats', STATS, fakeContext());
+    expect(graph.shadowRoot!.querySelector('.notice')).toBeNull();
+    expect(stats.shadowRoot!.querySelector('.notice')).toBeNull();
+  });
+});

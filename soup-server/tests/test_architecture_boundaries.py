@@ -89,7 +89,8 @@ def _package_dirs() -> list[Path]:
 
 def test_bundled_packages_exist():
     assert {path.name for path in _package_dirs()} >= {
-        "ekg", "csv_ekg", "causal_df", "ekg_views", "tool_memgraph", "tool_storage", "soup_base", "text", "csv_table",
+        "ekg", "csv_ekg", "causal_df", "ekg_views", "ekg_analysis", "ekg_class_graph", "tool_memgraph", "tool_storage",
+        "soup_base", "text", "csv_table",
     }
     assert not (PACKAGES_ROOT / "csv_reader").exists()
 

@@ -32,6 +32,7 @@ from typing import Any, Mapping, Optional, Sequence
 from soup.core.contracts import Field, report
 from soup_pkg_ekg.api import Query
 
+from .kinds import STANDARD_KINDS
 from .queries import Block, CountQuery, GraphQuery, NodeListQuery, RelationshipListQuery, count_of, display, limit_fields
 from .values import clean
 from .views import CORR, DF, ENTITY, EVENT, StandardGraphView
@@ -294,7 +295,9 @@ COUNT_DF = CountQuery("count_df", "Relazioni DF", COUNTS, relationship=DF)
 
 
 def builtin_queries() -> list[GraphQuery]:
-    return [
+    """The 20 queries of ekg_views, for "ekg" and "ekg_class" objects (STANDARD_KINDS)."""
+
+    queries = [
         NodeListQuery("event_nodes", "Nodi evento", NODES, node_label=EVENT),
         NodeListQuery("entity_nodes", "Nodi entità", NODES, node_label=ENTITY),
         EntityPerType(),
@@ -316,3 +319,6 @@ def builtin_queries() -> list[GraphQuery]:
         Timestamps(),
         MaxData(),
     ]
+    for query in queries:
+        query.kinds = STANDARD_KINDS
+    return queries

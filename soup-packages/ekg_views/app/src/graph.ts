@@ -11,7 +11,7 @@
 
 import { SoupVisualizerElement, VisualizerContext } from '@soup/sdk';
 
-import { errorMessage, h } from './dom';
+import { errorMessage, h, NOTICE_CSS, noticeBox } from './dom';
 import { GraphData, GraphEdgeModel, GraphNodeModel, NodeShape, SearchPage, SearchTarget, SoupGraphViewElement } from './soup-base';
 
 export interface ViewInfo {
@@ -31,6 +31,7 @@ export interface GraphResult {
 }
 
 export interface GraphViewData extends GraphResult {
+  notice?: string | null;
   views: ViewInfo[];
   max_limit: number;
 }
@@ -73,7 +74,7 @@ export class SoupPkgEkgGraph extends HTMLElement implements SoupVisualizerElemen
     graph.nodeDetails = (id) => this.context.action<GraphNodeModel>('node', { view: this.view, id });
     this.graph = graph;
     this.bar = h('div', { className: 'bar' });
-    this.root.replaceChildren(h('style', { text: CSS }), this.bar, graph);
+    this.root.replaceChildren(h('style', { text: CSS + NOTICE_CSS }), ...noticeBox(this.data.notice), this.bar, graph);
     this.drawBar();
 
     // Only the first drawing becomes the preview of the object.
