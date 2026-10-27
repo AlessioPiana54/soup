@@ -157,6 +157,17 @@ export type BlockType = Block['type'];
 /** The kind of the objects whose meta.blocks is a list of blocks. */
 export const REPORT_KIND = 'report';
 
+/**
+ * The `data` of a visualizer of "report" objects. The host gives a
+ * visualizer of "report" the same shape to draw the blocks of an import
+ * preview (without an object).
+ */
+export interface ReportData {
+  blocks: Block[];
+  name?: string;
+  description?: string;
+}
+
 export type NotifyLevel = 'info' | 'success' | 'warning' | 'error';
 
 export type Theme = 'light' | 'dark';

@@ -5,8 +5,9 @@ Description: Tests for soup-packages/_template, the example package to
              copy: its folder is skipped by the discovery (leading "_"),
              and once copied as "template" it loads, its importer reads a
              .txt file (inspect, preview, import with max_lines), its
-             visualizer answers data and the "stats" action, and its
-             bundle is served and listed in the frontend manifest. The
+             visualizer answers data and the "stats" action, its
+             operation "stats_report" turns the text into a report, and
+             its bundle is served and listed in the frontend manifest. The
              bundle is a stand-in written by the test (no Node needed).
 Project : soup-server
 ------------------------------------------------------------------------
@@ -55,6 +56,7 @@ def test_the_copied_template_loads_with_its_importer_and_visualizer(template):
     assert packages["template"]["status"] == "active"
     assert packages["template"]["contributions"]["importers"] == ["template.text"]
     assert packages["template"]["contributions"]["visualizers"] == ["template.text"]
+    assert packages["template"]["contributions"]["operations"] == ["template.stats_report"]
 
     importers = data_of(template.get("/api/v3/importers", query_string={"filename": "notes.txt"}))
     assert [(item["id"], item["produces"], item["package"]) for item in importers] == [
@@ -120,3 +122,27 @@ def test_visualizer_data_action_and_bundle(template):
     bundle = template.get("/api/v3/packages/template/app/index.js")
     assert bundle.status_code == 200
     assert bundle.mimetype == "text/javascript"
+
+
+def test_the_stats_report_operation_produces_a_report(template):
+    response = template.post(
+        "/api/v3/imports", data={"file": _file(), "importer_id": "template.text", "name": "notes"},
+        content_type="multipart/form-data",
+    )
+    object_id = data_of(response)["id"]
+
+    [operation] = data_of(template.get("/api/v3/operations", query_string={"objects": object_id}))
+    assert (operation["id"], operation["produces"]) == ("template.stats_report", ["report"])
+    fields = data_of(template.get("/api/v3/operations/template.stats_report/fields", query_string={"objects": object_id}))
+    assert [(field["name"], field["default"]) for field in fields] == [("top", 5)]
+
+    response = template.post("/api/v3/operations/template.stats_report/run", json={"objects": [object_id], "params": {"top": 2}})
+    assert response.status_code == 201, response.get_json()
+    [created] = data_of(response)
+    assert (created["kind"], created["name"], created["parents"]) == ("report", "notes statistics", [object_id])
+    counts, longest, text = created["meta"]["blocks"]
+    assert counts["data"]["items"] == [
+        {"key": "lines", "value": 3}, {"key": "words", "value": 6}, {"key": "characters", "value": 31}
+    ]
+    assert longest["data"]["rows"] == [[2, 16, "second line here"], [1, 10, "first line"]]
+    assert text["data"]["text"] == "first line\nsecond line here\nthird"

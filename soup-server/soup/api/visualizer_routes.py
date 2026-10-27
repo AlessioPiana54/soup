@@ -5,6 +5,8 @@ Description: /api/v3/objects/<id>/visualizers and /exporters, delegating
              to VisualizerRouter and ExportRouter:
              - GET  .../visualizers                       [{id, label, package,
                                                           element, module_url}]
+             - GET  /api/v3/visualizers?kind=<kind>       the same, for a kind
+                                                          (no object needed)
              - GET  .../visualizers/<vid>/data            ?params (JSON answer)
              - POST .../visualizers/<vid>/actions/<name>  JSON params
              - GET  .../exporters                         with their fields
@@ -40,6 +42,13 @@ def build_visualizer_blueprint(engine: Engine) -> Blueprint:
         return serializers.ok("Visualizers", [
             serializers.visualizer(entry, serializers.module_url(entry.package, frontend.entry(entry.package)))
             for entry in visualizers.visualizers_for(object_id)
+        ])
+
+    @blueprint.route("/api/v3/visualizers", methods=["GET"])
+    def list_visualizers_for_kind():
+        return serializers.ok("Visualizers", [
+            serializers.visualizer(entry, serializers.module_url(entry.package, frontend.entry(entry.package)))
+            for entry in visualizers.visualizers_for_kind(request_args.required_arg("kind"))
         ])
 
     @blueprint.route("/api/v3/objects/<object_id>/visualizers/<visualizer_id>/data", methods=["GET"])

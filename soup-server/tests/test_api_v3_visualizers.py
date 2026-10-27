@@ -3,7 +3,8 @@
 File : test_api_v3_visualizers.py
 Description: Tests for the /api/v3 visualizer and exporter routes
              (soup/api/visualizer_routes.py): the visualizers of an
-             object's kind, their data (flat or ?params=<json>), actions,
+             object's kind and of a kind (?kind=, no object), their data
+             (flat or ?params=<json>), actions,
              the exporters with their fields, and the export as a file
              with Content-Disposition; 400/404 errors.
 Project : soup-server
@@ -45,6 +46,15 @@ def test_visualizers_of_an_object(setup):
         "module_url": None,
     }]
     assert client.get(f"/api/v3/objects/{uuid.uuid4()}/visualizers").status_code == 404
+
+
+def test_visualizers_of_a_kind(setup):
+    client, _ = setup
+
+    assert [item["id"] for item in data_of(client.get("/api/v3/visualizers?kind=table"))] == ["feat.table_view"]
+    assert [item["id"] for item in data_of(client.get("/api/v3/visualizers?kind=graph"))] == ["feat.graph"]
+    assert data_of(client.get("/api/v3/visualizers?kind=report")) == []
+    assert client.get("/api/v3/visualizers").status_code == 400
 
 
 def test_data_with_flat_and_json_params(setup):

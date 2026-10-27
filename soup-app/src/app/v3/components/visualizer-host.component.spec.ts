@@ -96,7 +96,7 @@ describe('VisualizerHostComponent', () => {
     await until(() => FakeViewer.last !== null, fixture);
 
     const element = FakeViewer.last!;
-    expect(loader.ensureLoaded).toHaveBeenCalledWith('feat', VIEWER.module_url);
+    expect(loader.ensureLoaded).toHaveBeenCalledWith('feat');
     expect(api.visualizerData).toHaveBeenCalledWith('obj-1', 'feat.table');
     expect(element.dataWhenConnected).toEqual({ rows: [[1, 2]] });
     expect(element.context.object).toEqual(OBJECT);

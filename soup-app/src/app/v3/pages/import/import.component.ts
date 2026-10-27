@@ -1,34 +1,32 @@
 import { Component, signal, ViewChild } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
-import { Block, columnsOf, FormValues, REPORT_KIND } from '@soup/sdk';
+import { Block, columnsOf, FormValues } from '@soup/sdk';
 import { NgxDropzoneModule } from 'ngx-dropzone';
 
 import { ImporterInfo, Inspection } from '../../../core/v3/v3.models';
 import { V3ApiService } from '../../../core/v3/v3-api.service';
 import { NotificationService } from '../../../shared/components/s-toast/toast.service';
+import { BlocksPreviewComponent } from '../../components/blocks-preview.component';
 import { ConfigElementHostComponent } from '../../components/config-element-host.component';
 import { DynamicFormComponent } from '../../components/dynamic-form.component';
 import { errorMessage, notify } from '../../components/notify';
-import { ObjectFallbackComponent } from '../../components/object-fallback.component';
 
 /**
  * /import - file -> the importers able to read it (several may: the user
  * picks one) -> inspect (preview and form, or the importer's own
  * configuration element) -> "Aggiorna anteprima" -> name and description
- * -> import -> the page of the new object. Preview blocks are shown by a
- * package (soup_base); without it, as JSON.
+ * -> import -> the page of the new object. Preview blocks are drawn by a
+ * visualizer of "report" (soup_base's <soup-report-view>); without one,
+ * as JSON.
  */
 @Component({
   selector: 'app-import',
   standalone: true,
-  imports: [RouterLink, NgxDropzoneModule, DynamicFormComponent, ConfigElementHostComponent, ObjectFallbackComponent],
+  imports: [RouterLink, NgxDropzoneModule, DynamicFormComponent, ConfigElementHostComponent, BlocksPreviewComponent],
   templateUrl: './import.component.html',
   styleUrl: './import.component.scss'
 })
 export class ImportComponent {
-  // The kind preview blocks are visualized as
-  public readonly blocksKind = REPORT_KIND;
-
   public readonly file = signal<File | null>(null);
   public readonly importers = signal<ImporterInfo[] | null>(null);
   public readonly importer = signal<ImporterInfo | null>(null);

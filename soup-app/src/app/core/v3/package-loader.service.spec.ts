@@ -84,7 +84,7 @@ describe('PackageLoaderService', () => {
     expect(statuses.get('graphs')?.error).toContain('base');
     expect(statuses.get('other')?.state).toBe('loaded');
     expect(loader.errorOf('graphs')).toContain('required package base');
-    await expectAsync(loader.ensureLoaded('base', null)).toBeRejectedWithError(/SyntaxError/);
+    await expectAsync(loader.ensureLoaded('base')).toBeRejectedWithError(/SyntaxError/);
   });
 
   it('does not import or register a bundle twice across reloads', async () => {
@@ -137,17 +137,28 @@ describe('PackageLoaderService', () => {
 
     expect(names()).toEqual(['base']);
     expect(loader.statuses().get('base')?.state).toBe('reload-required');
-    await expectAsync(loader.ensureLoaded('base', null)).toBeResolved();
+    await expectAsync(loader.ensureLoaded('base')).toBeResolved();
   });
 
-  it('imports a package missing from the manifest on demand, once', async () => {
+  it('reads the manifest again for a package missing from it, and imports it once with its version', async () => {
+    await loader.reload();
+    // Installed after the last reload: it is in the manifest now.
+    manifest = () => of([module('fresh', [], '1.2.0')]);
+
+    await loader.ensureLoaded('fresh');
+    await loader.ensureLoaded('fresh');
     await loader.reload();
 
-    await loader.ensureLoaded('fresh', '/api/v3/packages/fresh/app/index.js');
-    await loader.ensureLoaded('fresh', '/api/v3/packages/fresh/app/index.js');
+    expect(imported).toEqual([`${ORIGIN}/api/v3/packages/fresh/app/index.js?v=1.2.0`]);
+    expect(loader.statuses().get('fresh')?.state).toBe('loaded');
+  });
 
-    expect(names()).toEqual(['fresh']);
-    await expectAsync(loader.ensureLoaded('nothing', null)).toBeRejectedWithError(/no frontend bundle/);
+  it('refuses a package without an active bundle after reading the manifest again', async () => {
+    manifest = () => of([module('base')]);
+    await loader.reload();
+
+    await expectAsync(loader.ensureLoaded('nothing')).toBeRejectedWithError(/no active frontend bundle/);
+    expect(names()).toEqual(['base']);
   });
 
   it('keeps the previous state when the manifest cannot be read', async () => {

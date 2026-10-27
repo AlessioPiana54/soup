@@ -40,6 +40,11 @@ type HostState = 'idle' | 'loading' | 'ready' | 'error';
  * `context` and forwards its DOM events to the host (thumbnail, opening
  * another object, notifications). Without a visualizer it shows that none
  * is installed for the kind, with the object's meta as JSON.
+ *
+ * With [data], the element gets that data instead of GET .../data: used
+ * to show something that is not (yet) an object, like the blocks of an
+ * import preview. Then there is no object to save a thumbnail to nor
+ * actions to call.
  */
 @Component({
   selector: 'soup-visualizer-host',
@@ -79,6 +84,9 @@ export class VisualizerHostComponent implements OnChanges, AfterViewInit, OnDest
 
   // The theme given to the element
   public theme = input<Theme>('light');
+
+  // The data given to the element instead of GET .../data (undefined: ask the visualizer)
+  public data = input<unknown>(undefined);
 
   // A new SVG preview set by the element (already saved)
   public thumbnailChanged = output<string>();
@@ -158,9 +166,10 @@ export class VisualizerHostComponent implements OnChanges, AfterViewInit, OnDest
       if (!isValidElementName(tag)) {
         throw new Error(`The visualizer '${visualizer.id}' declares an invalid element name '${tag}'`);
       }
-      await this.loader.ensureLoaded(visualizer.package, visualizer.module_url);
+      await this.loader.ensureLoaded(visualizer.package);
       await whenDefined(tag);
-      const data = await firstValueFrom(this.api.visualizerData(object.id, visualizer.id));
+      const given = this.data();
+      const data = given !== undefined ? given : await firstValueFrom(this.api.visualizerData(object.id, visualizer.id));
       if (generation !== this.generation) {
         return;
       }
@@ -183,6 +192,9 @@ export class VisualizerHostComponent implements OnChanges, AfterViewInit, OnDest
   }
 
   private async action(objectId: string, visualizerId: string, name: string, params: Record<string, unknown>): Promise<unknown> {
+    if (this.data() !== undefined) {
+      throw new Error(`No action '${name}' here: this view does not show an object`);
+    }
     try {
       return await firstValueFrom(this.api.visualizerAction(objectId, visualizerId, name, params));
     } catch (error) {
@@ -192,7 +204,8 @@ export class VisualizerHostComponent implements OnChanges, AfterViewInit, OnDest
   }
 
   private onThumbnail(detail: ThumbnailDetail | undefined): void {
-    if (!detail || typeof detail.svg !== 'string') {
+    // Data given by the page belongs to no object: nothing to save the thumbnail to.
+    if (!detail || typeof detail.svg !== 'string' || this.data() !== undefined) {
       return;
     }
     const object = this.object();

@@ -117,7 +117,7 @@ export class ConfigElementHostComponent implements OnChanges, AfterViewInit, OnD
       if (!isValidElementName(tag)) {
         throw new Error(`The importer '${importer.id}' declares an invalid configuration element '${tag}'`);
       }
-      await this.loader.ensureLoaded(importer.package, importer.module_url);
+      await this.loader.ensureLoaded(importer.package);
       await whenDefined(tag);
       if (generation !== this.generation) {
         return;

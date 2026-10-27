@@ -182,6 +182,12 @@ export class V3ApiService {
     return this.unwrap(this.api.get<VisualizerInfo[]>(`${this.base}/objects/${this.segment(objectId)}/visualizers`));
   }
 
+  /** The visualizers of a kind, without an object (e.g. "report" for the blocks of an import preview). */
+  public visualizersForKind(kind: string): Observable<VisualizerInfo[]> {
+    const params = new HttpParams().set('kind', kind);
+    return this.unwrap(this.api.get<VisualizerInfo[]>(`${this.base}/visualizers`, params));
+  }
+
   public visualizerData<T = unknown>(objectId: string, visualizerId: string, params: Record<string, unknown> = {}): Observable<T> {
     const query = new HttpParams().set('params', JSON.stringify(params));
     const url = `${this.base}/objects/${this.segment(objectId)}/visualizers/${this.segment(visualizerId)}/data`;

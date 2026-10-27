@@ -90,30 +90,37 @@ export class PackageLoaderService {
 
   /**
    * Make sure the bundle of `pkg` is imported (waits for the reload in
-   * progress). A package missing from the last manifest (just installed)
-   * is imported from `moduleUrl`.
-   * @throws Error with the load error of the package
+   * progress). A package missing from the last manifest (installed or
+   * enabled since) makes the manifest be read again: its bundle is then
+   * imported by load(), with the version in the URL and recorded as
+   * name@version, so the next reload does not import it a second time.
+   * @throws Error with the load error of the package, or if it has no active bundle
    */
-  public async ensureLoaded(pkg: string, moduleUrl: string | null): Promise<void> {
-    while (this.current || this.queued) {
-      await (this.queued ?? this.current);
+  public async ensureLoaded(pkg: string): Promise<void> {
+    await this.settled();
+    if (!this.statuses().has(pkg)) {
+      await this.reload();
+      await this.settled();
     }
     const status = this.statuses().get(pkg);
     if (status?.state === 'failed') {
       throw new Error(status.error ?? `The frontend of package '${pkg}' failed to load`);
     }
-    if (status) {
-      return;
+    if (!status) {
+      throw new Error(`Package '${pkg}' has no active frontend bundle`);
     }
-    if (!moduleUrl) {
-      throw new Error(`Package '${pkg}' has no frontend bundle`);
-    }
-    await this.importOnce(this.api.resolveUrl(moduleUrl));
   }
 
   /** The load error of a package, null if loaded or unknown. */
   public errorOf(pkg: string): string | null {
     return this.statuses().get(pkg)?.error ?? null;
+  }
+
+  /** Resolves when no reload is running or queued. */
+  private async settled(): Promise<void> {
+    while (this.current || this.queued) {
+      await (this.queued ?? this.current);
+    }
   }
 
   private async run(): Promise<void> {

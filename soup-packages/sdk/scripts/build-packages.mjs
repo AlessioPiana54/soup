@@ -25,7 +25,7 @@ async function buildPackage(folder) {
     platform: 'browser',
     target: 'es2022',
     sourcemap: true,
-    minify: false,
+    minify: true,
     legalComments: 'none',
     logLevel: 'warning'
   });

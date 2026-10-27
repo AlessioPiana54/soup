@@ -1,14 +1,15 @@
 # Package di esempio (`_template`)
 
 Package minimo da copiare per crearne uno nuovo: un importer `text` (file `.txt`, produce oggetti
-di kind `template.text`) e il suo visualizzatore, il Web Component `<soup-template-text>`.
+di kind `template.text`), il suo visualizzatore, il Web Component `<soup-template-text>`, e
+un'operazione `stats_report` che da un testo produce un oggetto `report` (disegnato da soup_base).
 La cartella inizia con `_`, quindi la discovery la ignora: non viene mai caricata così com'è.
 
 ```
 _template/
   soup-package.json     manifest ("name": "template")
-  server/plugin.py      registra importer e visualizzatore
-  server/text.py        TextImporter e TextVisualizer
+  server/plugin.py      registra importer, visualizzatore e operazione
+  server/text.py        TextImporter, TextVisualizer e l'operazione StatsReport
   app/package.json      dipendenze del frontend (@soup/sdk)
   app/tsconfig.json
   app/src/index.ts      il custom element, registrato con defineSoupElement

@@ -6,7 +6,10 @@ Description: VisualizerRouter - offers the visualizers that accept an
              none is a valid answer) and forwards the component's
              requests: data() for the initial JSON, action() for
              interactive requests. package_of() tells the API which
-             package serves the Web Component's module. Visualizers are
+             package serves the Web Component's module.
+             visualizers_for_kind() lists them for a kind without an
+             object (the host draws the blocks of an import preview with
+             a visualizer of "report"). Visualizers are
              addressed by their full key "<package>.<id>"
              (visualizers_for() lists them with their key and package).
 Project : soup-server
@@ -33,6 +36,12 @@ class VisualizerRouter:
         found = [entry for entry in self._visualizers.entries() if self._applies(entry.item, ref)]
         return sorted(found, key=lambda entry: (entry.item.label.lower(), entry.key))
 
+    def visualizers_for_kind(self, kind: str) -> list[Registered[Visualizer]]:
+        if not isinstance(kind, str) or not kind:
+            raise ValidationError("Kind must be a non-empty string")
+        found = [entry for entry in self._visualizers.entries() if self._accepts_kind(entry.item, kind)]
+        return sorted(found, key=lambda entry: (entry.item.label.lower(), entry.key))
+
     def package_of(self, visualizer_id: str) -> str:
         if self._visualizers.get(visualizer_id) is None:
             raise NotFoundError(f"Visualizer '{visualizer_id}' not found")
@@ -52,7 +61,10 @@ class VisualizerRouter:
 
     # ------------------------------------------------------------------ #
     def _applies(self, visualizer: Visualizer, obj: ObjectRef) -> bool:
-        return obj.kind in kinds_of(visualizer.accepts) and self._core_tools.available(visualizer.requires_tools)
+        return self._accepts_kind(visualizer, obj.kind)
+
+    def _accepts_kind(self, visualizer: Visualizer, kind: str) -> bool:
+        return kind in kinds_of(visualizer.accepts) and self._core_tools.available(visualizer.requires_tools)
 
     def _resolve(self, visualizer_id: str, obj: ObjectLike) -> tuple[Visualizer, ObjectRef]:
         ref = self._core_tools.object(obj)

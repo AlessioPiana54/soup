@@ -89,6 +89,14 @@ class Plugin(SoupPlugin):
   non possono dichiarare lo stesso nome. Il conflitto viene rilevato prima di importare codice e
   nomina entrambi i package; il primo caricato (o quello già attivo) mantiene il nome.
 
+## Package forniti
+
+| Package | Contenuto |
+|---|---|
+| `tool_memgraph`, `tool_storage` | I tool (vedi sotto). |
+| `soup_base` | Visualizzatore **Report** (kind `report`), exporter **Report in JSON** e gli elementi riusabili `soup-text`, `soup-markdown`, `soup-image`, `soup-table`, `soup-chart`, `soup-keyvalue`, `soup-file-link`, `soup-error`, `soup-report-view`, `soup-graph-view`. Disegna anche l'anteprima dell'import. Un package che usa questi elementi dichiara `requires: ["soup_base"]`. API in [soup_base/README.md](soup_base/README.md). |
+| `csv_reader`, `causal_df` | Il lettore CSV e lo step EKG del grafo causale, per le pagine v2. |
+
 ## Tool forniti
 
 Memgraph, i file, il catalogo degli oggetti e le preferenze non sono nel core: li forniscono due
@@ -221,7 +229,8 @@ Dalla radice di `soup-packages` (workspace npm: `sdk` e l'`app/` di ogni package
 ```sh
 npm install                          # una volta, e dopo aver aggiunto un package con app/
 npm run lint
-npm run build:packages               # SDK, poi type check + esbuild di ogni app/ -> app/dist/index.js (ES module unico, con sourcemap)
+npm test                             # unit test vitest (jsdom) di */app/test/
+npm run build:packages               # SDK, poi type check + esbuild di ogni app/ -> app/dist/index.js (ES module unico, minificato, con sourcemap)
 npm run build:packages -- my_package # solo alcuni package
 npm run pack -- my_package           # dist/my_package-<versione>.zip: manifest, server/, app/dist/
 curl -F file=@dist/my_package-1.0.0.zip http://localhost:8080/api/v3/packages

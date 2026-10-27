@@ -89,9 +89,11 @@
   @if (this.inspection(); as inspection) {
     <section class="soup-panel">
       <h5>3. Anteprima e opzioni</h5>
-      <soup-object-fallback
-        [kind]="this.blocksKind"
-        [data]="this.blocks()"></soup-object-fallback>
+      <div class="soup-preview">
+        <soup-blocks-preview
+          [blocks]="this.blocks()"
+          [name]="this.name()"></soup-blocks-preview>
+      </div>
 
       @if (this.importer(); as selected) {
         @if (selected.config_element && this.file()) {

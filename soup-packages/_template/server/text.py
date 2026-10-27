@@ -9,7 +9,11 @@ Description: The two contributions of the template package:
                with the <soup-template-text> element of app/; data() gives
                the lines, action("stats") counts lines, words and
                characters.
-             Copy and rename them to start a real importer/visualizer.
+             - StatsReport ("stats_report"): an operation from a
+               "template.text" object to a "report" (drawn by soup_base,
+               when active): counts and the longest lines as blocks.
+             Copy and rename them to start a real importer/visualizer/
+             operation.
 Project : soup-packages/_template
 ------------------------------------------------------------------------
 """
@@ -18,7 +22,19 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
-from soup.core.contracts import Field, Importer, Inspection, NotFoundError, ObjectRef, Upload, Visualizer, report
+from soup.core.contracts import (
+    Field,
+    Importer,
+    Inspection,
+    NotFoundError,
+    ObjectDraft,
+    ObjectRef,
+    Operation,
+    OperationInput,
+    Upload,
+    Visualizer,
+    report,
+)
 
 KIND = "template.text"
 DEFAULT_MAX_LINES = 200
@@ -27,6 +43,14 @@ PREVIEW_LINES = 10
 
 def _lines(upload: Upload) -> list[str]:
     return upload.read().decode("utf-8", errors="replace").splitlines()
+
+
+def _stats(lines: list[str]) -> dict[str, int]:
+    return {
+        "lines": len(lines),
+        "words": sum(len(line.split()) for line in lines),
+        "characters": sum(len(line) for line in lines),
+    }
 
 
 def _max_lines(options: Mapping[str, Any]) -> int:
@@ -81,9 +105,28 @@ class TextVisualizer(Visualizer):
     def action(self, obj: ObjectRef, name: str, params: Mapping[str, Any], tools) -> Any:
         if name != "stats":
             raise NotFoundError(f"Visualizer '{self.id}' has no action '{name}'")
-        lines = [str(line) for line in obj.meta.get("lines") or []]
-        return {
-            "lines": len(lines),
-            "words": sum(len(line.split()) for line in lines),
-            "characters": sum(len(line) for line in lines),
-        }
+        return _stats([str(line) for line in obj.meta.get("lines") or []])
+
+
+class StatsReport(Operation):
+    id = "stats_report"
+    label = "Text statistics (report)"
+    description = "Counts lines, words and characters and lists the longest lines."
+    group = "Template"
+    inputs = (OperationInput("text", (KIND,)),)
+    produces = (report.REPORT,)
+
+    def fields(self, inputs: Mapping[str, ObjectRef], tools) -> list[Field]:
+        return [Field("top", "Longest lines", type="number", default=5)]
+
+    def run(self, inputs: Mapping[str, ObjectRef], params: Mapping[str, Any], tools) -> list[ObjectDraft]:
+        source = inputs["text"]
+        lines = [str(line) for line in source.meta.get("lines") or []]
+        top = max(1, int(params.get("top") or 5))
+        longest = sorted(enumerate(lines, start=1), key=lambda item: -len(item[1]))[:top]
+        blocks = [
+            report.keyvalue(_stats(lines), title="Counts"),
+            report.table(["line", "length", "text"], [[n, len(text), text] for n, text in longest], title="Longest lines"),
+            report.text("\n".join(lines), title="Text"),
+        ]
+        return [report.report(f"{source.name} statistics", blocks)]

@@ -36,7 +36,7 @@ def test_default_settings_activate_every_package_found():
     assert settings.allow_package_install is False
 
 
-BUNDLED = ["causal_df", "csv_reader", "tool_memgraph", "tool_storage"]
+BUNDLED = ["causal_df", "csv_reader", "soup_base", "tool_memgraph", "tool_storage"]
 
 
 def test_from_env_with_no_overrides_loads_every_bundled_package():
