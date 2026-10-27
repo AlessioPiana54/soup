@@ -1,0 +1,306 @@
+"""
+------------------------------------------------------------------------
+File : contributions.py
+Description: The visualizers and the exporter of ekg_views, for objects of
+             kind "ekg". Each one first makes the object the graph in
+             Memgraph (ekg's ensure_loaded), then reads it with Query
+             objects only:
+             - GraphVisualizer ("graph", <soup-pkg-ekg-graph>): the views
+               contributed to "ekg.graph_views" by any package; data() is
+               the first drawing of the first view (200 edges, like
+               getGraphDetails(200)) with the max data to show
+               (getMaxDataToShow); actions "graph" {view, limit,
+               relations}, "search" {view, text, kind: node|edge, offset,
+               relations, label?} (incremental, pages of 50; `label` one of
+               the view's node labels) and "node" {view, id}. Relations and
+               labels outside the view's closed lists are a ValidationError;
+               with every relationship type hidden nothing is read;
+             - StatsVisualizer ("stats", <soup-pkg-ekg-stats>): the counts,
+               the time range, the distinct activities, the entity types
+               with the number of events with a null value (the warning of
+               getEntityWarningLabel) and the two pies of the old detail
+               page (createDataPieChart, createProcessPieChart: the phase
+               times from meta.process_info, in seconds like
+               support.service's calculateDuration);
+             - QueriesVisualizer ("queries", <soup-pkg-ekg-queries>): the
+               queries contributed to "ekg.queries" by any package,
+               grouped, with their fields; action "query" {key, params}
+               -> {blocks};
+             - GraphJsonExporter ("json", "JSON del grafo"): the parts
+               contributed to "ekg.json_parts" chosen in the multiselect
+               "parts", each under its own key (downloadJsonSelected).
+             The contributions to the extension points are read again at
+             every request (`contributions`, the PluginContext's), so a
+             package enabled or disabled at runtime takes effect at once.
+Project : soup-packages/ekg_views
+------------------------------------------------------------------------
+"""
+
+from __future__ import annotations
+
+import json
+from datetime import datetime
+from typing import Any, Callable, Mapping, Optional, Sequence
+
+from soup.core.contracts import Choice, Exporter, Field, NotFoundError, ObjectRef, ValidationError, Visualizer, report
+import soup_pkg_ekg.api as ekg
+
+from . import builtin_queries as builtin
+from .json_parts import JsonPart
+from .queries import GraphQuery, count_of
+from .values import as_choice, as_int, as_limit, as_list, as_text
+from .views import SEARCH_KINDS, GraphView
+
+GRAPH_VIEWS_POINT = "ekg.graph_views"
+QUERIES_POINT = "ekg.queries"
+JSON_PARTS_POINT = "ekg.json_parts"
+
+MEMGRAPH = "memgraph"
+STORAGE = "storage"
+TOOLS = (MEMGRAPH, STORAGE)
+
+DEFAULT_LIMIT = 200
+DEFAULT_MAX_LIMIT = 2000
+SEARCH_PAGE = 50
+
+# Reads the contributions to an extension point (PluginContext.contributions).
+Contributions = Callable[[str], list[Any]]
+
+
+def _run(tools, query) -> list[dict[str, Any]]:
+    return tools.get(MEMGRAPH).run(query)
+
+
+def _keyed(items: Sequence[Any], kind: str) -> dict[str, Any]:
+    found: dict[str, Any] = {}
+    for item in items:
+        key = getattr(item, "key", "")
+        if key and key not in found:
+            found[key] = item
+    if not found:
+        raise NotFoundError(f"No active package contributes {kind}")
+    return found
+
+
+class _EkgContribution:
+    accepts = (ekg.EKG_KIND,)
+    requires_tools = TOOLS
+
+    def __init__(self, contributions: Contributions):
+        self._contributions = contributions
+
+    def _loaded(self, obj: ObjectRef, tools) -> None:
+        ekg.ensure_loaded(obj, tools)
+
+
+# ---------------------------------------------------------------------- #
+# Grafo
+# ---------------------------------------------------------------------- #
+class GraphVisualizer(_EkgContribution, Visualizer):
+    id = "graph"
+    label = "Grafo"
+    element = "soup-pkg-ekg-graph"
+
+    def __init__(self, contributions: Contributions, max_limit: int = DEFAULT_MAX_LIMIT):
+        super().__init__(contributions)
+        self.max_limit = max_limit
+
+    def views(self) -> dict[str, GraphView]:
+        return _keyed(self._contributions(GRAPH_VIEWS_POINT), "graph views")
+
+    def _view(self, params: Mapping[str, Any]) -> GraphView:
+        views = self.views()
+        key = as_choice(params.get("view"), "view", list(views), next(iter(views)))
+        return views[key]
+
+    @staticmethod
+    def _relations(view: GraphView, params: Mapping[str, Any]) -> list[str]:
+        return as_list(params.get("relations"), "relations", view.relationship_types, view.default_relations or view.relationship_types)
+
+    def _graph(self, view: GraphView, params: Mapping[str, Any], tools) -> dict[str, Any]:
+        limit = as_limit(params.get("limit"), DEFAULT_LIMIT, self.max_limit)
+        relations = self._relations(view, params)
+        if not relations:
+            # Every relationship type hidden: nothing to read.
+            return {"view": view.key, "limit": limit, "relations": [], "max_data": 0,
+                    "graph": {"nodes": [], "edges": [], "directed": True}}
+        graph = view.to_graph(_run(tools, view.edges_query(limit, relations)))
+        max_query = view.max_data_query(relations)
+        max_data = None
+        if max_query is not None:
+            rows = _run(tools, max_query)
+            max_data = count_of(rows, "total_nodes") + count_of(rows, "total_rels")
+        return {"view": view.key, "limit": limit, "relations": relations, "max_data": max_data, "graph": graph}
+
+    def data(self, obj: ObjectRef, params: Mapping[str, Any], tools) -> Any:
+        self._loaded(obj, tools)
+        views = [
+            {"key": view.key, "label": view.label or view.key,
+             "relationship_types": list(view.relationship_types), "default_relations": list(view.default_relations),
+             "node_labels": list(view.node_labels)}
+            for view in self.views().values()
+        ]
+        return {"views": views, "max_limit": self.max_limit, **self._graph(self._view(params), params, tools)}
+
+    def action(self, obj: ObjectRef, name: str, params: Mapping[str, Any], tools) -> Any:
+        if name not in ("graph", "search", "node"):
+            raise NotFoundError(f"Visualizer '{self.id}' has no action '{name}'")
+        self._loaded(obj, tools)
+        view = self._view(params)
+        if name == "graph":
+            return self._graph(view, params, tools)
+        if name == "search":
+            return self._search(view, params, tools)
+        query = view.node_query(as_int(params.get("id"), "id", -1, -1))
+        node = view.to_node(_run(tools, query)) if query is not None else None
+        if node is None:
+            raise NotFoundError(f"Node {params.get('id')!r} not found in the view '{view.key}'")
+        return node
+
+    def _search(self, view: GraphView, params: Mapping[str, Any], tools) -> dict[str, Any]:
+        text = as_text(params.get("text"), "text").strip()
+        kind = as_choice(params.get("kind"), "kind", SEARCH_KINDS, "node")
+        offset = as_int(params.get("offset"), "offset", 0, 0)
+        relations = self._relations(view, params)
+        label = params.get("label")
+        if label not in (None, ""):
+            label = as_choice(label, "label", list(view.node_labels))
+        if kind == "edge" and not relations:
+            return {"items": [], "total": 0}
+        query = view.search_query(text, kind, offset, SEARCH_PAGE, relations, label or None)
+        count = view.search_count_query(text, kind, relations, label or None)
+        if query is None or count is None:
+            return {"items": [], "total": 0}
+        return {"items": view.search_items(_run(tools, query), kind), "total": count_of(_run(tools, count))}
+
+
+# ---------------------------------------------------------------------- #
+# Statistiche
+# ---------------------------------------------------------------------- #
+PHASES = (("Event", "event"), ("Entity", "entity"), ("CORR", "corr"), ("DF", "df"))
+
+
+def _seconds(start: Any, finish: Any) -> Optional[float]:
+    """Like support.service's calculateDuration: finish - start, in seconds."""
+
+    if not start or not finish:
+        return None
+    try:
+        delta = datetime.fromisoformat(str(finish)) - datetime.fromisoformat(str(start))
+    except ValueError:
+        return None
+    return delta.total_seconds()
+
+
+def phase_times(process_info: Any) -> Optional[dict[str, Any]]:
+    """The "pie" chart of the build phases, or None if no phase has both times."""
+
+    info = process_info if isinstance(process_info, Mapping) else {}
+    durations = [_seconds(info.get(f"init_{phase}_time"), info.get(f"finish_{phase}_time")) for _, phase in PHASES]
+    if all(value is None for value in durations):
+        return None
+    return {"chart": "pie", "labels": [label for label, _ in PHASES],
+            "datasets": [{"label": "secondi", "data": [value or 0 for value in durations]}]}
+
+
+def warning_label(count: int) -> str:
+    """getEntityWarningLabel."""
+
+    return f"{count} nodi hanno valore NaN."
+
+
+class StatsVisualizer(_EkgContribution, Visualizer):
+    id = "stats"
+    label = "Statistiche"
+    element = "soup-pkg-ekg-stats"
+
+    def data(self, obj: ObjectRef, params: Mapping[str, Any], tools) -> Any:
+        self._loaded(obj, tools)
+
+        def rows(query: GraphQuery) -> list[dict[str, Any]]:
+            return _run(tools, query.build({}))
+
+        counts = {
+            "event_nodes": builtin.COUNT_EVENTS.count(rows(builtin.COUNT_EVENTS)),
+            "entity_nodes": builtin.COUNT_ENTITIES.count(rows(builtin.COUNT_ENTITIES)),
+            "corr_rel": builtin.COUNT_CORR.count(rows(builtin.COUNT_CORR)),
+            "df_rel": builtin.COUNT_DF.count(rows(builtin.COUNT_DF)),
+        }
+        timestamps, activities = builtin.Timestamps(), builtin.Activities()
+        keys, nulls = builtin.EntityKeys(), builtin.NullEntities()
+        null_counts = nulls.rows(rows(nulls))
+        entities = []
+        for name in keys.rows(rows(keys)):
+            nan_nodes = null_counts.get(name, 0)
+            entities.append({"name": name, "nan_nodes": nan_nodes, "warning": warning_label(nan_nodes) if nan_nodes else None})
+        composition = {"chart": "pie", "labels": ["Event", "Entity", "CORR", "DF"],
+                       "datasets": [{"label": "numero", "data": list(counts.values())}]}
+        return {
+            "counts": counts,
+            "timestamps": timestamps.rows(rows(timestamps)),
+            "activities": activities.rows(rows(activities)),
+            "entities": entities,
+            "charts": {"data": composition, "process": phase_times(obj.meta.get("process_info"))},
+        }
+
+
+# ---------------------------------------------------------------------- #
+# Interrogazioni
+# ---------------------------------------------------------------------- #
+class QueriesVisualizer(_EkgContribution, Visualizer):
+    id = "queries"
+    label = "Interrogazioni"
+    element = "soup-pkg-ekg-queries"
+
+    def queries(self) -> dict[str, GraphQuery]:
+        return _keyed(self._contributions(QUERIES_POINT), "queries")
+
+    def data(self, obj: ObjectRef, params: Mapping[str, Any], tools) -> Any:
+        groups: dict[str, list[dict[str, Any]]] = {}
+        for query in self.queries().values():
+            groups.setdefault(query.group or "Altro", []).append(query.describe())
+        return {"groups": [{"group": group, "queries": items} for group, items in groups.items()]}
+
+    def action(self, obj: ObjectRef, name: str, params: Mapping[str, Any], tools) -> Any:
+        if name != "query":
+            raise NotFoundError(f"Visualizer '{self.id}' has no action '{name}'")
+        queries = self.queries()
+        key = params.get("key")
+        if key not in queries:
+            raise NotFoundError(f"No active package contributes the query {key!r}")
+        query = queries[key]
+        values = query.values(params.get("params"))
+        self._loaded(obj, tools)
+        blocks = query.transform(_run(tools, query.build(values)), values)
+        return {"key": key, "label": query.label, "blocks": report.validate_blocks(blocks)}
+
+
+# ---------------------------------------------------------------------- #
+# JSON del grafo
+# ---------------------------------------------------------------------- #
+class GraphJsonExporter(_EkgContribution, Exporter):
+    id = "json"
+    label = "JSON del grafo"
+    extension = ".json"
+    mime = "application/json"
+
+    def parts(self) -> dict[str, JsonPart]:
+        return _keyed(self._contributions(JSON_PARTS_POINT), "JSON parts")
+
+    def fields(self, obj: ObjectRef, tools) -> list[Field]:
+        parts = self.parts()
+        return [Field("parts", "Contenuto", type="multiselect", required=True,
+                      choices=tuple(Choice(key, part.label or key) for key, part in parts.items()),
+                      default=list(parts), help="Le parti del grafo da esportare, ognuna sotto la propria chiave.")]
+
+    def export(self, obj: ObjectRef, params: Mapping[str, Any], tools) -> bytes:
+        parts = self.parts()
+        chosen = as_list(params.get("parts"), "parts", parts, list(parts))
+        if not chosen:
+            raise ValidationError("Choose at least one part of the graph")
+        self._loaded(obj, tools)
+        content = {}
+        for key in chosen:
+            part = parts[key]
+            content[part.label or key] = part.transform(_run(tools, part.query()))
+        return json.dumps(content, ensure_ascii=False, indent=2, default=str).encode("utf-8")

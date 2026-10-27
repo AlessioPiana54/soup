@@ -1,0 +1,10 @@
+{
+  "name": "soup-pkg-ekg-views-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Frontend of the ekg_views package: <soup-pkg-ekg-graph>, <soup-pkg-ekg-stats> and <soup-pkg-ekg-queries> (use the elements of soup_base by tag)",
+  "type": "module",
+  "dependencies": {
+    "@soup/sdk": "*"
+  }
+}

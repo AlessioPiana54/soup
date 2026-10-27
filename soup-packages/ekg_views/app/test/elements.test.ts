@@ -1,0 +1,286 @@
+import { Block, VisualizerContext } from '@soup/sdk';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+
+import '../src/index';
+import { GraphViewData, SoupPkgEkgGraph } from '../src/graph';
+import { QueriesData, SoupPkgEkgQueries } from '../src/queries';
+import { ChartData, GraphEdgeModel, GraphNodeModel, NodeShape, SearchPage, SearchTarget, TableData } from '../src/soup-base';
+import { SoupPkgEkgStats, StatsData } from '../src/stats';
+
+/** Stand-ins of the soup_base elements: they only keep what they receive. */
+class FakeGraphView extends HTMLElement {
+  public context: VisualizerContext | null = null;
+  public search: ((query: string, target: SearchTarget, offset: number, limit: number) => Promise<SearchPage<GraphNodeModel | GraphEdgeModel>>) | null = null;
+  public nodeDetails: ((id: string) => Promise<GraphNodeModel | null>) | null = null;
+  public thumbnail = true;
+  /** The value of `thumbnail` when each data was set. */
+  public drawn: { data: unknown; thumbnail: boolean }[] = [];
+  public shapes: NodeShape[] = [];
+  private value: unknown;
+  public get data(): unknown {
+    return this.value;
+  }
+  public set data(value: unknown) {
+    this.value = value;
+    this.drawn.push({ data: value, thumbnail: this.thumbnail });
+  }
+  public setNodeShape(shape: NodeShape): void {
+    this.shapes.push(shape);
+  }
+  public exportSvg(): string {
+    return '<svg><text>graph</text></svg>';
+  }
+}
+
+class FakeChart extends HTMLElement {
+  public data: ChartData | undefined;
+}
+
+class FakeTable extends HTMLElement {
+  public data: TableData | undefined;
+}
+
+class FakeKeyValue extends HTMLElement {
+  public data: { items: { key: string; value: unknown }[] } | undefined;
+}
+
+class FakeReportView extends HTMLElement {
+  public data: { blocks: Block[] } | undefined;
+  public context: VisualizerContext | null = null;
+}
+
+beforeAll(() => {
+  customElements.define('soup-graph-view', FakeGraphView);
+  customElements.define('soup-chart', FakeChart);
+  customElements.define('soup-table', FakeTable);
+  customElements.define('soup-keyvalue', FakeKeyValue);
+  customElements.define('soup-report-view', FakeReportView);
+});
+
+afterEach(() => {
+  document.body.replaceChildren();
+});
+
+function fakeContext(action: (name: string, params: Record<string, unknown>) => Promise<unknown> = () => Promise.resolve({})): VisualizerContext {
+  return {
+    object: { id: 'g1', name: 'orders', kind: 'ekg', created_by: { type: 'importer', contributor_id: 'csv_ekg.csv', package: 'csv_ekg' }, parents: [], created_at: '', description: '', meta: {} },
+    theme: 'light',
+    action: vi.fn(action) as VisualizerContext['action'],
+    openObject: vi.fn(),
+    notify: vi.fn(),
+    setThumbnail: vi.fn(),
+    download: vi.fn()
+  };
+}
+
+function mount<T extends HTMLElement & { data: unknown; context: VisualizerContext }>(tag: string, data: unknown, context: VisualizerContext): T {
+  const element = document.createElement(tag) as T;
+  element.data = data;
+  element.context = context;
+  document.body.append(element);
+  return element;
+}
+
+const GRAPH = { nodes: [{ id: '1', label: 'Create', group: 'Event', props: {} }], edges: [], directed: true };
+const OTHER = { nodes: [{ id: '2', label: 'Ship', group: 'Event', props: {} }], edges: [], directed: true };
+
+const GRAPH_DATA: GraphViewData = {
+  views: [
+    { key: 'standard', label: 'Grafo standard', relationship_types: ['DF', 'CORR'], default_relations: ['DF'] },
+    { key: 'only_df', label: 'Solo DF', relationship_types: ['DF'], default_relations: [] }
+  ],
+  max_limit: 2000,
+  view: 'standard',
+  limit: 200,
+  relations: ['DF'],
+  max_data: 340,
+  graph: GRAPH
+};
+
+describe('<soup-pkg-ekg-graph>', () => {
+  const graphAction = (name: string, params: Record<string, unknown>): Promise<unknown> =>
+    Promise.resolve(name === 'graph' ? { view: params.view, limit: Math.min(Number(params.limit), 2000), relations: params.relations, max_data: 12, graph: OTHER } : {});
+
+  function graphOf(element: SoupPkgEkgGraph): FakeGraphView {
+    return element.shadowRoot!.querySelector('soup-graph-view') as FakeGraphView;
+  }
+
+  it('draws the first graph with the thumbnail, and later ones without', async () => {
+    const context = fakeContext(graphAction);
+    const element = mount<SoupPkgEkgGraph>('soup-pkg-ekg-graph', GRAPH_DATA, context);
+    const view = graphOf(element);
+
+    expect(view.drawn).toEqual([{ data: GRAPH, thumbnail: true }]);
+    expect(view.thumbnail).toBe(false);
+    expect(view.context).toBe(context);
+    expect(element.shadowRoot!.querySelector('.info')!.textContent).toBe('Massimo mostrabile: 340 elementi');
+
+    await element.setLimit(50);
+    expect(context.action).toHaveBeenCalledWith('graph', { view: 'standard', limit: 50, relations: ['DF'] });
+    expect(view.drawn[1]).toEqual({ data: OTHER, thumbnail: false });
+    expect(element.shadowRoot!.querySelector('.info')!.textContent).toBe('Massimo mostrabile: 12 elementi');
+  });
+
+  it('offers the views and the relationship types of the chosen view', async () => {
+    const context = fakeContext(graphAction);
+    const element = mount<SoupPkgEkgGraph>('soup-pkg-ekg-graph', GRAPH_DATA, context);
+    const options = [...element.shadowRoot!.querySelectorAll('select[aria-label="Vista"] option')].map((option) => option.textContent);
+    expect(options).toEqual(['Grafo standard', 'Solo DF']);
+    const boxes = (): [string | null, boolean][] =>
+      [...element.shadowRoot!.querySelectorAll<HTMLInputElement>('input[data-relation]')].map((box) => [box.getAttribute('data-relation'), box.checked]);
+    expect(boxes()).toEqual([['DF', true], ['CORR', false]]);
+
+    await element.setRelation('CORR', true);
+    expect(context.action).toHaveBeenLastCalledWith('graph', { view: 'standard', limit: 200, relations: ['DF', 'CORR'] });
+    expect(boxes()).toEqual([['DF', true], ['CORR', true]]);
+
+    await element.chooseView('only_df');
+    expect(context.action).toHaveBeenLastCalledWith('graph', { view: 'only_df', limit: 200, relations: ['DF'] });
+    expect(boxes()).toEqual([['DF', true]]);
+  });
+
+  it('clamps the limit to the maximum', async () => {
+    const context = fakeContext(graphAction);
+    const element = mount<SoupPkgEkgGraph>('soup-pkg-ekg-graph', GRAPH_DATA, context);
+    await element.setLimit(99999);
+    expect(context.action).toHaveBeenLastCalledWith('graph', { view: 'standard', limit: 2000, relations: ['DF'] });
+  });
+
+  it('gives soup-graph-view the remote search and the node details through the actions', async () => {
+    const context = fakeContext((name) => Promise.resolve(name === 'search' ? { items: [], total: 0 } : { id: '7', label: 'x', group: 'Event', props: {} }));
+    const element = mount<SoupPkgEkgGraph>('soup-pkg-ekg-graph', GRAPH_DATA, context);
+    const view = graphOf(element);
+
+    await view.search!('pay', 'edges', 50, 50);
+    expect(context.action).toHaveBeenCalledWith('search', { view: 'standard', text: 'pay', kind: 'edge', offset: 50, relations: ['DF'] });
+    await view.search!('pay', 'nodes', 0, 50);
+    expect(context.action).toHaveBeenLastCalledWith('search', { view: 'standard', text: 'pay', kind: 'node', offset: 0, relations: ['DF'] });
+    await view.nodeDetails!('7');
+    expect(context.action).toHaveBeenLastCalledWith('node', { view: 'standard', id: '7' });
+  });
+
+  it('changes the node shape and saves the SVG with context.download', () => {
+    const context = fakeContext();
+    const element = mount<SoupPkgEkgGraph>('soup-pkg-ekg-graph', GRAPH_DATA, context);
+    element.setShape('circle');
+    expect(graphOf(element).shapes).toEqual(['circle']);
+
+    element.exportSvg();
+    expect(context.download).toHaveBeenCalledWith('orders.svg', 'image/svg+xml', '<svg><text>graph</text></svg>');
+  });
+
+  it('notifies a failed action', async () => {
+    const context = fakeContext(() => Promise.reject(new Error('Memgraph offline')));
+    const element = mount<SoupPkgEkgGraph>('soup-pkg-ekg-graph', GRAPH_DATA, context);
+    await element.setLimit(10);
+    expect(context.notify).toHaveBeenCalledWith('Memgraph offline', 'error');
+  });
+});
+
+const STATS: StatsData = {
+  counts: { event_nodes: 3, entity_nodes: 2, corr_rel: 4, df_rel: 1 },
+  timestamps: { min: '2021-01-01T10:00:00', max: '2021-01-02T10:00:00' },
+  activities: ['Create', '<b>Ship</b>'],
+  entities: [
+    { name: 'item', nan_nodes: 0, warning: null },
+    { name: 'order', nan_nodes: 2, warning: '2 nodi hanno valore NaN.' }
+  ],
+  charts: {
+    data: { chart: 'pie', labels: ['Event', 'Entity', 'CORR', 'DF'], datasets: [{ label: 'numero', data: [3, 2, 4, 1] }] },
+    process: null
+  }
+};
+
+describe('<soup-pkg-ekg-stats>', () => {
+  it('shows counts, entities with their warning, activities and the pies', () => {
+    const element = mount<SoupPkgEkgStats>('soup-pkg-ekg-stats', STATS, fakeContext());
+    const root = element.shadowRoot!;
+
+    const summary = root.querySelector('soup-keyvalue') as FakeKeyValue;
+    expect(summary.data!.items.slice(0, 4).map((item) => item.value)).toEqual([3, 2, 4, 1]);
+    expect(summary.data!.items[4]).toEqual({ key: 'Primo evento', value: '2021-01-01T10:00:00' });
+
+    const [entities, activities] = [...root.querySelectorAll('soup-table')] as FakeTable[];
+    expect(entities.data!.rows).toEqual([['item', 0, ''], ['order', 2, '2 nodi hanno valore NaN.']]);
+    expect(activities.data!.rows).toEqual([['Create'], ['<b>Ship</b>']]);
+    expect(root.querySelector('.warning')!.textContent).toBe('order: 2 nodi hanno valore NaN.');
+
+    const charts = [...root.querySelectorAll('soup-chart')] as FakeChart[];
+    expect(charts.map((chart) => chart.data)).toEqual([STATS.charts.data]);
+    expect(root.querySelector('.charts .info')!.textContent).toContain('non salvati');
+    expect(root.querySelector('b')).toBeNull();
+  });
+
+  it('adds the pie of the phase times when there is one', () => {
+    const process: ChartData = { chart: 'pie', labels: ['Event', 'Entity', 'CORR', 'DF'], datasets: [{ label: 'secondi', data: [1, 2, 3, 4] }] };
+    const element = mount<SoupPkgEkgStats>('soup-pkg-ekg-stats', { ...STATS, charts: { ...STATS.charts, process } }, fakeContext());
+    const charts = [...element.shadowRoot!.querySelectorAll('soup-chart')] as FakeChart[];
+    expect(charts.map((chart) => chart.data)).toEqual([STATS.charts.data, process]);
+  });
+});
+
+const QUERIES: QueriesData = {
+  groups: [
+    {
+      group: 'Conteggi',
+      queries: [{ key: 'count_events', label: 'Nodi evento', group: 'Conteggi', description: '', fields: [] }]
+    },
+    {
+      group: 'Test',
+      queries: [
+        {
+          key: 'test.echo',
+          label: 'Eco',
+          group: 'Test',
+          description: 'Ripete una parola',
+          fields: [
+            { name: 'word', label: 'Parola', type: 'text', required: true, default: null, choices: [], help: '', variants: [] },
+            { name: 'limit', label: 'Righe', type: 'number', required: false, default: 100, choices: [], help: '', variants: [] }
+          ]
+        }
+      ]
+    }
+  ]
+};
+
+describe('<soup-pkg-ekg-queries>', () => {
+  const BLOCKS: Block[] = [{ type: 'text', title: 'Eco', data: { text: 'ciao' } }];
+
+  it('lists the queries of every package by group', () => {
+    const element = mount<SoupPkgEkgQueries>('soup-pkg-ekg-queries', QUERIES, fakeContext());
+    const root = element.shadowRoot!;
+    expect([...root.querySelectorAll('nav h4')].map((title) => title.textContent)).toEqual(['Conteggi', 'Test']);
+    expect([...root.querySelectorAll('nav button')].map((button) => button.getAttribute('data-query'))).toEqual(['count_events', 'test.echo']);
+    expect(element.selected!.key).toBe('count_events');
+  });
+
+  it('shows the fields of the chosen query and runs it with the "query" action', async () => {
+    const context = fakeContext(() => Promise.resolve({ key: 'test.echo', label: 'Eco', blocks: BLOCKS }));
+    const element = mount<SoupPkgEkgQueries>('soup-pkg-ekg-queries', QUERIES, context);
+    const root = element.shadowRoot!;
+    (root.querySelector('button[data-query="test.echo"]') as HTMLButtonElement).click();
+
+    const word = root.querySelector('input[name="word"]') as HTMLInputElement;
+    const limit = root.querySelector('input[name="limit"]') as HTMLInputElement;
+    expect(limit.value).toBe('100');
+    word.value = 'ciao';
+    word.dispatchEvent(new Event('input'));
+    limit.value = '5';
+    limit.dispatchEvent(new Event('input'));
+    await element.run();
+
+    expect(context.action).toHaveBeenCalledWith('query', { key: 'test.echo', params: { word: 'ciao', limit: 5 } });
+    const report = root.querySelector('.result soup-report-view') as FakeReportView;
+    expect(report.data).toEqual({ blocks: BLOCKS });
+    expect(report.context).toBe(context);
+  });
+
+  it('notifies a failed query', async () => {
+    const context = fakeContext(() => Promise.reject(new Error("'word' is required")));
+    const element = mount<SoupPkgEkgQueries>('soup-pkg-ekg-queries', QUERIES, context);
+    element.choose('test.echo');
+    await element.run();
+    expect(context.notify).toHaveBeenCalledWith("'word' is required", 'error');
+    expect(element.shadowRoot!.querySelector('soup-report-view')).toBeNull();
+  });
+});

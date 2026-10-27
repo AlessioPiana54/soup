@@ -91,6 +91,7 @@ che restituisce `GraphModel {nodes: GraphNodeModel[], edges: GraphEdgeModel[], d
 | `data` | Vedi sopra. Nuovi dati azzerano la selezione; colori e tipi nascosti restano. |
 | `context` | Il `VisualizerContext`, se l'elemento è dentro un visualizzatore (usato per le notifiche di errore della ricerca remota). |
 | `search` | Ricerca **remota**: `(query, target: 'nodes' \| 'edges', offset, limit) => Promise<{items, total}>`. Le pagine sono di 50 elementi e la successiva si chiede scorrendo la lista. Senza, si cerca nel modello in memoria (etichette, id, tipi, proprietà). |
+| `nodeDetails` | Proprietà complete del nodo selezionato: `(id) => Promise<GraphNodeModel \| null>` (di solito un'azione del visualizzatore). Le proprietà mostrate sono quelle restituite (`null`: restano quelle del modello); una risposta che arriva quando è selezionato un altro nodo è ignorata. Senza, si mostrano le proprietà del modello. |
 | `renderer` | Un'istanza di `GraphRenderer` (ha la precedenza sull'attributo `engine`). |
 | `thumbnail` | `true` (default): dopo aver disegnato nuovi dati emette `soup-thumbnail` con l'SVG (se sotto 512 KB). |
 | `palette` | La `RelationshipPalette` (sola lettura). |
@@ -106,7 +107,7 @@ Attributo `engine`: il nome di un motore registrato (default `dagre`). Variabile
 | `setNodeShape('rect' \| 'circle')` | Forma dei nodi. |
 | `setRelationshipVisible(type, visible)` | Mostra o nasconde un tipo di relazione. |
 | `highlight(ids, on)` | Evidenzia o spegne dei nodi. |
-| `selectNode(id \| null)` | Seleziona un nodo (di nuovo lo stesso, o `null`: deseleziona) e ne mostra le proprietà. |
+| `selectNode(id \| null)` | Seleziona un nodo del modello o dei risultati della ricerca, anche se non è disegnato (di nuovo lo stesso, o `null`: deseleziona), e ne mostra le proprietà (chieste a `nodeDetails`, se impostato). |
 | `runSearch(query, target?)`, `loadMore()` | Ricerca e pagina successiva dei risultati. |
 | `exportSvg(): string` | Il disegno come documento SVG autonomo. |
 | `downloadSvg(filename = 'graph.svg')` | Salva l'SVG. |
@@ -172,5 +173,6 @@ GraphView.registerRenderer('my-engine', () => new MyRenderer());
 ## Test
 
 `npm test` dalla radice di soup-packages (vitest + jsdom): `toGraphModel`, `RelationshipPalette`,
-`<soup-table>` (pagine locali e remote, ordinamento, ricerca) e `<soup-report-view>`. Il disegno del
+`<soup-table>` (pagine locali e remote, ordinamento, ricerca), `<soup-report-view>` e la selezione di
+`<soup-graph-view>` con `nodeDetails` (con un motore finto). Il disegno del
 grafo si prova in un browser vero con `soup-app/e2e/soup-graph-view.spec.ts` (Playwright).

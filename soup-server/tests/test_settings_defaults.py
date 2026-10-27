@@ -3,7 +3,7 @@
 File : test_settings_defaults.py
 Description: Tests that Settings.from_env() activates every package
              found by default - so the bundled packages (tool_memgraph,
-             tool_storage, ekg, csv_ekg, causal_df, soup_base, text,
+             tool_storage, ekg, csv_ekg, causal_df, ekg_views, soup_base, text,
              csv_table) load, with no I/O until a tool is used (but the
              ekg package's adoption of the datasets on the volume, which
              fails quietly without Docker), and causal_df's build step
@@ -38,7 +38,7 @@ def test_default_settings_activate_every_package_found():
     assert settings.allow_package_install is False
 
 
-BUNDLED = ["causal_df", "csv_ekg", "csv_table", "ekg", "soup_base", "text", "tool_memgraph", "tool_storage"]
+BUNDLED = ["causal_df", "csv_ekg", "csv_table", "ekg", "ekg_views", "soup_base", "text", "tool_memgraph", "tool_storage"]
 
 
 def test_from_env_with_no_overrides_loads_every_bundled_package():

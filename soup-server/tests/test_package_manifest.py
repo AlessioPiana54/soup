@@ -34,7 +34,7 @@ def test_valid_manifest_is_parsed(tmp_path):
 
 
 def test_bundled_packages_have_valid_manifests():
-    for name in ("ekg", "csv_ekg", "causal_df"):
+    for name in ("ekg", "csv_ekg", "causal_df", "ekg_views"):
         assert load_manifest(BUNDLED_PACKAGES_DIR / name).name == name
 
 

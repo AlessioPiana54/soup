@@ -9,6 +9,9 @@ import { GraphRenderer, GraphRendererFactory, NodeShape } from './renderer';
 /** Remote search: a visualizer may page the matches on the server (e.g. through its actions). */
 export type GraphSearch = (query: string, target: SearchTarget, offset: number, limit: number) => Promise<SearchPage<GraphNodeModel | GraphEdgeModel>>;
 
+/** The full properties of a node (e.g. one found by the remote search and not drawn); null: unknown. */
+export type GraphNodeDetails = (id: string) => Promise<GraphNodeModel | null>;
+
 export const SEARCH_PAGE_SIZE = 50;
 // The thumbnail is saved only below this size (the catalog accepts 1 MB).
 const MAX_THUMBNAIL_CHARS = 512 * 1024;
@@ -62,6 +65,8 @@ export class SoupGraphView extends HTMLElement {
   public context: VisualizerContext | null = null;
   /** Remote search; null searches the model in the browser. */
   public search: GraphSearch | null = null;
+  /** Asked for the properties of the selected node; null shows the ones of the model. */
+  public nodeDetails: GraphNodeDetails | null = null;
   /** Emit soup-thumbnail with the SVG after drawing new data. */
   public thumbnail = true;
 
@@ -84,6 +89,7 @@ export class SoupGraphView extends HTMLElement {
   private resultsTotal = 0;
   private loadingMore = false;
   private searchRequest = 0;
+  private detailsRequest = 0;
 
   private canvas: HTMLElement | null = null;
 
@@ -147,14 +153,38 @@ export class SoupGraphView extends HTMLElement {
     this.engine?.setHighlighted(ids, on);
   }
 
-  /** Select a node (null: none): it is highlighted and its properties shown. */
+  /**
+   * Select a node (null: none) of the model or of the search results: it
+   * is highlighted and its properties shown (asked to nodeDetails, if set).
+   */
   public selectNode(id: string | null): void {
     const previous = this.selected;
     if (previous) this.highlight([previous.id], false);
-    this.selected = id === null || id === previous?.id ? null : (this.model.nodes.find((node) => node.id === id) ?? null);
+    this.selected = id === null || id === previous?.id ? null : this.findNode(id);
     if (this.selected) this.highlight([this.selected.id], true);
     this.drawSide();
     this.dispatchEvent(new CustomEvent('soup-node-select', { detail: { id: this.selected?.id ?? null, node: this.selected }, bubbles: true, composed: true }));
+    if (this.selected && this.nodeDetails) void this.loadDetails(this.selected.id);
+  }
+
+  private findNode(id: string): GraphNodeModel | null {
+    const drawn = this.model.nodes.find((node) => node.id === id);
+    if (drawn) return drawn;
+    const found = this.results.find((item): item is GraphNodeModel => !('source' in item) && item.id === id);
+    return found ?? null;
+  }
+
+  private async loadDetails(id: string): Promise<void> {
+    const request = ++this.detailsRequest;
+    try {
+      const node = await this.nodeDetails!(id);
+      // Another node was selected meanwhile, or none.
+      if (request !== this.detailsRequest || this.selected?.id !== id || !node) return;
+      this.selected = { ...this.selected, label: node.label || this.selected.label, props: { ...node.props } };
+      this.drawSide();
+    } catch (error) {
+      this.context?.notify(error instanceof Error ? error.message : String(error), 'error');
+    }
   }
 
   public exportSvg(): string {

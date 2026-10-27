@@ -101,6 +101,7 @@ class Plugin(SoupPlugin):
 | `ekg` | Solo server. L'event log (`Table` e conversioni pandas, `EventLogData` piatto o separato, `ColumnMapping`, `EventLog` con normalizzazione, millisecondi, entità e CSV canonici), i dataset sul volume (`/soup/<nome>/<nome>.csv`, `_entity.csv`, `_config.json`, `Analyses/`) e l'EKG su Memgraph: step di costruzione 100-500, il punto di estensione `ekg.build_steps`, lo stato del grafo degli oggetti `ekg` (`ensure_loaded`, `ekg.state_providers`), gli eventi `ekg.before_reset` ed `ekg.built`, l'operazione **Carica in Memgraph**. All'avvio aggiunge al catalogo i dataset già presenti sul volume. Vedi sotto. |
 | `csv_ekg` | Importer **CSV come event log (EKG su Memgraph)** (`.csv`, kind `ekg`): anteprima, campi `event_id`, `timestamp`, `activity`, `entities`, `values`, `trigger_target`, `save_process_times` e, con almeno due colonne entità, il grafo delle molteplicità (1 a 1, 1 a N, N a 1, N a N). Operazione **Converti in EKG** (`table` di `csv_table` → `ekg` figlio). Serve anche `POST /api/v2/graph`. |
 | `causal_df` | Lo step del `:DF` causale per le coppie trigger/target, contribuito a `ekg.build_steps` con order 450. |
+| `ekg_views` | Visualizzatori **Grafo** (`<soup-pkg-ekg-graph>`), **Statistiche** (`<soup-pkg-ekg-stats>`) e **Interrogazioni** (`<soup-pkg-ekg-queries>`) ed exporter **JSON del grafo** per il kind `ekg`, con i punti di estensione `ekg.graph_views`, `ekg.queries` ed `ekg.json_parts`. Vedi sotto. |
 
 `text` e `csv_table` usano solo la libreria standard di Python e il tool `storage` (`requires:
 ["soup_base", "tool_storage"]`, `requires_tools: ["storage"]`, niente pandas né Memgraph): sono
@@ -179,6 +180,36 @@ All'avvio il package aggiunge al catalogo, come oggetti `ekg` creati dall'import
 cartelle `/soup/<nome>/` con un `<nome>_config.json` non ancora presenti nel catalogo (stesso
 `meta.dataset`), leggendo la `meta` dalla config; un errore (per esempio storage irraggiungibile)
 finisce nel log e non ferma il package.
+
+## Viste dell'EKG: il package `ekg_views`
+
+`requires: ["ekg", "soup_base"]`, `requires_tools: ["memgraph", "storage"]`. Ogni visualizzatore e
+l'exporter chiamano prima `ensure_loaded(obj, tools)` del package `ekg`, poi leggono il grafo solo
+con oggetti `Query`. Etichette e tipi di relazione stanno nel pattern (`MATCH (n:`Event`)`,
+`[r:`DF`|`CORR`]`), quotati con `ident()` e presi solo dalle liste chiuse di viste, interrogazioni e
+parti; le scelte dell'utente vengono prima confrontate con quelle liste (`400` se mancano). Testi,
+id, offset e `LIMIT` restano parametri (`$limit`, mai nel testo). Dettagli e verifica manuale con
+Memgraph in [ekg_views/README.md](ekg_views/README.md).
+
+| Contributo | |
+|---|---|
+| **Grafo** (`ekg_views.graph`) | Barra con la vista (tra quelle di `ekg.graph_views` di qualunque package), il limite (200 all'inizio, massimo `SOUP_EKG_VIEWS_MAX_LIMIT`, default 2000; un valore non intero positivo fa fallire il caricamento del package), i tipi di relazione della vista e la forma dei nodi; il disegno è `<soup-graph-view>` di soup_base. Azioni: `graph` `{view, limit, relations}` → `{view, limit, relations, max_data, graph}`; `search` `{view, text, kind: node\|edge, offset, relations, label?}` → `{items, total}` (pagine da 50, la ricerca incrementale di `<soup-graph-view>`); `node` `{view, id}` → le proprietà del nodo. Il primo disegno invia `soup-thumbnail` (l'anteprima nel workspace, al posto di `POST /api/v2/graph/svg`); "Esporta SVG" salva `<nome>.svg` con `context.download`. |
+| **Statistiche** (`ekg_views.stats`) | Conteggi, primo e ultimo timestamp, attività distinte, tipi di entità con il numero di eventi con valore nullo, `"nan"` o vuoto (avviso `"N nodi hanno valore NaN."`), le torte della composizione (Event, Entity, CORR, DF) e dei tempi delle fasi di costruzione (secondi, da `meta.process_info`; assente se l'import non ha salvato i tempi). |
+| **Interrogazioni** (`ekg_views.queries`) | Le `GraphQuery` di `ekg.queries` di qualunque package, raggruppate per `group`, ognuna con il form dei suoi campi; azione `query` `{key, params}` → `{key, label, blocks}`, mostrati con `<soup-report-view>`. Le 20 di ekg_views coprono tutte le letture delle vecchie `/api/v2/graph/*`: nodi evento ed entità, un'entità per tipo, entità di un tipo, eventi di un'attività, relazioni CORR, DF e DF di un tipo, conteggi (eventi, entità, CORR, DF, tutti i nodi), attività distinte e loro frequenza, chiavi delle entità ed entità per tipo, valori nulli, primo e ultimo timestamp, massimo numero di elementi mostrabili. |
+| **JSON del grafo** (`ekg_views.json`) | Campo `parts` (multiselect): le parti di `ekg.json_parts`. Un file `{<etichetta della parte>: dati}` nel formato delle vecchie `/api/v2/json/graph/*`: `Event nodes` e `Entity nodes` (proprietà dei nodi), `CORR relationships` `{corr_data: [{event, relation_type, related_event, relation_id}], corr_count}`, `DF relationships` `{df_data, df_count}`. |
+
+I punti di estensione (`soup_pkg_ekg_views.api`, per chi elenca `ekg_views` in `requires`; si
+contribuisce con `ctx.contribute(POINT, item, key=item.key)`):
+
+| Punto | Contratto | Basi |
+|---|---|---|
+| `GRAPH_VIEWS_POINT` (`"ekg.graph_views"`) | `GraphView`: `key`, `label`, `relationship_types`, `default_relations`, `node_labels`, `edges_query(limit, relations) -> Query`, `to_graph(records) -> {nodes, edges, directed}`; facoltativi `search_query`, `search_count_query`, `search_items`, `node_query`, `to_node`, `max_data_query`. | `EdgeListGraphView` (Template Method): `relationships` `{tipo: (etichetta sorgente, etichetta destinazione)}`, la lista chiusa da cui vengono `relationship_types` e `node_labels`; gli hook `node_label`, `node_group`, `edge_type`, `edge_label`; scrive da sé tutte le query. `StandardGraphView` (`standard`): Event ed Entity, CORR e DF (solo DF di default), gruppo = `Event` o il tipo dell'entità. |
+| `QUERIES_POINT` (`"ekg.queries"`) | `GraphQuery`: `key`, `label`, `group`, `fields`, `build(params) -> Query`, `transform(records, params) -> [blocco]`. `values(raw)` controlla i params con i `fields` e limita `limit` a `max_limit` (1000). | `CountQuery` (blocco `keyvalue`, legge sempre la colonna `count`), `NodeListQuery` (tabella paginata con `total`), `RelationshipListQuery`; `where` e `filter_params` per restringerle. |
+| `JSON_PARTS_POINT` (`"ekg.json_parts"`) | `JsonPart`: `key`, `label` (la chiave nel JSON), `query() -> Query`, `transform(records)`. | `NodesPart`, `RelationshipsPart`. |
+
+I contributi si rileggono a ogni richiesta: un package abilitato o disabilitato a runtime aggiunge o
+toglie subito le sue viste, interrogazioni e parti. Le rotte `/api/v2` di lettura restano servite dai
+vecchi controller fino al commit 11.
 
 ## Regole per il codice del package
 

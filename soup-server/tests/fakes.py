@@ -233,8 +233,8 @@ def fake_tool_engine(
     return build_engine(settings, extra_plugins=extra)
 
 
-# The packages of the EKG (commit 8) and what they require.
-EKG_PACKAGES = ("tool_memgraph", "tool_storage", "soup_base", "csv_table", "ekg", "csv_ekg", "causal_df")
+# The packages of the EKG (commits 8 and 9) and what they require.
+EKG_PACKAGES = ("tool_memgraph", "tool_storage", "soup_base", "csv_table", "ekg", "csv_ekg", "causal_df", "ekg_views")
 
 
 def use_database(engine, db: GraphDatabase) -> None:
