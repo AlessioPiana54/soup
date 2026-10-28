@@ -31,19 +31,35 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - soup-installed-packages:/data/soup-packages # Packages installed at runtime
 
+  # Memgraph and its web interface as two images with the same pinned
+  # version (memgraph/memgraph-platform, which bundled them, is deprecated:
+  # its last release is 2.14.1, February 2024). Check the running version
+  # with "SHOW VERSION;" (README.md, "Memgraph"). Update both tags together.
   memgraph:
-    image: memgraph/memgraph-platform
-    container_name: soup-database
+    image: memgraph/memgraph-mage:3.13.2
+    container_name: soup-database # tool_storage writes the datasets into /soup through this container
     ports:
       - "7687:7687" # Expose Memgraph Bolt protocol port
       - "7444:7444" # Expose Memgraph HTTP protocol port
-      # Memgraph Lab (web interface) on http://localhost:3300: Windows often
-      # reserves the host ports 2981-3080 (Hyper-V/WinNAT), so 3000 cannot be bound.
-      - "3300:3000"
     networks:
       - app-network
     volumes:
       - soup-volume:/soup
+
+  lab:
+    image: memgraph/lab:3.13.2
+    container_name: soup-lab
+    ports:
+      # Memgraph Lab (web interface) on http://localhost:3300: Windows often
+      # reserves the host ports 2981-3080 (Hyper-V/WinNAT), so 3000 cannot be bound.
+      - "3300:3000"
+    environment:
+      - QUICK_CONNECT_MG_HOST=memgraph
+      - QUICK_CONNECT_MG_PORT=7687
+    depends_on:
+      - memgraph
+    networks:
+      - app-network
 
 volumes:
   soup-volume: # Define persistent volume to /soup memgraph folder

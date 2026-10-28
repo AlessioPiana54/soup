@@ -300,6 +300,35 @@ class RecordsCsv(Exporter):
         return out.getvalue().encode("utf-8")
 ```
 
+`extension` e `mime` descrivono il file di default. Se estensione o tipo MIME dipendono dall'oggetto
+(un file importato che si riscarica così com'era), l'exporter ridefinisce il metodo facoltativo
+`file_type(obj, params) -> (extension, mime)` (dai contratti `"4.1"`; il default restituisce
+`(self.extension, self.mime)`). `params` sono le opzioni già validate con `fields()`. Il core chiama il
+file `<nome dell'oggetto><extension>` e controlla il risultato: l'estensione inizia con `.` ed è fatta
+di 2-16 caratteri tra lettere, cifre, `.`, `-` e `_`; il MIME è `tipo/sottotipo` (senza parametri come
+`; charset=`). Un valore non valido non diventa mai un nome di file: l'export risponde `500` con un
+messaggio che nomina exporter e package (e finisce nel log). L'elenco degli exporter mostra sempre
+`extension` e `mime` statici. Esempio: il JSON Lines riscaricato con l'estensione del file importato,
+che l'importer avrebbe salvato in `meta["extension"]`:
+
+```python
+class OriginalJsonLines(Exporter):
+    id = "original"
+    label = "File originale"
+    accepts = (KIND,)
+    extension = ".jsonl"
+    mime = "application/jsonl"
+    requires_tools = (STORAGE,)
+
+    def file_type(self, obj: ObjectRef, params: Mapping[str, Any]) -> tuple[str, str]:
+        return obj.meta.get("extension", self.extension), self.mime
+
+    def export(self, obj: ObjectRef, params: Mapping[str, Any], tools) -> bytes:
+        return space(tools).read(str(obj.meta["file"]))
+```
+
+Un package che ridefinisce `file_type` dichiara `"api_version": "4.1"`; gli altri restano a `"4.0"`.
+
 ### 6. Filtro di analisi (`server/min_events.py`)
 
 Un filtro contribuito a `ekg.analysis_filters` (il punto di estensione di `ekg_analysis`) diventa
@@ -438,7 +467,7 @@ La cartella deve avere lo stesso nome del package.
 |---|---|
 | `name` | Lettere minuscole, cifre e `_`, inizia con una lettera (né `""`, né `..`, né separatori, né `_` iniziale). Diventa anche il nome del modulo Python `soup_pkg_<name>`. |
 | `version` | Versione PEP 440 (`1.0.0`). Serve per gli aggiornamenti. |
-| `api_version` | Versione dei contratti del core per cui il package è scritto, `"MAGGIORE.MINORE"`. È compatibile se ha lo stesso numero maggiore di `CONTRACTS_API_VERSION` dell'host e un minore uguale o inferiore: un host `"4.1"` accetterebbe `"4.0"` e `"4.1"`; l'host attuale, `"4.0"`, rifiuta `"4.1"`, `"3.x"` e `"5.0"` (vedi "Versioni dei contratti" sotto). |
+| `api_version` | Versione dei contratti del core per cui il package è scritto, `"MAGGIORE.MINORE"`. È compatibile se ha lo stesso numero maggiore di `CONTRACTS_API_VERSION` dell'host e un minore uguale o inferiore: l'host attuale, `"4.1"`, accetta `"4.0"` e `"4.1"` e rifiuta `"4.2"`, `"3.x"` e `"5.0"` (vedi "Versioni dei contratti" sotto). |
 | `label`, `description`, `author` | Testi mostrati all'utente; `label` vale `name` se assente. |
 | `requires` | Package che devono essere attivi prima di questo. |
 | `requires_tools` | Tool usati (catalogo, Memgraph, storage, preferenze...). Un package non può usare un tool che non dichiara qui. |
@@ -456,6 +485,7 @@ La cartella deve avere lo stesso nome del package.
 | `"3.0"` | 8 | Tolti da `PluginContext` `add_input_reader`, `add_input_handler` e `add_build_step`: l'event log e l'EKG sono nel package `ekg` e gli step si contribuiscono a `ekg.build_steps`. Un package `"2.x"` va aggiornato. |
 | `"3.1"` | 10 | Aggiunto `Exporter.applies(obj, tools) -> bool` (facoltativo, default `True`): un exporter si offre solo per alcuni oggetti dei kind che accetta. Un exporter che non si applica non compare nell'elenco e il suo export risponde `404` come uno sconosciuto; un `applies` che solleva esclude l'exporter e finisce nel log con il nome del package. I package `"3.0"` si caricano senza modifiche; serve `"3.1"` solo a chi usa `applies` (es. `ekg_analysis`). |
 | `"4.0"` | 11 | Tolti da `soup.core.contracts` `Query`, `ident` e `GraphDatabase`: il core non conosce Cypher. Stanno in `soup_pkg_tool_memgraph.api` (riesportati da `soup_pkg_ekg.api`), da importare dichiarando il package in `requires`. Un package `"3.x"` va aggiornato (cambiano solo quell'import e `api_version`). |
+| `"4.1"` | 12 | Aggiunto `Exporter.file_type(obj, params) -> (extension, mime)` (facoltativo, default `(extension, mime)` dell'exporter): estensione e MIME del file esportato possono dipendere dall'oggetto; l'`ExportRouter` li valida (`500` attribuito al package se non validi). I package `"4.0"` si caricano senza modifiche; dichiarano `"4.1"` solo quelli che usano `file_type` (`text`, `ocel`). |
 
 Visualizzatori e operazioni restano filtrati solo per kind.
 
@@ -493,13 +523,14 @@ class Plugin(SoupPlugin):
 |---|---|
 | `tool_memgraph`, `tool_storage` | I tool (vedi sotto). |
 | `soup_base` | Visualizzatore **Report** (kind `report`), exporter **Report in JSON** e gli elementi riusabili `soup-text`, `soup-markdown`, `soup-image`, `soup-table`, `soup-chart`, `soup-keyvalue`, `soup-file-link`, `soup-error`, `soup-report-view`, `soup-graph-view`. Disegna anche l'anteprima dell'import. Un package che usa questi elementi dichiara `requires: ["soup_base"]`. API in [soup_base/README.md](soup_base/README.md). |
-| `text` | Importer **Testo** (`.txt`, `.md`, `.log`, kind `text`): il file resta com'è nello spazio `text` dello storage, la `meta` ha dimensione, righe e codifica (UTF-8, altrimenti Latin-1). Visualizzatore **Testo** (`<soup-pkg-text-viewer>`): `<soup-text>` o, per i `.md`, `<soup-markdown>`; blocchi di righe con l'azione `lines` `{from, count}` e ricerca in tutto il file con `search` `{query}`. Exporter **File originale** (scarica `<nome>.txt`: l'estensione di un exporter è fissa). |
+| `text` | Importer **Testo** (`.txt`, `.md`, `.log`, kind `text`): il file resta com'è nello spazio `text` dello storage, la `meta` ha dimensione, righe e codifica (UTF-8, altrimenti Latin-1). Visualizzatore **Testo** (`<soup-pkg-text-viewer>`): `<soup-text>` o, per i `.md`, `<soup-markdown>`; blocchi di righe con l'azione `lines` `{from, count}` e ricerca in tutto il file con `search` `{query}`. La `meta` ha anche l'estensione originale (`extension`: `.txt`, `.md` o `.log`). Exporter **File originale**: con `Exporter.file_type` scarica `<nome>.md`, `<nome>.log` o `<nome>.txt` con il MIME del file (`text/markdown` per i `.md`, `text/plain` altrimenti); per gli oggetti importati prima, senza `meta.extension`, l'estensione viene da `meta.filename` (o da `format: "markdown"`), altrimenti `.txt`. `api_version: "4.1"`. |
 | `csv_table` | Importer **CSV come tabella** (`.csv`, `.tsv`, kind `table`, modulo `csv`): separatore (`comma`, `semicolon`, `tab`) e intestazione proposti da `csv.Sniffer`; la tabella è salvata come CSV canonico nello spazio `csv_table`. Visualizzatori **Tabella CSV** (`<soup-pkg-csv-table-viewer>`, paginazione remota con l'azione `page` `{offset, limit, sort: {column, direction}, filter: [{column, value}], search}`, colonne per indice, ordinamento e un filtro per colonna) e **Profilo colonne** (`<soup-pkg-csv-profile>`, valori distinti, celle vuote, esempi e il grafico di `distribution` `{column, top}`). Operazione **Distribuzione di una colonna** (`table` → `report` con un grafico a barre e una tabella). Exporter **CSV** con separatore e intestazione a scelta. |
 | `ekg` | Solo server. L'event log (`Table` e conversioni pandas, `EventLogData` piatto o separato, `ColumnMapping`, `EventLog` con normalizzazione, millisecondi, entità e CSV canonici), i dataset sul volume (`/soup/<nome>/<nome>.csv`, `_entity.csv`, `_config.json`, `Analyses/`) e l'EKG su Memgraph: step di costruzione 100-500, il punto di estensione `ekg.build_steps`, lo stato del grafo degli oggetti `ekg` (`ensure_loaded`, `ekg.state_providers`), gli eventi `ekg.before_reset` ed `ekg.built`, l'operazione **Carica in Memgraph**. All'avvio aggiunge al catalogo i dataset già presenti sul volume. Vedi sotto. |
 | `csv_ekg` | Importer **CSV come event log (EKG su Memgraph)** (`.csv`, kind `ekg`): anteprima, campi `event_id`, `timestamp`, `activity`, `entities`, `values`, `trigger_target`, `save_process_times` e, con almeno due colonne entità, il grafo delle molteplicità (1 a 1, 1 a N, N a 1, N a N). Operazione **Converti in EKG** (`table` di `csv_table` → `ekg` figlio). |
 | `causal_df` | Lo step del `:DF` causale per le coppie trigger/target, contribuito a `ekg.build_steps` con order 450. |
 | `ekg_views` | Visualizzatori **Grafo** (`<soup-pkg-ekg-graph>`), **Statistiche** (`<soup-pkg-ekg-stats>`) e **Interrogazioni** (`<soup-pkg-ekg-queries>`) ed exporter **JSON del grafo** per il kind `ekg` (Interrogazioni e JSON anche per `ekg_class`, finché `ekg_class_graph` vi contribuisce), con i punti di estensione `ekg.graph_views`, `ekg.queries` ed `ekg.json_parts`. Vedi sotto. |
 | `ekg_analysis` | Le analisi come operazioni sugli oggetti `ekg`: **Nuova analisi**, **Importa configurazione di analisi**, **Esempio di configurazione**, il punto di estensione `ekg.analysis_filters` con i sei filtri del vecchio codice, il rollback compensativo, l'evento `analysis.before_apply`, il visualizzatore **Indicatori di processo** (`<soup-pkg-ekg-insights>`) e l'exporter **Configurazione dell'analisi**. All'avvio aggiunge al catalogo le analisi già sul volume. Vedi sotto. |
+| `ocel` | File **OCEL 2.0** in JSON (`.json`, `.jsonocel`), con due importer tra cui sceglie l'utente: **OCEL 2.0 come tabelle** (kind `ocel_tables`, solo libreria standard e tool `storage`) e **OCEL 2.0 come EKG su Memgraph** (kind `ekg`, con `ekg.build_ekg`). Visualizzatori **Tabelle OCEL** e **Riepilogo OCEL**, operazione **Scomponi in EKG**, exporter **OCEL 2.0 JSON**. Vedi sotto. |
 | `ekg_class_graph` | Il grafo aggregato: operazione **Costruisci grafo aggregato** (`ekg` → `ekg_class`), visualizzatori **Grafo aggregato** (`<soup-pkg-ekg-class-graph>`) e **Statistiche del grafo aggregato** (`<soup-pkg-ekg-class-stats>`), la vista `class`, le interrogazioni e le parti JSON delle classi; cancella i propri nodi prima di un reset o di un'analisi (Observer). Vedi sotto. |
 
 `text` e `csv_table` usano solo la libreria standard di Python e il tool `storage` (`requires:
@@ -708,6 +739,41 @@ nome dell'evento, non richiede `ekg_analysis`) e cancella i propri nodi `:Class`
 ne restino. Nessun altro package chiama il suo codice. Con il package disattivato le analisi
 funzionano, le interrogazioni e le parti delle classi spariscono e gli oggetti `ekg_class` restano
 senza operazioni, visualizzatori ed exporter.
+
+## OCEL 2.0: il package `ocel`
+
+`requires: ["soup_base", "ekg", "tool_storage"]`, `requires_tools: ["memgraph", "storage"]`,
+`api_version: "4.1"`. Legge il formato JSON di OCEL 2.0 (`eventTypes`, `objectTypes`, `objects`,
+`events`) con la libreria standard. Un file non conforme risponde `400` con il punto del file e il
+motivo (`Not a valid OCEL 2.0 JSON file: events[2].time: 'ieri' is not an ISO 8601 date and time`).
+Vengono rifiutati: JSON non valido, id duplicati, tempi non ISO 8601, relazioni verso oggetti assenti,
+tipi non dichiarati (quando il file li dichiara) e valori che non sono scalari. Senza `eventTypes` e
+`objectTypes` i tipi si ricavano da eventi e oggetti. I due importer hanno lo stesso `inspect`: un
+blocco `keyvalue` (eventi, oggetti, tipi di evento, tipi di oggetto) e una `table` con i primi 20
+eventi.
+
+| Contributo | |
+|---|---|
+| **OCEL 2.0 come tabelle** (`ocel.tables`, → `ocel_tables`) | Salva le tabelle in `ocel/<id dell'oggetto>/` dello storage, un JSON per tabella (così i valori tengono il loro tipo): `events` (`event_id`, `event_type`, `time`, una colonna per attributo), `objects` (`object_id`, `object_type`, il primo valore di ogni attributo), `event_objects` (con `qualifier`), `object_objects` (`source_id`, `source_type`, `target_id`, `target_type`, `qualifier`), `object_attributes` (ogni valore degli attributi degli oggetti con il suo `time`) e `types.json`. Un attributo che il file dà con valore `null` resta `null` (le celle vuote della tabella sono gli attributi assenti, quelle `null` sono elencate in `nulls` del JSON degli eventi). Nessuna query a Memgraph. `dispose` toglie la cartella. |
+| **OCEL 2.0 come EKG su Memgraph** (`ocel.ekg`, → `ekg`) | `EventLogData` in forma separata con mapping fisso: id, time (in UTC, senza offset) e type dell'evento come id evento, timestamp e attività; i tipi di oggetto come tipi di entità; gli attributi degli eventi come proprietà (un nome riservato o uguale a un tipo di oggetto prende il suffisso `_attribute`). I qualifier e le relazioni oggetto-oggetto **non entrano nel grafo**: lo dicono la descrizione dell'importer, `meta.ocel.not_in_graph` e `meta.notice` (mostrato da Grafo, Statistiche e Interrogazioni di ekg_views). Tutti i visualizzatori e le operazioni del kind `ekg` funzionano senza modifiche. |
+| **Tabelle OCEL** (`<soup-pkg-ocel-tables>`) | Schede Eventi, Oggetti, Relazioni evento-oggetto e Relazioni oggetto-oggetto, ognuna con `<soup-table>` a paginazione remota: azione `page` `{table, offset, limit, sort, search, type}` → `{rows, total}`. `type` filtra per tipo di evento (Eventi) o di oggetto (Oggetti e Relazioni evento-oggetto; nelle relazioni oggetto-oggetto basta una delle due estremità). |
+| **Riepilogo OCEL** (`<soup-pkg-ocel-summary>`) | I conteggi (`<soup-keyvalue>`) e il grafico a barre degli eventi per tipo (`<soup-chart>`), presi dalla `meta`; l'anteprima del workspace mostra le stesse barre. |
+| **Scomponi in EKG** (`ocel.to_ekg`, `ocel_tables` → `ekg`) | La stessa scomposizione dell'importer EKG, rileggendo le tabelle già importate: l'EKG (`<nome> (EKG)`) è figlio delle tabelle e il suo dataset coincide con quello dell'importer. |
+| **OCEL 2.0 JSON** (exporter) | Il log riscritto dalle tabelle; con `file_type` prende l'estensione del file importato (`.json` o `.jsonocel`) e il MIME `application/json`. Gli attributi `null` del file importato restano `null`. Reimportato, dà lo stesso file. |
+
+Tutti i tempi passano da `parse_time` (`model.py`), che legge anche il suffisso `Z` (UTC): `datetime.fromisoformat` lo accetta solo da Python 3.11.
+
+Le tabelle si leggono dallo storage una volta per oggetto: Tabelle OCEL, l'exporter e Scomponi in EKG usano una
+`ParsedCache` per istanza del plugin, come `csv_table` (`server/cache.py` è una copia di quella di `csv_table`;
+la duplicazione va tolta nel commit 13), con i limiti `SOUP_OCEL_CACHE_OBJECTS` e `SOUP_OCEL_CACHE_MB` (default 8
+oggetti e 200 MB; un valore non intero positivo fa fallire il caricamento del package). Un nuovo import e `dispose`
+invalidano l'oggetto; `read_table`, `read_log` e `load_tables` dell'api leggono sempre dallo storage.
+
+Per provare l'installazione a runtime (lo fa anche `soup-app/e2e/ocel.spec.ts`): `npm run build:packages --
+ocel && npm run pack -- ocel`, poi, con l'applicazione avviata e `soup_base`, `tool_storage`,
+`tool_memgraph` ed `ekg` attivi, caricare `dist/ocel-1.0.0.zip` da **/packages**. Gli importer
+compaiono subito in **/import** per i `.json`, insieme a visualizzatori, operazione ed exporter, senza
+riavvio né rebuild dell'host.
 
 ## Regole per il codice del package
 

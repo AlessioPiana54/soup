@@ -25,7 +25,11 @@ Description: Version of the stable contracts exposed by the host to
              GraphDatabase from soup.core.contracts: they belong to the
              tool_memgraph package (soup_pkg_tool_memgraph.api, re-exported
              by soup_pkg_ekg.api), so a "3.x" package importing them from
-             the contracts no longer loads.
+             the contracts no longer loads. "4.1" (commit 12) added
+             Exporter.file_type(obj, params) -> (extension, mime), so the
+             exported file can take the extension and the MIME type of
+             the object (default: the exporter's extension and mime);
+             "4.0" packages load unchanged.
 Project : soup-server
 ------------------------------------------------------------------------
 """
@@ -35,7 +39,7 @@ from __future__ import annotations
 import re
 from typing import Optional
 
-CONTRACTS_API_VERSION = "4.0"
+CONTRACTS_API_VERSION = "4.1"
 
 _API_VERSION_RE = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 

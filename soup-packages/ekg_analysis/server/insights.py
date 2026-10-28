@@ -75,9 +75,11 @@ def activity_occurrences_query(entity: str) -> Query:
 
 
 def variants_query(entity: str) -> Query:
-    # get_variant_query, with the duration of each trace.
+    # get_variant_query, with the duration of each trace. extract(), not a
+    # list comprehension ([x IN events | ...]): Memgraph 2.x does not
+    # implement comprehensions ("Not yet implemented: atom expression").
     return Query(_TRACES + """
-            WITH [x IN events | x.ActivityName] AS variant,
+            WITH extract(x IN events | x.ActivityName) AS variant,
                  last(events).Timestamp - head(events).Timestamp AS duration
             RETURN variant, count(*) AS occurrences, collect(duration) AS durations
             ORDER BY occurrences DESC""", {"entity": entity})

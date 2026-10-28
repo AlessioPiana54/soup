@@ -11,7 +11,7 @@ Project : soup-packages/text
 """
 
 from .cache import DEFAULT_MAX_BYTES, DEFAULT_MAX_OBJECTS, ParsedCache, limits_from_env
-from .text import OriginalFileExporter, TextFile, TextImporter, TextVisualizer, decode, new_cache
+from .text import OriginalFileExporter, TextFile, TextImporter, TextVisualizer, decode, extension_of, new_cache, stored_extension
 
 __all__ = [
     "DEFAULT_MAX_BYTES",
@@ -22,6 +22,8 @@ __all__ = [
     "TextImporter",
     "TextVisualizer",
     "decode",
+    "extension_of",
     "limits_from_env",
     "new_cache",
+    "stored_extension",
 ]

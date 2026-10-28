@@ -5,9 +5,11 @@ Description: Tests for the contracts version rule
              (soup.core.contracts.version): same major as the host, minor
              not above the host's - applied by the PluginManager and by
              the PackageManager (before importing any code); the host is
-             at "4.0" since commit 11 (Query, ident and GraphDatabase left
-             the contracts), so a "3.x" manifest is refused, and every
-             bundled package declares a compatible version.
+             at "4.1" since commit 12 (Exporter.file_type, added to the
+             "4.0" of commit 11, where Query, ident and GraphDatabase left
+             the contracts), so "4.0" and "4.1" manifests load, a "3.x" or
+             "4.2" one is refused, and every bundled package declares a
+             compatible version.
 Project : soup-server
 ------------------------------------------------------------------------
 """
@@ -102,25 +104,28 @@ def _load_on_the_real_host(tmp_path, versions):
                 del sys.modules[module]
 
 
-def test_the_host_is_at_4_0_and_refuses_a_3_x_manifest(tmp_path):
-    assert CONTRACTS_API_VERSION == "4.0"
+def test_the_host_is_at_4_1_and_refuses_a_3_x_manifest(tmp_path):
+    assert CONTRACTS_API_VERSION == "4.1"
 
-    report = _load_on_the_real_host(tmp_path, {"old": "3.1", "older": "3.0", "current": "4.0", "next": "4.1"})
+    versions = {"old": "3.1", "older": "3.0", "previous": "4.0", "current": "4.1", "next": "4.2"}
+    report = _load_on_the_real_host(tmp_path, versions)
 
-    assert sorted(report.loaded) == ["current"]
+    assert sorted(report.loaded) == ["current", "previous"]
     failures = {failure.plugin_name: failure.error for failure in report.failed}
     assert sorted(failures) == ["next", "old", "older"]
     assert all(isinstance(error, PluginApiVersionError) for error in failures.values())
     message = str(failures["old"])
-    assert "'3.1'" in message and "'4.0'" in message and "same major" in message
+    assert "'3.1'" in message and "'4.1'" in message and "same major" in message
 
 
-def test_3_x_packages_do_not_load_on_the_4_0_host():
-    # A major release removed something (Query, ident, GraphDatabase from the contracts).
+def test_3_x_packages_do_not_load_on_the_4_1_host():
+    # A major release removed something (Query, ident, GraphDatabase from the
+    # contracts); a minor one only adds (Exporter.file_type), so "4.0" still loads.
     assert is_api_compatible("4.0")
+    assert is_api_compatible("4.1")
     assert not is_api_compatible("3.1")
     assert not is_api_compatible("3.0")
-    assert not is_api_compatible("4.1")
+    assert not is_api_compatible("4.2")
 
 
 def test_every_bundled_manifest_declares_a_compatible_version():

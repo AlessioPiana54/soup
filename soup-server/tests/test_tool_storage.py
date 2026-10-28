@@ -208,10 +208,13 @@ class _FakeContainer:
     def __init__(self):
         self.files: dict[str, bytes] = {}
         self.commands: list[list[str]] = []
+        self.users: list[object] = []
+        self.modes: list[int] = []
         self.fail_with = None
 
-    def exec_run(self, argv):
+    def exec_run(self, argv, user=None):
         self.commands.append(list(argv))
+        self.users.append(user)
         if self.fail_with is not None:
             raise self.fail_with
         if argv[0] == "test":
@@ -228,6 +231,7 @@ class _FakeContainer:
     def put_archive(self, directory, stream):
         with tarfile.open(fileobj=stream, mode="r") as tar:
             for member in tar.getmembers():
+                self.modes.append(member.mode)
                 self.files[f"{directory}/{member.name}"] = tar.extractfile(member).read()
         return True
 
@@ -278,6 +282,20 @@ def test_docker_commands_are_argv_lists_never_a_shell():
     assert [command[0] for command in container.commands] == ["mkdir", "test", "ls", "rm"]
     assert all("sh" not in command for command in container.commands)
     assert container.commands[0] == ["mkdir", "-p", "/soup/my orders"]
+
+
+def test_docker_commands_run_as_root_and_files_stay_readable_by_memgraph():
+    # memgraph/memgraph-mage runs as the "memgraph" user, which cannot write
+    # in the root-owned volume: the commands do not depend on the image's USER.
+    backend, container = _docker()
+    storage = api.StorageTool(backend)
+    storage.space("orders").write("orders.csv", b"a,b\n")
+    storage.space("orders").exists("orders.csv")
+    storage.space("orders").list()
+    storage.delete_space("orders")
+
+    assert container.users == ["root"] * 4
+    assert container.modes == [0o644]
 
 
 def test_docker_missing_file_is_not_found():

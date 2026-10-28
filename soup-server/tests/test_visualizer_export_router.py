@@ -6,7 +6,11 @@ Description: Tests for VisualizerRouter and ExportRouter - contributions
              accepts, data/action/export routed to the chosen one;
              Exporter.applies (contracts "3.1") narrows an exporter to
              some objects: not listed and a 404 on a direct export when
-             False, excluded and logged (never a 500) when it raises.
+             False, excluded and logged (never a 500) when it raises;
+             Exporter.file_type (contracts "4.1") gives the extension and
+             the MIME type of each file, the exporter's own by default,
+             and an invalid one is a 500 naming the package, never a
+             file name.
 Project : soup-server
 ------------------------------------------------------------------------
 """
@@ -17,7 +21,8 @@ import logging
 
 import pytest
 
-from soup.core.contracts import NotFoundError, ValidationError
+from soup.core.contracts import DomainError, NotFoundError, ValidationError
+from tests.api_client import client_for
 from tests.mediator_doubles import (
     FakeExporter,
     FakeImporter,
@@ -153,3 +158,100 @@ def test_an_applies_that_raises_excludes_the_exporter_and_is_logged(caplog):
     assert any("tables.broken" in record.getMessage() and "'tables'" in record.getMessage() for record in caplog.records)
     with pytest.raises(NotFoundError):
         engine.export_router.export("tables.broken", orders.id, {"separator": ","})
+
+
+# ---------------------------------------------------------------------- #
+# Exporter.file_type (contracts "4.1")
+# ---------------------------------------------------------------------- #
+class PerObject(FakeExporter):
+    """The extension and the MIME type come from the object's meta, or are `given`."""
+
+    def __init__(self, exporter_id: str, given=None):
+        super().__init__(exporter_id, ["text"], ".txt", "text/plain")
+        self.given = given
+        self.calls = []
+
+    def file_type(self, obj, params):
+        self.calls.append((obj.name, dict(params)))
+        if self.given is not None:
+            return self.given
+        return obj.meta.get("extension", self.extension), obj.meta.get("mime", self.mime)
+
+
+def _file_type_setup(*exporters):
+    importers = [
+        FakeImporter("md", "Markdown", produces="text", meta={"extension": ".md", "mime": "text/markdown"}),
+        FakeImporter("log", "Log", produces="text", meta={"extension": ".log"}),
+        FakeImporter("plain", "Plain", produces="text"),
+    ]
+    engine, _core = build_test_engine(FeaturePackage("files", importers=importers, exporters=list(exporters)))
+    objects = {key: engine.import_router.import_(f"files.{key}", upload(), f"notes-{key}") for key in ("md", "log", "plain")}
+    return engine, objects
+
+
+def test_an_exporter_that_does_not_redefine_file_type_keeps_its_extension_and_mime():
+    exporter = FakeExporter("csv", ["text"])
+    engine, objects = _file_type_setup(exporter)
+
+    assert exporter.file_type(objects["md"], {}) == (".csv", "text/csv")
+    exported = engine.export_router.export("files.csv", objects["md"].id, {"separator": ";"})
+    assert (exported.filename, exported.mime) == ("notes-md.csv", "text/csv")
+
+
+def test_file_type_names_each_file_with_its_own_extension_and_mime():
+    exporter = PerObject("original")
+    engine, objects = _file_type_setup(exporter)
+
+    files = {key: engine.export_router.export("files.original", obj.id) for key, obj in objects.items()}
+
+    assert {key: (item.filename, item.mime) for key, item in files.items()} == {
+        "md": ("notes-md.md", "text/markdown"),
+        "log": ("notes-log.log", "text/plain"),
+        "plain": ("notes-plain.txt", "text/plain"),
+    }
+    # It receives the validated params, defaults included.
+    assert exporter.calls[0] == ("notes-md", {"separator": ","})
+
+
+@pytest.mark.parametrize("given", [
+    ("md", "text/plain"),                       # no leading dot
+    (".", "text/plain"),                        # too short
+    ("." + "x" * 16, "text/plain"),             # too long (17 characters)
+    ("./../x", "text/plain"),                   # path separators
+    (".md\\x", "text/plain"),
+    (".m d", "text/plain"),
+    (".md\n", "text/plain"),
+    (".md", "markdown"),                        # no subtype
+    (".md", "text/plain; charset=utf-8"),       # parameters are not part of the type
+    (".md", "text/plain\r\nX-Evil: 1"),
+    (".md", None),
+    (None, "text/plain"),
+    (".md",),
+    "text/plain",
+])
+def test_an_invalid_file_type_is_a_500_naming_the_package_and_builds_no_file_name(given, caplog):
+    engine, objects = _file_type_setup(PerObject("bad", given=given))
+
+    with caplog.at_level(logging.ERROR, logger="soup.export"), pytest.raises(DomainError) as exc_info:
+        engine.export_router.export("files.bad", objects["md"].id)
+
+    assert exc_info.value.http_status_code == 500
+    assert "'files.bad'" in str(exc_info.value) and "package 'files'" in str(exc_info.value)
+    assert any("files.bad" in record.getMessage() and "'files'" in record.getMessage() for record in caplog.records)
+
+
+def test_valid_extensions_at_the_limits_are_accepted():
+    for extension in (".x", ".tar.gz", ".jsonocel", "." + "a" * 15, ".my-file_v2"):
+        engine, objects = _file_type_setup(PerObject("ok", given=(extension, "application/vnd.ocel+json")))
+        assert engine.export_router.export("files.ok", objects["md"].id).filename == f"notes-md{extension}"
+
+
+def test_over_http_an_invalid_file_type_answers_500_with_the_message_and_no_file():
+    engine, objects = _file_type_setup(PerObject("bad", given=("../x", "text/plain")))
+
+    response = client_for(engine).get(f"/api/v3/objects/{objects['md'].id}/export/files.bad")
+
+    assert response.status_code == 500
+    message = response.get_json()["message"]
+    assert "files.bad" in message and "package 'files'" in message
+    assert "Content-Disposition" not in response.headers

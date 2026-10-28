@@ -68,7 +68,10 @@ def build_flask_app(engine: Engine) -> Flask:
 
     socketio = SocketIO(app, cors_allowed_origins="*")
     app.config["socketio"] = socketio
-    CORS(app)
+    # The host reads the name of an exported file from Content-Disposition:
+    # in development it runs on another origin, where the browser hides the
+    # header unless it is exposed.
+    CORS(app, expose_headers=["Content-Disposition"])
 
     log = logging.getLogger("werkzeug")
     log.setLevel(logging.ERROR)

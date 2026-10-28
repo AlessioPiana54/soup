@@ -2,7 +2,7 @@
 
 ![Angular](https://img.shields.io/badge/Angular-v18.2.0-DD0031?style=for-the-badge&logo=Angular&color=%23e61919)
 ![Python](https://img.shields.io/badge/Python-3.11.5-3776AB?style=for-the-badge&logo=Python&color=blue)
-![Memgraph](https://img.shields.io/badge/Memgraph-v3.3.0-000000?style=for-the-badge&color=orange)
+![Memgraph](https://img.shields.io/badge/Memgraph-v3.13.2-000000?style=for-the-badge&color=orange)
 
 ## Description
 **SOUP** is a web application for **object-centric process mining**. Starting from a `.csv` file of
@@ -74,13 +74,14 @@ SOUP follows the plug-in model of [ProM](https://promtools.org/):
 | `tool_memgraph` | | | | | provides tool `memgraph` (Cypher with `Query`/`ident`, active graph) |
 | `tool_storage` | | | | | provides tools `storage`, `catalog`, `preferences` |
 | `soup_base` | | | Report (`report`) | Report in JSON | shared elements (`soup-table`, `soup-chart`, `soup-graph-view`, ...) |
-| `text` | Text (`.txt`, `.md`, `.log`) | | Text | Original file | uses `storage` |
+| `text` | Text (`.txt`, `.md`, `.log`) | | Text | Original file (with its own extension) | uses `storage` |
 | `csv_table` | CSV as table (`.csv`, `.tsv`) | Column distribution | CSV table, Column profile | CSV | uses `storage` |
 | `ekg` | | Load into Memgraph | | | extension points `ekg.build_steps`, `ekg.state_providers`; events `ekg.before_reset`, `ekg.built` |
 | `csv_ekg` | CSV as event log (EKG on Memgraph): column mapping, trigger/target, multiplicity diagram | Convert to EKG (`table` → `ekg`) | | | uses `memgraph`, `storage` |
 | `causal_df` | | | | | contributes the causal `:DF` step to `ekg.build_steps` |
 | `ekg_views` | | | Graph, Statistics, Queries | Graph JSON | extension points `ekg.graph_views`, `ekg.queries`, `ekg.json_parts` |
 | `ekg_analysis` | | New analysis, Import analysis configuration, Configuration example | Process indicators | Analysis configuration | extension point `ekg.analysis_filters` (6 filters); event `analysis.before_apply` |
+| `ocel` | OCEL 2.0 as tables (`.json`, `.jsonocel`, kind `ocel_tables`), OCEL 2.0 as EKG on Memgraph | Decompose into EKG (`ocel_tables` → `ekg`) | OCEL tables, OCEL summary | OCEL 2.0 JSON | uses `storage` (tables), `memgraph` (EKG) |
 | `ekg_class_graph` | | Build aggregated graph (`ekg` → `ekg_class`) | Aggregated graph, Aggregated graph statistics | | contributes a view, queries and JSON parts; subscribes to `ekg.before_reset`, `analysis.before_apply` |
 
 Details of every package, of the tools and of the extension points are in
@@ -106,7 +107,29 @@ docker compose -p soup-tool up --build
 |---|---|---|
 | **soup-app** | Frontend (nginx; `/api/` is proxied to the backend) | [http://localhost:4200](http://localhost:4200) |
 | **soup-engine** | Backend `/api/v3` and the package bundles | [http://localhost:8080](http://localhost:8080) |
-| **soup-database** | Memgraph | `7687` (Bolt), [http://localhost:3300](http://localhost:3300) (Memgraph Lab) |
+| **soup-database** | Memgraph (`memgraph/memgraph-mage:3.13.2`), with the `soup-volume` volume on `/soup` | `7687` (Bolt), `7444` |
+| **soup-lab** | Memgraph Lab (`memgraph/lab:3.13.2`) | [http://localhost:3300](http://localhost:3300) |
+
+### Memgraph
+
+`docker-compose.yaml` pins **Memgraph 3.13.2**: `memgraph/memgraph-mage:3.13.2` (Memgraph with the MAGE
+procedures) and `memgraph/lab:3.13.2` (the web interface) as two services. The image used before,
+`memgraph/memgraph-platform` without a tag, is deprecated: its `latest` has stayed at Memgraph 2.14.1
+(February 2024), which does not implement list and pattern comprehensions (`[x IN list | expr]`).
+The packages never use them (`soup-server/tests/test_cypher_compatibility.py` checks it) and run on
+2.14.1 too. Update the two tags together, then run the smoke tests of `ekg_views` and `ekg_analysis`
+against the new image (their READMEs).
+
+To read the version of the running Memgraph, run `SHOW VERSION;` in Memgraph Lab or with mgconsole:
+
+```sh
+echo "SHOW VERSION;" | docker exec -i soup-database mgconsole
+```
+
+The `memgraph/memgraph-mage` image runs as the unprivileged `memgraph` user: `tool_storage` runs its
+commands in the container as root (`docker exec --user root`), so it can write in the `soup-volume`
+volume, and leaves the files readable by Memgraph for `LOAD CSV`. The volume keeps the datasets of an
+existing installation; the graph itself is rebuilt from them when an object is opened.
 
 The backend image builds every package frontend (`npm ci && npm run build:packages`). Packages
 installed at runtime are stored in the `soup-installed-packages` volume.
@@ -177,6 +200,7 @@ To regenerate the fixture: `python -m tests.tools.dump_v3_routes`.
 | `SOUP_EKG_VIEWS_MAX_LIMIT` | `2000` | `ekg_views` | Maximum number of graph elements drawn. |
 | `SOUP_TEXT_CACHE_OBJECTS`, `SOUP_TEXT_CACHE_MB` | `8`, `200` | `text` | In-memory cache of the decoded files. |
 | `SOUP_CSV_TABLE_CACHE_OBJECTS`, `SOUP_CSV_TABLE_CACHE_MB` | `8`, `200` | `csv_table` | In-memory cache of the parsed tables. |
+| `SOUP_OCEL_CACHE_OBJECTS`, `SOUP_OCEL_CACHE_MB` | `8`, `200` | `ocel` | In-memory cache of the tables of the OCEL logs. |
 
 ---
 

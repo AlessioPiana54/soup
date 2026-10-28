@@ -1,0 +1,83 @@
+{
+  "objectTypes": [
+    {"name": "order", "attributes": [{"name": "total", "type": "float"}]},
+    {"name": "item", "attributes": [{"name": "weight", "type": "float"}]},
+    {"name": "customer", "attributes": [{"name": "name", "type": "string"}]}
+  ],
+  "eventTypes": [
+    {"name": "place order", "attributes": [{"name": "resource", "type": "string"}]},
+    {"name": "pick item", "attributes": [{"name": "resource", "type": "string"}]},
+    {"name": "pay order", "attributes": [{"name": "amount", "type": "float"}]}
+  ],
+  "objects": [
+    {
+      "id": "o1",
+      "type": "order",
+      "attributes": [
+        {"name": "total", "time": "1970-01-01T00:00:00Z", "value": 10.5},
+        {"name": "total", "time": "2023-01-01T11:00:00Z", "value": 12.0}
+      ],
+      "relationships": [
+        {"objectId": "i1", "qualifier": "contains"},
+        {"objectId": "i2", "qualifier": "contains"},
+        {"objectId": "c1", "qualifier": "ordered by"}
+      ]
+    },
+    {
+      "id": "o2",
+      "type": "order",
+      "attributes": [{"name": "total", "time": "1970-01-01T00:00:00Z", "value": 3}],
+      "relationships": [{"objectId": "i3", "qualifier": "contains"}]
+    },
+    {"id": "i1", "type": "item", "attributes": [{"name": "weight", "time": "1970-01-01T00:00:00Z", "value": 1.2}]},
+    {"id": "i2", "type": "item", "attributes": [{"name": "weight", "time": "1970-01-01T00:00:00Z", "value": 0.4}]},
+    {"id": "i3", "type": "item", "attributes": [{"name": "weight", "time": "1970-01-01T00:00:00Z", "value": null}]},
+    {"id": "c1", "type": "customer", "attributes": [{"name": "name", "time": "1970-01-01T00:00:00Z", "value": "Ada"}]}
+  ],
+  "events": [
+    {
+      "id": "e1",
+      "type": "place order",
+      "time": "2023-01-01T09:00:00Z",
+      "attributes": [{"name": "resource", "value": "Alice"}],
+      "relationships": [
+        {"objectId": "o1", "qualifier": "order"},
+        {"objectId": "c1", "qualifier": "customer"},
+        {"objectId": "i1", "qualifier": "item"},
+        {"objectId": "i2", "qualifier": "item"}
+      ]
+    },
+    {
+      "id": "e2",
+      "type": "place order",
+      "time": "2023-01-01T10:30:00+01:00",
+      "attributes": [{"name": "resource", "value": "Bob"}],
+      "relationships": [
+        {"objectId": "o2", "qualifier": "order"},
+        {"objectId": "c1", "qualifier": "customer"},
+        {"objectId": "i3", "qualifier": "item"}
+      ]
+    },
+    {
+      "id": "e3",
+      "type": "pick item",
+      "time": "2023-01-02T08:00:00Z",
+      "attributes": [{"name": "resource", "value": "Carla"}],
+      "relationships": [{"objectId": "i1", "qualifier": ""}, {"objectId": "o1", "qualifier": ""}]
+    },
+    {
+      "id": "e4",
+      "type": "pick item",
+      "time": "2023-01-02T08:15:00Z",
+      "attributes": [{"name": "resource", "value": null}],
+      "relationships": [{"objectId": "i2", "qualifier": ""}, {"objectId": "o1", "qualifier": ""}]
+    },
+    {
+      "id": "e5",
+      "type": "pay order",
+      "time": "2023-01-03T12:00:00Z",
+      "attributes": [{"name": "amount", "value": 12.0}],
+      "relationships": [{"objectId": "o1", "qualifier": "paid"}]
+    }
+  ]
+}

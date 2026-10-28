@@ -102,7 +102,7 @@ def _package_dirs() -> list[Path]:
 def test_bundled_packages_exist():
     assert {path.name for path in _package_dirs()} >= {
         "ekg", "csv_ekg", "causal_df", "ekg_views", "ekg_analysis", "ekg_class_graph", "tool_memgraph", "tool_storage",
-        "soup_base", "text", "csv_table",
+        "soup_base", "text", "csv_table", "ocel",
     }
     assert not (PACKAGES_ROOT / "csv_reader").exists()
 
@@ -147,6 +147,22 @@ def test_text_and_csv_table_only_need_the_storage_tool():
         assert manifest["requires"] == ["soup_base", "tool_storage"]
         assert manifest["requires_tools"] == ["storage"]
         assert manifest["python_dependencies"] == []
+
+
+# The "come tabelle" side of ocel (format, storage, tables importer,
+# visualizers, exporter): standard library and the storage tool only; only
+# graph.py reaches the ekg package.
+OCEL_TABLE_MODULES = ("model.py", "store.py", "tables.py")
+
+
+def test_the_ocel_tables_import_neither_pandas_nor_ekg_nor_the_database():
+    violations = []
+    for name in OCEL_TABLE_MODULES:
+        file_path = PACKAGES_ROOT / "ocel" / "server" / name
+        for module in _imported_modules(file_path):
+            if module.split(".")[0] in ("pandas", "numpy", "neo4j", "docker") or module.startswith("soup_pkg_"):
+                violations.append(f"ocel/server/{name} imports {module}")
+    assert violations == []
 
 
 def test_packages_never_import_flask():

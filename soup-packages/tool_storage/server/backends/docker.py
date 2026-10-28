@@ -8,7 +8,12 @@ Description: FileStorage backend writing into the SOUP Docker volume via
              legacy Models/docker_file_manager_model.py, which
              round-trips through temporary files on the host (C12).
              Commands run in the container as argv lists, never through
-             "sh -c" with the path spliced in. DockerException is
+             "sh -c" with the path spliced in, and always as root
+             (EXEC_USER): the image of docker-compose.yaml
+             (memgraph/memgraph-mage) runs as the unprivileged "memgraph"
+             user, which cannot create or remove anything in the volume
+             (owned by root); the files stay readable by Memgraph for
+             LOAD CSV (directories 755, files 644). DockerException is
              translated at this boundary (C35): a missing file becomes
              FileNotFoundError, anything else ServiceUnavailableError
              (503), instead of the legacy
@@ -29,6 +34,10 @@ import docker
 from docker.errors import DockerException, NotFound
 
 from soup.core.contracts import FileStorage, ServiceUnavailableError
+
+
+# The user of the commands run in the container, whatever the image's USER.
+EXEC_USER = "root"
 
 
 class DockerVolumeStorage(FileStorage):
@@ -67,7 +76,7 @@ class DockerVolumeStorage(FileStorage):
         directory = directory or "/"
 
         try:
-            result = container.exec_run(["mkdir", "-p", directory])
+            result = container.exec_run(["mkdir", "-p", directory], user=EXEC_USER)
             if result.exit_code != 0:
                 raise DockerException(f"mkdir failed for '{directory}'")
 
@@ -75,6 +84,7 @@ class DockerVolumeStorage(FileStorage):
             with tarfile.open(fileobj=tarstream, mode="w") as tar:
                 info = tarfile.TarInfo(name=file_name)
                 info.size = len(data)
+                info.mode = 0o644
                 tar.addfile(info, io.BytesIO(data))
             tarstream.seek(0)
 
@@ -126,6 +136,6 @@ class DockerVolumeStorage(FileStorage):
     def _exec(self, argv: list[str], what: str):
         container = self._container()
         try:
-            return container.exec_run(argv)
+            return container.exec_run(argv, user=EXEC_USER)
         except DockerException as exc:
             raise self._unavailable(f"error {what} '{argv[-1]}'", exc) from exc

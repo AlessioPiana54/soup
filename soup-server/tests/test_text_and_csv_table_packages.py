@@ -9,8 +9,10 @@ Description: Tests for soup-packages/text and soup-packages/csv_table,
              tool_memgraph:
              - text: .txt and .md imported into the package's storage
                space, read back through the visualizer's data and its
-               "lines"/"search" actions, exported as the original file,
-               removed from the storage when the object is deleted;
+               "lines"/"search" actions, exported as the original file
+               with its own extension and MIME type (.md, .log, also for
+               objects imported without meta.extension), removed from
+               the storage when the object is deleted;
              - csv_table: separator/header guessed and chosen, paging,
                sorting and filters of the "page" action, the column
                profile, the "distribution" operation producing a report
@@ -27,6 +29,7 @@ Project : soup-server
 
 from __future__ import annotations
 
+import dataclasses
 import io
 import json
 
@@ -127,6 +130,7 @@ def test_import_a_txt_and_read_it_through_the_visualizer(setup):
     assert obj["kind"] == "text"
     assert obj["meta"] == {
         "filename": "notes.txt", "file": obj["id"], "size": len(TEXT), "lines": 3, "encoding": "utf-8", "format": "text",
+        "extension": ".txt",
     }
     assert (storage / "text" / obj["id"]).read_bytes() == TEXT
 
@@ -177,6 +181,47 @@ def test_latin1_fallback_and_original_file_export(client):
     response = client.get(f"/api/v3/objects/{obj['id']}/export/text.original")
     assert response.status_code == 200
     assert response.data == content
+
+
+@pytest.mark.parametrize("filename, extension, mime", [
+    ("readme.md", ".md", "text/markdown"),
+    ("server.log", ".log", "text/plain"),
+    ("notes.txt", ".txt", "text/plain"),
+    ("CHANGES.MD", ".md", "text/markdown"),
+])
+def test_the_original_file_is_downloaded_with_its_own_extension_and_mime(client, filename, extension, mime):
+    obj = _import(client, "text.text", filename, MARKDOWN, name="doc")
+    assert obj["meta"]["extension"] == extension
+
+    response = client.get(f"/api/v3/objects/{obj['id']}/export/text.original")
+
+    assert response.status_code == 200
+    assert response.mimetype == mime
+    assert f"filename=doc{extension}" in response.headers["Content-Disposition"]
+    assert response.data == MARKDOWN
+
+
+@pytest.mark.parametrize("legacy_meta, extension, mime", [
+    ({"filename": "readme.md", "format": "markdown"}, ".md", "text/markdown"),
+    ({"filename": "server.log", "format": "text"}, ".log", "text/plain"),
+    ({"format": "markdown"}, ".md", "text/markdown"),
+    ({}, ".txt", "text/plain"),
+])
+def test_objects_imported_before_meta_extension_take_it_from_their_meta(setup, legacy_meta, extension, mime):
+    client, engine, _ = setup
+    obj = _import(client, "text.text", "notes.txt", TEXT, name="old")
+    catalog = engine.core_tools.catalog()
+    stored = catalog.get(obj["id"])
+    # The meta of a text imported before commit 12: no "extension".
+    base = {key: value for key, value in stored.meta.items() if key not in ("extension", "filename", "format")}
+    catalog.update(dataclasses.replace(stored, meta={**base, **legacy_meta}))
+
+    response = client.get(f"/api/v3/objects/{obj['id']}/export/text.original")
+
+    assert response.status_code == 200
+    assert response.mimetype == mime
+    assert f"filename=old{extension}" in response.headers["Content-Disposition"]
+    assert response.data == TEXT
 
 
 def test_deleting_a_text_object_removes_its_file(setup):

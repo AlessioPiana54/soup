@@ -23,7 +23,8 @@ class Exporter(ABC):
     `extension` (e.g. ".csv") and `mime` describe the produced file;
     `requires_tools` must be among the tools its package requires or
     provides. applies() narrows `accepts` to some objects of those kinds
-    (since contracts "3.1", kept in "4.0").
+    (since contracts "3.1", kept in "4.x"); file_type() lets the
+    extension and the MIME type depend on the object (since "4.1").
     """
 
     id: str = ""
@@ -41,6 +42,17 @@ class Exporter(ABC):
         """
 
         return True
+
+    def file_type(self, obj: ObjectRef, params: Mapping[str, Any]) -> tuple[str, str]:
+        """
+        (extension, mime) of the file exported from `obj` with `params`
+        (already validated against fields()). Default: the exporter's
+        `extension` and `mime`. The extension starts with "." and has 2-16
+        letters, digits, ".", "-" or "_" (e.g. ".md"); the MIME type is
+        "type/subtype". The file is called "<object name><extension>".
+        """
+
+        return self.extension, self.mime
 
     def fields(self, obj: ObjectRef, tools: ToolAccess) -> list[Field]:
         """Export options for `obj`. Default: none."""

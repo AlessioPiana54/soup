@@ -5,13 +5,15 @@ Description: The contributions of the text package, for objects of kind
              "text" (a file kept as is in the package's own storage space,
              storage.space("text"), named after the object id):
              - TextImporter ("text"): .txt, .md and .log files; the meta
-               has the size, the number of lines and the encoding (UTF-8,
-               falling back to Latin-1).
+               has the size, the number of lines, the encoding (UTF-8,
+               falling back to Latin-1) and the original extension.
              - TextVisualizer ("text"): <soup-pkg-text-viewer> of app/;
                data() gives the first lines (and the whole text of a
                small markdown file), action("lines") the next blocks of
                lines and action("search") the lines matching a query.
-             - OriginalFileExporter ("original"): the file as imported.
+             - OriginalFileExporter ("original"): the file as imported,
+               named with its original extension and MIME type
+               (Exporter.file_type, contracts "4.1").
              The importer and the visualizer read the decoded lines
              through the same ParsedCache (cache.py), created by the
              Plugin: "lines" and "search" do not read and decode the file
@@ -53,7 +55,11 @@ MAX_SEARCH_RESULTS = 200
 # shown as plain text, in blocks of lines.
 MAX_MARKDOWN_BYTES = 1024 * 1024
 
+EXTENSIONS = (".txt", ".md", ".log")
+DEFAULT_EXTENSION = ".txt"
 MARKDOWN_EXTENSIONS = (".md",)
+MIME_TYPES = {".md": "text/markdown"}
+DEFAULT_MIME = "text/plain"
 
 
 def decode(data: bytes) -> tuple[str, str]:
@@ -67,6 +73,28 @@ def decode(data: bytes) -> tuple[str, str]:
 
 def _format_of(filename: str) -> str:
     return "markdown" if filename.lower().endswith(MARKDOWN_EXTENSIONS) else "text"
+
+
+def extension_of(filename: str) -> str:
+    """The extension among EXTENSIONS that `filename` ends with (lower-case), else ".txt"."""
+
+    lowered = filename.lower()
+    return next((extension for extension in EXTENSIONS if lowered.endswith(extension)), DEFAULT_EXTENSION)
+
+
+def stored_extension(obj: ObjectRef) -> str:
+    """
+    meta.extension; for objects imported before it was saved, the one of
+    meta.filename (or ".md" for meta.format "markdown"), else ".txt".
+    """
+
+    extension = obj.meta.get("extension")
+    if isinstance(extension, str) and extension in EXTENSIONS:
+        return extension
+    filename = obj.meta.get("filename")
+    if isinstance(filename, str) and filename.lower().endswith(EXTENSIONS):
+        return extension_of(filename)
+    return MARKDOWN_EXTENSIONS[0] if obj.meta.get("format") == "markdown" else DEFAULT_EXTENSION
 
 
 def _space(tools):
@@ -138,7 +166,7 @@ class TextImporter(_Cached, Importer):
     id = "text"
     label = "Testo"
     description = "Keeps the file as is; shows it as text, or as markdown for .md files."
-    extensions = (".txt", ".md", ".log")
+    extensions = EXTENSIONS
     produces = KIND
     requires_tools = (STORAGE,)
 
@@ -160,6 +188,7 @@ class TextImporter(_Cached, Importer):
             "lines": len(text.splitlines()),
             "encoding": encoding,
             "format": _format_of(upload.filename),
+            "extension": extension_of(upload.filename),
         }
 
     def dispose(self, obj: ObjectRef, tools) -> None:
@@ -211,17 +240,22 @@ class TextVisualizer(_Cached, Visualizer):
 
 class OriginalFileExporter(Exporter):
     """
-    The stored bytes. `extension` is fixed per exporter (and must not be
-    empty) while it varies per file here: the downloaded file is
-    "<object name>.txt", a .md file included.
+    The stored bytes, downloaded as "<object name><original extension>":
+    file_type() gives the extension of the imported file (stored_extension)
+    and its MIME type, text/markdown for .md and text/plain otherwise.
+    `extension` and `mime` are the defaults of the listing.
     """
 
     id = "original"
     label = "File originale"
     accepts = (KIND,)
-    extension = ".txt"
-    mime = "text/plain"
+    extension = DEFAULT_EXTENSION
+    mime = DEFAULT_MIME
     requires_tools = (STORAGE,)
+
+    def file_type(self, obj: ObjectRef, params: Mapping[str, Any]) -> tuple[str, str]:
+        extension = stored_extension(obj)
+        return extension, MIME_TYPES.get(extension, DEFAULT_MIME)
 
     def export(self, obj: ObjectRef, params: Mapping[str, Any], tools) -> bytes:
         return _content(obj, tools)

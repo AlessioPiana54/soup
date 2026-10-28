@@ -6,7 +6,8 @@ Description: Tests for the /api/v3 visualizer and exporter routes
              object's kind and of a kind (?kind=, no object), their data
              (flat or ?params=<json>), actions,
              the exporters with their fields, and the export as a file
-             with Content-Disposition; 400/404 errors.
+             with Content-Disposition, exposed by CORS to a host on
+             another origin; 400/404 errors.
 Project : soup-server
 ------------------------------------------------------------------------
 """
@@ -99,3 +100,18 @@ def test_exporters_and_export(setup):
 
     assert client.get(f"/api/v3/objects/{object_id}/export/feat.csv_out?separator=|").status_code == 400
     assert client.get(f"/api/v3/objects/{object_id}/export/feat.ghost").status_code == 404
+
+
+def test_a_cross_origin_export_exposes_the_file_name_to_the_browser(setup):
+    # The host in development (ng serve) is on another origin: without the
+    # header in Access-Control-Expose-Headers it cannot read the file name.
+    client, object_id = setup
+
+    response = client.get(
+        f"/api/v3/objects/{object_id}/export/feat.csv_out?separator=;", headers={"Origin": "http://localhost:4200"}
+    )
+
+    assert response.status_code == 200
+    assert response.headers["Content-Disposition"] == "attachment; filename=log.csv"
+    exposed = [name.strip().lower() for name in response.headers["Access-Control-Expose-Headers"].split(",")]
+    assert "content-disposition" in exposed

@@ -39,8 +39,8 @@ def test_default_settings_activate_every_package_found():
 
 
 BUNDLED = [
-    "causal_df", "csv_ekg", "csv_table", "ekg", "ekg_analysis", "ekg_class_graph", "ekg_views", "soup_base", "text",
-    "tool_memgraph", "tool_storage",
+    "causal_df", "csv_ekg", "csv_table", "ekg", "ekg_analysis", "ekg_class_graph", "ekg_views", "ocel", "soup_base",
+    "text", "tool_memgraph", "tool_storage",
 ]
 
 
