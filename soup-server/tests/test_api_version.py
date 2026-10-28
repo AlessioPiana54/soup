@@ -5,8 +5,8 @@ Description: Tests for the contracts version rule
              (soup.core.contracts.version): same major as the host, minor
              not above the host's - applied by the PluginManager and by
              the PackageManager (before importing any code); the host is
-             at "3.1" since commit 10 (Exporter.applies), so a "2.0"
-             manifest is refused, a "3.0" one still loads, and every
+             at "4.0" since commit 11 (Query, ident and GraphDatabase left
+             the contracts), so a "3.x" manifest is refused, and every
              bundled package declares a compatible version.
 Project : soup-server
 ------------------------------------------------------------------------
@@ -26,9 +26,9 @@ from soup.core.plugin_manager import PluginManager
 from tests.mediator_doubles import FeaturePackage
 from tests.package_builder import write_package
 
-HOST = "3.1"
-COMPATIBLE = ["3.0", "3.1"]
-INCOMPATIBLE = ["2.0", "2.1", "4.0", "3.2"]
+HOST = "4.1"
+COMPATIBLE = ["4.0", "4.1"]
+INCOMPATIBLE = ["3.0", "3.1", "5.0", "4.2"]
 
 
 @pytest.mark.parametrize("version", COMPATIBLE)
@@ -36,7 +36,7 @@ def test_same_major_and_lower_or_equal_minor_is_compatible(version):
     assert is_api_compatible(version, HOST)
 
 
-@pytest.mark.parametrize("version", [*INCOMPATIBLE, "3", "3.1.0", "v3.1", "", None, 3.1])
+@pytest.mark.parametrize("version", [*INCOMPATIBLE, "3", "4.1.0", "v4.1", "", None, 3.1])
 def test_other_majors_higher_minors_and_malformed_versions_are_not(version):
     assert not is_api_compatible(version, HOST)
 
@@ -78,11 +78,11 @@ def test_package_manager_applies_the_rule(tmp_path):
             if module.startswith("soup_pkg_"):
                 del sys.modules[module]
 
-    assert sorted(report.loaded) == ["v3_0", "v3_1"]
+    assert sorted(report.loaded) == ["v4_0", "v4_1"]
     failed = {failure.plugin_name: failure.error for failure in report.failed}
-    assert sorted(failed) == sorted(["v2_0", "v2_1", "v4_0", "v3_2"])
+    assert sorted(failed) == sorted(["v3_0", "v3_1", "v5_0", "v4_2"])
     assert all(isinstance(error, PluginApiVersionError) for error in failed.values())
-    assert "same major" in str(failed["v3_2"])
+    assert "same major" in str(failed["v4_2"])
 
 
 def _load_on_the_real_host(tmp_path, versions):
@@ -102,24 +102,25 @@ def _load_on_the_real_host(tmp_path, versions):
                 del sys.modules[module]
 
 
-def test_the_host_is_at_3_1_and_refuses_a_2_0_manifest(tmp_path):
-    assert CONTRACTS_API_VERSION == "3.1"
+def test_the_host_is_at_4_0_and_refuses_a_3_x_manifest(tmp_path):
+    assert CONTRACTS_API_VERSION == "4.0"
 
-    report = _load_on_the_real_host(tmp_path, {"old": "2.0", "previous": "3.0", "current": "3.1", "next": "3.2"})
+    report = _load_on_the_real_host(tmp_path, {"old": "3.1", "older": "3.0", "current": "4.0", "next": "4.1"})
 
-    assert sorted(report.loaded) == ["current", "previous"]
+    assert sorted(report.loaded) == ["current"]
     failures = {failure.plugin_name: failure.error for failure in report.failed}
-    assert sorted(failures) == ["next", "old"]
+    assert sorted(failures) == ["next", "old", "older"]
     assert all(isinstance(error, PluginApiVersionError) for error in failures.values())
     message = str(failures["old"])
-    assert "'2.0'" in message and "'3.1'" in message and "same major" in message
+    assert "'3.1'" in message and "'4.0'" in message and "same major" in message
 
 
-def test_a_3_0_package_still_loads_on_the_3_1_host():
-    # Minor releases only add: "3.0" packages need nothing that was removed.
-    assert is_api_compatible("3.0")
-    assert is_api_compatible("3.1")
-    assert not is_api_compatible("3.2")
+def test_3_x_packages_do_not_load_on_the_4_0_host():
+    # A major release removed something (Query, ident, GraphDatabase from the contracts).
+    assert is_api_compatible("4.0")
+    assert not is_api_compatible("3.1")
+    assert not is_api_compatible("3.0")
+    assert not is_api_compatible("4.1")
 
 
 def test_every_bundled_manifest_declares_a_compatible_version():

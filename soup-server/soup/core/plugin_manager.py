@@ -101,10 +101,6 @@ class PackageReport:
         return bool(self.failed)
 
 
-# TODO(commit 11): remove the old name once nothing imports it.
-PluginReport = PackageReport
-
-
 class PluginManager:
     def __init__(self, contracts_api_version: str = CONTRACTS_API_VERSION, strict: bool = False):
         self.contracts_api_version = contracts_api_version

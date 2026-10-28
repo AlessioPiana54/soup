@@ -211,6 +211,19 @@ describe('<soup-pkg-ekg-stats>', () => {
     expect(root.querySelector('b')).toBeNull();
   });
 
+  it('shows the columns of the dataset with their role, when there are some', () => {
+    const columns: StatsData['columns'] = [
+      { name: 'case', role: 'event_id' },
+      { name: 'order', role: 'entity' },
+      { name: 'note', role: '' }
+    ];
+    const element = mount<SoupPkgEkgStats>('soup-pkg-ekg-stats', { ...STATS, columns }, fakeContext());
+    const tables = [...element.shadowRoot!.querySelectorAll('soup-table')] as FakeTable[];
+    expect(tables).toHaveLength(3);
+    expect(tables[2].data!.rows).toEqual([['case', 'id evento'], ['order', 'entità'], ['note', 'non usata']]);
+    expect(element.shadowRoot!.textContent).toContain('Colonne del dataset');
+  });
+
   it('adds the pie of the phase times when there is one', () => {
     const process: ChartData = { chart: 'pie', labels: ['Event', 'Entity', 'CORR', 'DF'], datasets: [{ label: 'secondi', data: [1, 2, 3, 4] }] };
     const element = mount<SoupPkgEkgStats>('soup-pkg-ekg-stats', { ...STATS, charts: { ...STATS.charts, process } }, fakeContext());

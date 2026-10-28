@@ -14,9 +14,16 @@ Description: Static (AST-based) checks of the dependency rules: soup/core
              tool only (no pandas, no Memgraph driver, commit 7); the
              whole of soup/core imports none of pandas, neo4j, docker and
              Flask, and the event log and the EKG are gone from it to the
-             ekg, csv_ekg and causal_df packages (commit 8). The tests
-             kept next to a package (soup-packages/<name>/tests) are not
-             part of it (not packed) and are not checked.
+             ekg, csv_ekg and causal_df packages (commit 8). Since
+             commit 11 the legacy backend (Controllers, Services, Utils,
+             Models, Shared) is gone and nothing imports it; a package
+             only names the tools it declares (requires_tools or
+             provides_tools) and only imports third-party libraries it
+             lists in python_dependencies; on the frontend, soup-app
+             reaches soup-packages only through the SDK (@soup/sdk) and
+             no package bundle imports host code. The tests kept next to
+             a package (soup-packages/<name>/tests) are not part of it
+             (not packed) and are not checked.
 Project : soup-server
 ------------------------------------------------------------------------
 """
@@ -25,7 +32,12 @@ from __future__ import annotations
 
 import ast
 import json
+import re
+import sys
 from pathlib import Path
+
+from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
 
 SOUP_ROOT = Path(__file__).resolve().parent.parent / "soup"
 PACKAGES_ROOT = Path(__file__).resolve().parent.parent.parent / "soup-packages"
@@ -273,3 +285,141 @@ def test_ekg_packages_declare_what_they_use():
     assert "app" not in manifests["ekg"]
     assert manifests["csv_ekg"]["requires"] == ["ekg", "soup_base", "csv_table"]
     assert manifests["causal_df"]["requires"] == ["ekg"]
+
+
+# ---------------------------------------------------------------------- #
+# Commit 11: no legacy backend, tools and libraries declared, frontend
+# ---------------------------------------------------------------------- #
+
+SERVER_ROOT = SOUP_ROOT.parent
+LEGACY_BACKEND = ("Controllers", "Services", "Utils", "Models", "Shared")
+
+
+def test_the_legacy_backend_is_gone_and_nothing_imports_it():
+    assert [name for name in LEGACY_BACKEND if (SERVER_ROOT / name).exists()] == []
+    files = [*_py_files(SOUP_ROOT), *_py_files(SERVER_ROOT / "tests"), SERVER_ROOT / "app.py"]
+    files += [path for package_dir in _package_dirs() for path in _py_files(package_dir)]
+    violations = [
+        f"{path} imports {module}"
+        for path in files
+        for module in _imported_modules(path)
+        if module.split(".")[0] in LEGACY_BACKEND
+    ]
+    assert violations == []
+
+
+def _manifest(package_dir: Path) -> dict:
+    return json.loads((package_dir / "soup-package.json").read_text(encoding="utf-8"))
+
+
+def _known_tools() -> set[str]:
+    return {tool for package_dir in _package_dirs() for tool in _manifest(package_dir).get("provides_tools", [])}
+
+
+# Tool-name constants packages import instead of writing the name.
+_TOOL_CONSTANTS = {"CATALOG_TOOL": "catalog", "PREFERENCES_TOOL": "preferences", "MEMGRAPH_TOOL": "memgraph"}
+
+
+def _tool_names_used(file_path: Path, known: set[str]) -> set[str]:
+    """Every tool name a file mentions: a string equal to a tool name, or a tool-name constant."""
+
+    tree = ast.parse(file_path.read_text(encoding="utf-8"), filename=str(file_path))
+    used: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value in known:
+            used.add(node.value)
+        elif isinstance(node, ast.Name) and node.id in _TOOL_CONSTANTS:
+            used.add(_TOOL_CONSTANTS[node.id])
+        elif isinstance(node, ast.alias) and node.name in _TOOL_CONSTANTS:
+            used.add(_TOOL_CONSTANTS[node.name])
+    return used
+
+
+def test_no_package_names_a_tool_it_does_not_declare():
+    known = _known_tools()
+    assert known >= {"memgraph", "storage", "catalog", "preferences"}
+    violations = []
+    for package_dir in _package_dirs():
+        manifest = _manifest(package_dir)
+        declared = set(manifest.get("requires_tools", [])) | set(manifest.get("provides_tools", []))
+        for file_path in _package_files(package_dir):
+            for tool in sorted(_tool_names_used(file_path, known) - declared):
+                violations.append(f"{file_path.relative_to(PACKAGES_ROOT)} uses tool '{tool}' (not in requires_tools)")
+    assert violations == []
+
+
+def _third_party(module: str) -> bool:
+    top = module.split(".")[0]
+    return not (top in sys.stdlib_module_names or top == "soup" or top.startswith("soup_pkg_") or top == "__future__")
+
+
+def _absolute_imports(file_path: Path) -> set[str]:
+    """The modules a file imports by absolute name (relative imports are the package's own)."""
+
+    tree = ast.parse(file_path.read_text(encoding="utf-8"), filename=str(file_path))
+    modules: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            modules.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+            modules.add(node.module)
+    return modules
+
+
+def test_packages_declare_the_libraries_they_import():
+    violations = []
+    for package_dir in _package_dirs():
+        declared = {
+            canonicalize_name(Requirement(spec).name) for spec in _manifest(package_dir).get("python_dependencies", [])
+        }
+        for file_path in _package_files(package_dir):
+            for module in sorted(_absolute_imports(file_path)):
+                if _third_party(module) and canonicalize_name(module.split(".")[0]) not in declared:
+                    violations.append(f"{file_path.relative_to(PACKAGES_ROOT)} imports {module} (not in python_dependencies)")
+    assert violations == []
+
+
+APP_ROOT = PACKAGES_ROOT.parent / "soup-app"
+_TS_IMPORT = re.compile(r"""(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)['"]([^'"]+)['"]""")
+
+
+def _ts_files(directory: Path) -> list[Path]:
+    return sorted(path for path in directory.rglob("*.ts") if "node_modules" not in path.parts and "dist" not in path.parts)
+
+
+def _ts_imports(file_path: Path) -> list[str]:
+    return _TS_IMPORT.findall(file_path.read_text(encoding="utf-8"))
+
+
+def _resolves_inside(file_path: Path, specifier: str, root: Path) -> bool:
+    if not specifier.startswith("."):
+        return True
+    return (file_path.parent / specifier).resolve().is_relative_to(root.resolve())
+
+
+def test_the_host_app_reaches_the_packages_only_through_the_sdk():
+    violations = []
+    for file_path in _ts_files(APP_ROOT / "src"):
+        for specifier in _ts_imports(file_path):
+            if "soup-packages" in specifier or not _resolves_inside(file_path, specifier, APP_ROOT):
+                violations.append(f"{file_path.relative_to(APP_ROOT)} imports {specifier}")
+            if specifier.startswith("@soup/") and specifier != "@soup/sdk":
+                violations.append(f"{file_path.relative_to(APP_ROOT)} imports {specifier} (only @soup/sdk)")
+    assert violations == []
+
+
+def test_no_package_bundle_imports_host_code():
+    violations = []
+    for package_dir in _package_dirs():
+        for file_path in _ts_files(package_dir / "app"):
+            for specifier in _ts_imports(file_path):
+                if "soup-app" in specifier or specifier.startswith("src/") or not _resolves_inside(file_path, specifier, package_dir):
+                    violations.append(f"{file_path.relative_to(PACKAGES_ROOT)} imports {specifier}")
+    assert violations == []
+
+
+def test_the_frontend_never_calls_api_v2():
+    files = [*_ts_files(APP_ROOT / "src"), *_ts_files(APP_ROOT / "e2e"), APP_ROOT / "nginx.conf"]
+    files += sorted((APP_ROOT / "src").rglob("*.html"))
+    hits = [str(path.relative_to(APP_ROOT)) for path in files if "api/v2" in path.read_text(encoding="utf-8")]
+    assert hits == []

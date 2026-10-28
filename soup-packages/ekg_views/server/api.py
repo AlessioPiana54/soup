@@ -17,11 +17,15 @@ Description: Public API of the ekg_views package. Other packages import it
              GraphVisualizer is the "Grafo" visualizer, to subclass for
              the objects of another kind with its own element. clean()
              makes the values read from Memgraph JSON-ready.
+             NullEntities is the query of the event properties with null
+             values and warning_label() the warning shown for them, for
+             the forms that offer entity types (ekg_class_graph).
 Project : soup-packages/ekg_views
 ------------------------------------------------------------------------
 """
 
-from .contributions import GRAPH_VIEWS_POINT, JSON_PARTS_POINT, QUERIES_POINT, GraphVisualizer, notice_of
+from .builtin_queries import NullEntities
+from .contributions import GRAPH_VIEWS_POINT, JSON_PARTS_POINT, QUERIES_POINT, GraphVisualizer, notice_of, warning_label
 from .kinds import DEFAULT_KINDS, STANDARD_KINDS
 from .json_parts import JsonPart, NodesPart, RelationshipsPart
 from .queries import CountQuery, GraphQuery, NodeListQuery, RelationshipListQuery, count_of
@@ -41,6 +45,7 @@ __all__ = [
     "GraphVisualizer",
     "JsonPart",
     "NodeListQuery",
+    "NullEntities",
     "NodesPart",
     "RelationshipListQuery",
     "RelationshipsPart",
@@ -48,4 +53,5 @@ __all__ = [
     "clean",
     "count_of",
     "notice_of",
+    "warning_label",
 ]

@@ -29,20 +29,6 @@ export class NavbarComponent {
   }
 
   /**
-   * Go to new dataset page
-   */
-  public goToNewDataset(): void {
-    this.router.navigate(['/new-dataset']);
-  }
-
-  /**
-   * Go to manage datasets page
-   */
-  public goToManageDatasets(): void {
-    this.router.navigate(['/datasets']);
-  }
-
-  /**
    * Go to a page of the workspace (/workspace, /import, /packages)
    * @param path the path of the page
    */

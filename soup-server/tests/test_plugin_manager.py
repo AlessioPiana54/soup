@@ -3,7 +3,7 @@
 File : test_plugin_manager.py
 Description: Tests for PluginManager - dependency ordering, cycle
              detection, and isolation of faulty plugins in the
-             PluginReport (soup.core.plugin_manager).
+             PackageReport (soup.core.plugin_manager).
 Project : soup-server
 ------------------------------------------------------------------------
 """

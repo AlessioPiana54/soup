@@ -21,7 +21,7 @@ from typing import Any
 
 from neo4j import GraphDatabase as Neo4jGraphDatabase
 
-from soup.core.contracts import GraphDatabase as GraphDatabasePort
+from .port import GraphDatabase as GraphDatabasePort
 
 from .query import Query
 

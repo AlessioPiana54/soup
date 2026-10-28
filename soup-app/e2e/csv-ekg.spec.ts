@@ -1,7 +1,7 @@
 import { expect, Page, test } from '@playwright/test';
 import { execSync } from 'node:child_process';
 
-import { CORE_TOOLS, PackageChanges, packages, PACKAGES_DIR } from './backend';
+import { CORE_TOOLS, PackageChanges, packages, PACKAGES_DIR, skipFirstAccessHint } from './backend';
 
 /**
  * The csv_ekg package on the e2e backend, installed from zips with the
@@ -39,6 +39,8 @@ async function dropCsv(page: Page): Promise<void> {
 }
 
 test.describe.serial('csv_ekg', () => {
+  test.beforeEach(({ page }) => skipFirstAccessHint(page));
+
   test.beforeAll(async ({ request }) => {
     execSync('npm run build:packages -- soup_base csv_table', { cwd: PACKAGES_DIR, stdio: 'inherit' });
     for (const name of PACKAGES) {

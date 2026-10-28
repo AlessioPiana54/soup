@@ -324,6 +324,24 @@ def test_the_statistics(setup):
     assert data["charts"]["data"] == {"chart": "pie", "labels": ["Event", "Entity", "CORR", "DF"], "datasets": [{"label": "numero", "data": [2, 1, 2, 1]}]}
     # The import did not save the phase times (save_process_times false).
     assert data["charts"]["process"] is None
+    assert data["columns"] == [
+        {"name": "case", "role": "event_id"},
+        {"name": "activity", "role": "activity"},
+        {"name": "time", "role": "timestamp"},
+        {"name": "order", "role": "entity"},
+    ]
+
+
+def test_the_dataset_columns_with_their_role():
+    contributions = bundled_module("ekg_views", "contributions")
+    meta = {
+        "columns": ["id", "when", "what", "order", "price", "note"],
+        "mapping": {"event_id": "id", "timestamp": "when", "activity": "what", "entities": ["order"], "values": ["price"]},
+    }
+    assert [(column["name"], column["role"]) for column in contributions.dataset_columns(meta)] == [
+        ("id", "event_id"), ("when", "timestamp"), ("what", "activity"), ("order", "entity"), ("price", "value"), ("note", ""),
+    ]
+    assert contributions.dataset_columns({}) == []
 
 
 def test_the_phase_times_pie():

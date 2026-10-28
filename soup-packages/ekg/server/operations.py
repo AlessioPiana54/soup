@@ -4,8 +4,7 @@ File : operations.py
 Description: LoadEkg ("load") - "Carica in Memgraph": makes an "ekg"
              object the graph in Memgraph (ensure_loaded), rebuilding it
              only if another one is active, or always with "force". It
-             produces no object. The /api/v2 route that rebuilt the graph
-             of a dataset (/complete-graph/build) runs it with force.
+             produces no object.
 Project : soup-packages/ekg
 ------------------------------------------------------------------------
 """

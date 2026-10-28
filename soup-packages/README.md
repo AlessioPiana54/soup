@@ -9,6 +9,393 @@ I package di questa cartella sono **forniti** con SOUP; altri si installano a ru
 > cui ti fidi. Per questo l'installazione da zip è disattivata di default e va abilitata con
 > `SOUP_ALLOW_PACKAGE_INSTALL=true` (il `docker-compose.yaml` di sviluppo la abilita).
 
+## Scrivere un package
+
+Questa guida costruisce un package completo, `records`: importa file `.jsonl` (un record JSON per
+riga), li filtra con un'operazione, li mostra con un visualizzatore, li esporta in CSV e aggiunge un
+filtro alle analisi EKG. Ogni esempio usa solo i contratti del core (`soup.core.contracts`), i tool
+dichiarati nel manifest e, per il filtro, l'`api.py` dei package elencati in `requires`.
+
+### 1. Partire da `_template`
+
+```sh
+cd soup-packages
+cp -r _template records                 # il nome della cartella è il nome del package
+```
+
+`records/soup-package.json`:
+
+```json
+{
+  "name": "records",
+  "version": "1.0.0",
+  "api_version": "4.0",
+  "label": "Record JSON Lines",
+  "description": "Imports .jsonl files, filters, shows and exports their records.",
+  "author": "Io",
+  "requires": ["tool_storage", "ekg", "ekg_analysis"],
+  "requires_tools": ["storage"],
+  "provides_tools": [],
+  "extension_points": [],
+  "python_dependencies": [],
+  "server": {"module": "server", "plugin": "plugin:Plugin"},
+  "app": {"entry": "dist/index.js"}
+}
+```
+
+In `records/app/package.json` cambia `name` in `soup-pkg-records-app`, poi dalla radice di
+`soup-packages` esegui `npm install` (collega il nuovo workspace). Cancella `server/text.py` e
+scrivi i file seguenti. `ekg` ed `ekg_analysis` servono solo al filtro del passo 6: senza filtro
+toglili da `requires`.
+
+### 2. Importer (`server/records.py`)
+
+Un importer crea un oggetto: `inspect` propone anteprima e campi, `preview` ricalcola l'anteprima con
+le opzioni scelte, `import_` restituisce la `meta` dell'oggetto (che a quel punto ha già un id),
+`dispose` rimuove i dati quando l'oggetto viene cancellato. Il file resta nello spazio `records`
+dello storage; gli errori sono eccezioni di dominio (`ValidationError` → `400`).
+
+```python
+from __future__ import annotations
+
+import csv
+import io
+import json
+import uuid
+from typing import Any, Mapping
+
+from soup.core.contracts import (
+    Exporter,
+    Field,
+    Importer,
+    Inspection,
+    NotFoundError,
+    ObjectDraft,
+    ObjectRef,
+    Operation,
+    OperationInput,
+    Upload,
+    ValidationError,
+    Visualizer,
+    report,
+)
+
+KIND = "records.jsonl"
+STORAGE = "storage"
+NAMESPACE = "records"
+
+
+def parse(data: bytes) -> list[dict[str, Any]]:
+    rows = []
+    for number, line in enumerate(data.decode("utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError as error:
+            raise ValidationError(f"Line {number}: {error.msg}") from error
+        if not isinstance(value, dict):
+            raise ValidationError(f"Line {number}: a record must be a JSON object")
+        rows.append(value)
+    return rows
+
+
+def columns_of(rows: list[dict[str, Any]]) -> list[str]:
+    return sorted({key for row in rows for key in row})
+
+
+def space(tools):
+    return tools.get(STORAGE).space(NAMESPACE)
+
+
+def load(obj: ObjectRef, tools) -> list[dict[str, Any]]:
+    name = obj.meta.get("file")
+    if not name:
+        raise NotFoundError(f"Object '{obj.id}' has no stored file")
+    return parse(space(tools).read(str(name)))
+
+
+def dispose_file(obj: ObjectRef, tools) -> None:
+    if obj.meta.get("file"):
+        space(tools).delete(str(obj.meta["file"]))
+
+
+class JsonLinesImporter(Importer):
+    id = "jsonl"
+    label = "Record JSON Lines"
+    description = "Un record JSON per riga."
+    extensions = (".jsonl",)
+    produces = KIND
+    requires_tools = (STORAGE,)
+
+    def inspect(self, upload: Upload, tools) -> Inspection:
+        rows = parse(upload.read())
+        columns = columns_of(rows)
+        first = report.table(columns, [[row.get(column) for column in columns] for row in rows[:10]], title="Primi record")
+        key = Field("key", "Campo chiave", type="select", choices=tuple(columns), default=columns[0] if columns else None)
+        return Inspection(preview=(first,), fields=(key,) if columns else ())
+
+    def preview(self, upload: Upload, options: Mapping[str, Any], tools) -> list[dict[str, Any]]:
+        return [report.keyvalue({"record": len(parse(upload.read())), "campo chiave": options.get("key")})]
+
+    def import_(self, upload: Upload, obj: ObjectRef, options: Mapping[str, Any], tools) -> dict[str, Any]:
+        data = upload.read()
+        rows = parse(data)
+        name = f"{obj.id}.jsonl"
+        space(tools).write(name, data)
+        return {"file": name, "count": len(rows), "columns": columns_of(rows), "key": options.get("key")}
+
+    def dispose(self, obj: ObjectRef, tools) -> None:
+        dispose_file(obj, tools)
+```
+
+### 3. Operazione
+
+Un'operazione dichiara gli oggetti che riceve (`inputs`, per kind) e i kind che produce; `fields`
+costruisce il form (qui le scelte vengono dall'oggetto), `run` restituisce uno o più `ObjectDraft`.
+Il core crea gli oggetti con `created_by` = l'operazione e `parents` = gli oggetti in ingresso, e
+chiama `dispose` quando uno di essi viene cancellato.
+
+```python
+class FilterRecords(Operation):
+    id = "filter"
+    label = "Filtra i record"
+    description = "Tiene i record il cui campo ha il valore scelto."
+    group = "Record"
+    inputs = (OperationInput("records", (KIND,)),)
+    produces = (KIND,)
+    requires_tools = (STORAGE,)
+
+    def fields(self, inputs: Mapping[str, ObjectRef], tools) -> list[Field]:
+        source = inputs["records"]
+        return [
+            Field("name", "Nome", required=True, default=f"{source.name} filtrato"),
+            Field("column", "Campo", type="select", required=True, choices=tuple(source.meta.get("columns") or ())),
+            Field("value", "Valore", required=True),
+        ]
+
+    def run(self, inputs: Mapping[str, ObjectRef], params: Mapping[str, Any], tools) -> list[ObjectDraft]:
+        source = inputs["records"]
+        kept = [row for row in load(source, tools) if str(row.get(params["column"])) == params["value"]]
+        # Il draft non ha ancora un id: il file prende un nome nuovo.
+        name = f"{uuid.uuid4().hex}.jsonl"
+        space(tools).write(name, "\n".join(json.dumps(row) for row in kept).encode("utf-8"))
+        meta = {"file": name, "count": len(kept), "columns": columns_of(kept), "key": source.meta.get("key")}
+        return [ObjectDraft(params["name"], KIND, meta)]
+
+    def dispose(self, obj: ObjectRef, tools) -> None:
+        dispose_file(obj, tools)
+```
+
+### 4. Visualizzatore: server e Web Component
+
+Lato server il visualizzatore dà il tag dell'elemento, i `data` iniziali e le azioni che l'elemento
+chiama con `context.action(name, params)`:
+
+```python
+PAGE = 50
+
+
+class RecordsVisualizer(Visualizer):
+    id = "table"
+    label = "Record"
+    accepts = (KIND,)
+    element = "soup-pkg-records-table"
+    requires_tools = (STORAGE,)
+
+    def data(self, obj: ObjectRef, params: Mapping[str, Any], tools) -> Any:
+        rows = load(obj, tools)
+        return {"columns": obj.meta.get("columns") or [], "rows": rows[:PAGE], "total": len(rows)}
+
+    def action(self, obj: ObjectRef, name: str, params: Mapping[str, Any], tools) -> Any:
+        if name != "page":
+            raise NotFoundError(f"Visualizer '{self.id}' has no action '{name}'")
+        offset = params.get("offset", 0)
+        if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
+            raise ValidationError("'offset' must be a non-negative integer")
+        return {"rows": load(obj, tools)[offset:offset + PAGE]}
+```
+
+Lato browser (`app/src/index.ts`) è un custom element che importa solo `@soup/sdk`, mai codice
+dell'host: l'host imposta `data` e `context` prima di inserirlo nella pagina, e l'elemento parla con
+l'host solo tramite il `context` (o gli eventi DOM equivalenti, `soup-notify`, `soup-thumbnail`...).
+Il testo dei dati va sempre in `textContent`, mai come markup.
+
+```ts
+import { defineSoupElement, SoupVisualizerElement, VisualizerContext } from '@soup/sdk';
+
+interface RecordsData {
+  columns: string[];
+  rows: Record<string, unknown>[];
+  total: number;
+}
+
+export class SoupPkgRecordsTable extends HTMLElement implements SoupVisualizerElement<RecordsData> {
+  public data!: RecordsData;
+  public context!: VisualizerContext;
+
+  private readonly root = this.attachShadow({ mode: 'open' });
+  private rows: Record<string, unknown>[] = [];
+
+  public connectedCallback(): void {
+    this.rows = [...this.data.rows];
+    this.render();
+    // L'anteprima del workspace: un SVG costruito solo da numeri.
+    this.context.setThumbnail(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="120" height="60"><text x="10" y="35">${Number(this.data.total)}</text></svg>`
+    );
+  }
+
+  private render(): void {
+    const table = document.createElement('table');
+    const head = table.createTHead().insertRow();
+    for (const column of this.data.columns) head.insertCell().textContent = column;
+    const body = table.createTBody();
+    for (const row of this.rows) {
+      const line = body.insertRow();
+      for (const column of this.data.columns) line.insertCell().textContent = String(row[column] ?? '');
+    }
+    const more = document.createElement('button');
+    more.type = 'button';
+    more.textContent = `Altri record (${this.rows.length} di ${this.data.total})`;
+    more.disabled = this.rows.length >= this.data.total;
+    more.addEventListener('click', () => void this.next());
+    this.root.replaceChildren(table, more);
+  }
+
+  private async next(): Promise<void> {
+    try {
+      const page = await this.context.action<{ rows: Record<string, unknown>[] }>('page', { offset: this.rows.length });
+      this.rows.push(...page.rows);
+      this.render();
+    } catch (error) {
+      this.context.notify(error instanceof Error ? error.message : String(error), 'error');
+    }
+  }
+}
+
+defineSoupElement('soup-pkg-records-table', SoupPkgRecordsTable);
+```
+
+### 5. Exporter
+
+```python
+class RecordsCsv(Exporter):
+    id = "csv"
+    label = "Record in CSV"
+    accepts = (KIND,)
+    extension = ".csv"
+    mime = "text/csv"
+    requires_tools = (STORAGE,)
+
+    def fields(self, obj: ObjectRef, tools) -> list[Field]:
+        return [Field("header", "Intestazione", type="bool", default=True)]
+
+    def export(self, obj: ObjectRef, params: Mapping[str, Any], tools) -> bytes:
+        out = io.StringIO()
+        writer = csv.DictWriter(out, fieldnames=list(obj.meta.get("columns") or []), extrasaction="ignore")
+        if params.get("header", True):
+            writer.writeheader()
+        writer.writerows(load(obj, tools))
+        return out.getvalue().encode("utf-8")
+```
+
+### 6. Filtro di analisi (`server/min_events.py`)
+
+Un filtro contribuito a `ekg.analysis_filters` (il punto di estensione di `ekg_analysis`) diventa
+una variante di **Nuova analisi** e una chiave dei file di configurazione. Il Cypher è testo fisso:
+etichette e tipi con `ident()`, ogni valore come parametro (`$entity`, `$minimum`), mai una
+f-string con l'input dell'utente.
+
+```python
+from __future__ import annotations
+
+from typing import Any, Mapping
+
+from soup.core.contracts import Field, ObjectRef, ValidationError
+from soup_pkg_ekg.api import Query, ident
+from soup_pkg_ekg_analysis.api import AnalysisFilter, FilterContext
+
+
+class MinEventsFilter(AnalysisFilter):
+    key = "minEvents"
+    label = "Entità con pochi eventi"
+    description = "Toglie le entità del tipo scelto collegate a meno eventi del minimo."
+    order = 700                       # dopo i sei filtri di ekg_analysis (100-600)
+
+    def fields(self, obj: ObjectRef, tools) -> list[Field]:
+        return [
+            Field("entity", "Tipo di entità", required=True),
+            Field("minimum", "Eventi minimi", type="number", required=True, default=2),
+        ]
+
+    def validate(self, spec: Any) -> dict[str, Any]:
+        if not isinstance(spec, Mapping) or not str(spec.get("entity") or "").strip():
+            raise ValidationError("minEvents: 'entity' is required")
+        minimum = spec.get("minimum")
+        if isinstance(minimum, bool) or not isinstance(minimum, int) or minimum < 1:
+            raise ValidationError("minEvents: 'minimum' must be a positive integer")
+        return {"entity": str(spec["entity"]).strip(), "minimum": minimum}
+
+    def to_queries(self, spec: Mapping[str, Any], ctx: FilterContext) -> list[Query]:
+        text = f"""
+            MATCH (n:{ident("Entity")} {{Type: $entity}})
+            OPTIONAL MATCH (e:{ident("Event")})-[:{ident("CORR")}]->(n)
+            WITH n, count(e) AS events
+            WHERE events < $minimum
+            DETACH DELETE n"""
+        return [Query(text, {"entity": spec["entity"], "minimum": spec["minimum"]})]
+```
+
+### 7. Registrazione (`server/plugin.py`)
+
+Nome, versione e dipendenze vengono dal manifest; il plugin registra soltanto i contributi:
+
+```python
+from __future__ import annotations
+
+from soup.core.contracts import PluginContext, SoupPlugin
+from soup_pkg_ekg_analysis.api import ANALYSIS_FILTERS_POINT
+
+from .min_events import MinEventsFilter
+from .records import FilterRecords, JsonLinesImporter, RecordsCsv, RecordsVisualizer
+
+
+class Plugin(SoupPlugin):
+    def register(self, ctx: PluginContext) -> None:
+        ctx.add_importer(JsonLinesImporter())
+        ctx.add_operation(FilterRecords())
+        ctx.add_visualizer(RecordsVisualizer())
+        ctx.add_exporter(RecordsCsv())
+        item = MinEventsFilter()
+        ctx.contribute(ANALYSIS_FILTERS_POINT, item, key=item.key, order=item.order)
+```
+
+Il core registra i contributi come `records.jsonl`, `records.filter`, `records.table` e
+`records.csv`. Un contributo che chiede in `requires_tools` un tool assente dal manifest, o un
+`tools.get(...)` di un tool non dichiarato, fallisce con `ToolNotDeclaredError`; i test di confine
+(`soup-server/tests/test_architecture_boundaries.py`) controllano anche staticamente tool, `requires`
+e `python_dependencies` di ogni package fornito.
+
+### 8. Test, build, zip e installazione
+
+```sh
+# test Python in records/tests/ (il pytest.ini di soup-server li raccoglie), con
+# tests.fakes (FakeDatabase, storage in memoria): niente Docker né Memgraph
+cd soup-server && python -m pytest ../soup-packages/records/tests
+
+cd ../soup-packages
+npm run lint && npm test                 # eslint e vitest (jsdom) di */app/test/
+npm run build:packages -- records        # type check + esbuild -> records/app/dist/index.js
+npm run pack -- records                  # dist/records-1.0.0.zip: manifest, server/, app/dist/
+```
+
+Lo zip si installa dalla pagina **/packages** dell'interfaccia (caricamento dello zip) oppure con
+`curl -F file=@dist/records-1.0.0.zip http://localhost:8080/api/v3/packages`; serve
+`SOUP_ALLOW_PACKAGE_INSTALL=true` sul server. Il package viene caricato subito: l'importer compare in
+**/import** per i file `.jsonl`, l'operazione nel pannello Azioni degli oggetti `records.jsonl`, il
+visualizzatore e l'exporter nella loro pagina `/o/:id`, il filtro tra le varianti di Nuova analisi.
+
 ## Struttura
 
 ```
@@ -33,7 +420,7 @@ La cartella deve avere lo stesso nome del package.
 {
   "name": "csv_ekg",
   "version": "1.0.0",
-  "api_version": "3.0",
+  "api_version": "4.0",
   "label": "CSV come event log (EKG)",
   "description": "Imports CSV files as event logs and builds their EKG on Memgraph.",
   "author": "SOUP",
@@ -41,7 +428,7 @@ La cartella deve avere lo stesso nome del package.
   "requires_tools": ["memgraph", "storage"],
   "provides_tools": [],
   "extension_points": [],
-  "python_dependencies": ["pandas>=2"],
+  "python_dependencies": ["pandas>=2", "numpy>=1.23,<2"],
   "server": {"module": "server", "plugin": "plugin:Plugin"},
   "app": {"entry": "dist/index.js"}
 }
@@ -51,7 +438,7 @@ La cartella deve avere lo stesso nome del package.
 |---|---|
 | `name` | Lettere minuscole, cifre e `_`, inizia con una lettera (né `""`, né `..`, né separatori, né `_` iniziale). Diventa anche il nome del modulo Python `soup_pkg_<name>`. |
 | `version` | Versione PEP 440 (`1.0.0`). Serve per gli aggiornamenti. |
-| `api_version` | Versione dei contratti del core per cui il package è scritto, `"MAGGIORE.MINORE"`. È compatibile se ha lo stesso numero maggiore di `CONTRACTS_API_VERSION` dell'host e un minore uguale o inferiore: un host `"3.1"` accetta `"3.0"` e `"3.1"`, rifiuta `"3.2"`, `"2.x"` e `"4.0"`. L'host attuale è `"3.1"` (vedi "Versioni dei contratti" sotto). |
+| `api_version` | Versione dei contratti del core per cui il package è scritto, `"MAGGIORE.MINORE"`. È compatibile se ha lo stesso numero maggiore di `CONTRACTS_API_VERSION` dell'host e un minore uguale o inferiore: un host `"4.1"` accetterebbe `"4.0"` e `"4.1"`; l'host attuale, `"4.0"`, rifiuta `"4.1"`, `"3.x"` e `"5.0"` (vedi "Versioni dei contratti" sotto). |
 | `label`, `description`, `author` | Testi mostrati all'utente; `label` vale `name` se assente. |
 | `requires` | Package che devono essere attivi prima di questo. |
 | `requires_tools` | Tool usati (catalogo, Memgraph, storage, preferenze...). Un package non può usare un tool che non dichiara qui. |
@@ -68,6 +455,7 @@ La cartella deve avere lo stesso nome del package.
 |---|---|---|
 | `"3.0"` | 8 | Tolti da `PluginContext` `add_input_reader`, `add_input_handler` e `add_build_step`: l'event log e l'EKG sono nel package `ekg` e gli step si contribuiscono a `ekg.build_steps`. Un package `"2.x"` va aggiornato. |
 | `"3.1"` | 10 | Aggiunto `Exporter.applies(obj, tools) -> bool` (facoltativo, default `True`): un exporter si offre solo per alcuni oggetti dei kind che accetta. Un exporter che non si applica non compare nell'elenco e il suo export risponde `404` come uno sconosciuto; un `applies` che solleva esclude l'exporter e finisce nel log con il nome del package. I package `"3.0"` si caricano senza modifiche; serve `"3.1"` solo a chi usa `applies` (es. `ekg_analysis`). |
+| `"4.0"` | 11 | Tolti da `soup.core.contracts` `Query`, `ident` e `GraphDatabase`: il core non conosce Cypher. Stanno in `soup_pkg_tool_memgraph.api` (riesportati da `soup_pkg_ekg.api`), da importare dichiarando il package in `requires`. Un package `"3.x"` va aggiornato (cambiano solo quell'import e `api_version`). |
 
 Visualizzatori e operazioni restano filtrati solo per kind.
 
@@ -108,7 +496,7 @@ class Plugin(SoupPlugin):
 | `text` | Importer **Testo** (`.txt`, `.md`, `.log`, kind `text`): il file resta com'è nello spazio `text` dello storage, la `meta` ha dimensione, righe e codifica (UTF-8, altrimenti Latin-1). Visualizzatore **Testo** (`<soup-pkg-text-viewer>`): `<soup-text>` o, per i `.md`, `<soup-markdown>`; blocchi di righe con l'azione `lines` `{from, count}` e ricerca in tutto il file con `search` `{query}`. Exporter **File originale** (scarica `<nome>.txt`: l'estensione di un exporter è fissa). |
 | `csv_table` | Importer **CSV come tabella** (`.csv`, `.tsv`, kind `table`, modulo `csv`): separatore (`comma`, `semicolon`, `tab`) e intestazione proposti da `csv.Sniffer`; la tabella è salvata come CSV canonico nello spazio `csv_table`. Visualizzatori **Tabella CSV** (`<soup-pkg-csv-table-viewer>`, paginazione remota con l'azione `page` `{offset, limit, sort: {column, direction}, filter: [{column, value}], search}`, colonne per indice, ordinamento e un filtro per colonna) e **Profilo colonne** (`<soup-pkg-csv-profile>`, valori distinti, celle vuote, esempi e il grafico di `distribution` `{column, top}`). Operazione **Distribuzione di una colonna** (`table` → `report` con un grafico a barre e una tabella). Exporter **CSV** con separatore e intestazione a scelta. |
 | `ekg` | Solo server. L'event log (`Table` e conversioni pandas, `EventLogData` piatto o separato, `ColumnMapping`, `EventLog` con normalizzazione, millisecondi, entità e CSV canonici), i dataset sul volume (`/soup/<nome>/<nome>.csv`, `_entity.csv`, `_config.json`, `Analyses/`) e l'EKG su Memgraph: step di costruzione 100-500, il punto di estensione `ekg.build_steps`, lo stato del grafo degli oggetti `ekg` (`ensure_loaded`, `ekg.state_providers`), gli eventi `ekg.before_reset` ed `ekg.built`, l'operazione **Carica in Memgraph**. All'avvio aggiunge al catalogo i dataset già presenti sul volume. Vedi sotto. |
-| `csv_ekg` | Importer **CSV come event log (EKG su Memgraph)** (`.csv`, kind `ekg`): anteprima, campi `event_id`, `timestamp`, `activity`, `entities`, `values`, `trigger_target`, `save_process_times` e, con almeno due colonne entità, il grafo delle molteplicità (1 a 1, 1 a N, N a 1, N a N). Operazione **Converti in EKG** (`table` di `csv_table` → `ekg` figlio). Serve anche `POST /api/v2/graph`. |
+| `csv_ekg` | Importer **CSV come event log (EKG su Memgraph)** (`.csv`, kind `ekg`): anteprima, campi `event_id`, `timestamp`, `activity`, `entities`, `values`, `trigger_target`, `save_process_times` e, con almeno due colonne entità, il grafo delle molteplicità (1 a 1, 1 a N, N a 1, N a N). Operazione **Converti in EKG** (`table` di `csv_table` → `ekg` figlio). |
 | `causal_df` | Lo step del `:DF` causale per le coppie trigger/target, contribuito a `ekg.build_steps` con order 450. |
 | `ekg_views` | Visualizzatori **Grafo** (`<soup-pkg-ekg-graph>`), **Statistiche** (`<soup-pkg-ekg-stats>`) e **Interrogazioni** (`<soup-pkg-ekg-queries>`) ed exporter **JSON del grafo** per il kind `ekg` (Interrogazioni e JSON anche per `ekg_class`, finché `ekg_class_graph` vi contribuisce), con i punti di estensione `ekg.graph_views`, `ekg.queries` ed `ekg.json_parts`. Vedi sotto. |
 | `ekg_analysis` | Le analisi come operazioni sugli oggetti `ekg`: **Nuova analisi**, **Importa configurazione di analisi**, **Esempio di configurazione**, il punto di estensione `ekg.analysis_filters` con i sei filtri del vecchio codice, il rollback compensativo, l'evento `analysis.before_apply`, il visualizzatore **Indicatori di processo** (`<soup-pkg-ekg-insights>`) e l'exporter **Configurazione dell'analisi**. All'avvio aggiunge al catalogo le analisi già sul volume. Vedi sotto. |
@@ -165,8 +553,9 @@ rispondono `503`.
   file sono validati come i nomi degli oggetti (vietati `""`, `..`, separatori, `_` iniziale), quindi
   `_catalog` è irraggiungibile. `path_for` dà il percorso assoluto per chi lo passa a Memgraph: `LOAD
   CSV` legge dallo stesso volume `/soup`. La cartella di un dataset EKG resta `/soup/<nome>/`.
-- **Cypher.** `Query` e `ident` stanno in `soup_pkg_tool_memgraph.api`; i valori viaggiano sempre come
-  parametri, gli identificatori passano da `ident()`.
+- **Cypher.** `Query`, `ident` e la porta `GraphDatabase` stanno in `soup_pkg_tool_memgraph.api`
+  (riesportati da `soup_pkg_ekg.api`); i valori viaggiano sempre come parametri, gli identificatori
+  passano da `ident()`, gli operatori da liste chiuse, `LIMIT` come `$limit`.
 
 ## EKG: il package `ekg`
 
@@ -196,7 +585,7 @@ perché i file dei dataset si leggono con lo storage del package `ekg`):
 | `BUILD_STEPS_POINT` (`"ekg.build_steps"`) | Step `EkgBuildStep` (`key`, `order`, `phase`, `applies(ctx)`, `execute(ctx, db)`) contribuiti con `ctx.contribute(BUILD_STEPS_POINT, step, key=step.key, order=step.order)`. Gli step del package: 100 eventi, 200 entità, 300 indici, 400 `:CORR`, 500 `:DF` (salta i tipi in `ctx.df_handled_types`). `phase` (`event`, `entity`, `corr`, `df`) decide in quali tempi della `process_info` finisce lo step. |
 | `STATE_PROVIDERS_POINT` (`"ekg.state_providers"`) | `StateProvider` (`key`, `apply(spec, db)`). |
 | `EKG_BEFORE_RESET`, `EKG_BUILT` | `"ekg.before_reset"` `{object, active, reason: build\|load\|dispose}` prima di svuotare o ricostruire; `"ekg.built"` `{object, dataset, counts}` dopo una costruzione. |
-| `EKG_KIND`, `EventLogData`, `Table`, `ColumnMapping`, `EventLog`, `from_dataframe`, `to_dataframe`, `Query`, `ident` | |
+| `EKG_KIND`, `EventLogData`, `Table`, `ColumnMapping`, `EventLog`, `from_dataframe`, `to_dataframe`, `GraphDatabase`, `Query`, `ident` | |
 
 All'avvio il package aggiunge al catalogo, come oggetti `ekg` creati dall'importer `csv_ekg.csv`, le
 cartelle `/soup/<nome>/` con un `<nome>_config.json` non ancora presenti nel catalogo (stesso
@@ -215,10 +604,10 @@ Memgraph in [ekg_views/README.md](ekg_views/README.md).
 
 | Contributo | |
 |---|---|
-| **Grafo** (`ekg_views.graph`) | Barra con la vista (tra quelle di `ekg.graph_views` di qualunque package), il limite (200 all'inizio, massimo `SOUP_EKG_VIEWS_MAX_LIMIT`, default 2000; un valore non intero positivo fa fallire il caricamento del package), i tipi di relazione della vista e la forma dei nodi; il disegno è `<soup-graph-view>` di soup_base. Azioni: `graph` `{view, limit, relations}` → `{view, limit, relations, max_data, graph}`; `search` `{view, text, kind: node\|edge, offset, relations, label?}` → `{items, total}` (pagine da 50, la ricerca incrementale di `<soup-graph-view>`); `node` `{view, id}` → le proprietà del nodo. Il primo disegno invia `soup-thumbnail` (l'anteprima nel workspace, al posto di `POST /api/v2/graph/svg`); "Esporta SVG" salva `<nome>.svg` con `context.download`. |
-| **Statistiche** (`ekg_views.stats`) | Conteggi, primo e ultimo timestamp, attività distinte, tipi di entità con il numero di eventi con valore nullo, `"nan"` o vuoto (avviso `"N nodi hanno valore NaN."`), le torte della composizione (Event, Entity, CORR, DF) e dei tempi delle fasi di costruzione (secondi, da `meta.process_info`; assente se l'import non ha salvato i tempi). |
-| **Interrogazioni** (`ekg_views.queries`) | Le `GraphQuery` di `ekg.queries` di qualunque package, raggruppate per `group`, ognuna con il form dei suoi campi; azione `query` `{key, params}` → `{key, label, blocks}`, mostrati con `<soup-report-view>`. Le 20 di ekg_views coprono tutte le letture delle vecchie `/api/v2/graph/*`: nodi evento ed entità, un'entità per tipo, entità di un tipo, eventi di un'attività, relazioni CORR, DF e DF di un tipo, conteggi (eventi, entità, CORR, DF, tutti i nodi), attività distinte e loro frequenza, chiavi delle entità ed entità per tipo, valori nulli, primo e ultimo timestamp, massimo numero di elementi mostrabili. |
-| **JSON del grafo** (`ekg_views.json`) | Campo `parts` (multiselect): le parti di `ekg.json_parts`. Un file `{<etichetta della parte>: dati}` nel formato delle vecchie `/api/v2/json/graph/*`: `Event nodes` e `Entity nodes` (proprietà dei nodi), `CORR relationships` `{corr_data: [{event, relation_type, related_event, relation_id}], corr_count}`, `DF relationships` `{df_data, df_count}`. |
+| **Grafo** (`ekg_views.graph`) | Barra con la vista (tra quelle di `ekg.graph_views` di qualunque package), il limite (200 all'inizio, massimo `SOUP_EKG_VIEWS_MAX_LIMIT`, default 2000; un valore non intero positivo fa fallire il caricamento del package), i tipi di relazione della vista e la forma dei nodi; il disegno è `<soup-graph-view>` di soup_base. Azioni: `graph` `{view, limit, relations}` → `{view, limit, relations, max_data, graph}`; `search` `{view, text, kind: node\|edge, offset, relations, label?}` → `{items, total}` (pagine da 50, la ricerca incrementale di `<soup-graph-view>`); `node` `{view, id}` → le proprietà del nodo. Il primo disegno invia `soup-thumbnail` (l'anteprima nel workspace); "Esporta SVG" salva `<nome>.svg` con `context.download`. |
+| **Statistiche** (`ekg_views.stats`) | Conteggi, primo e ultimo timestamp, attività distinte, tipi di entità con il numero di eventi con valore nullo, `"nan"` o vuoto (avviso `"N nodi hanno valore NaN."`), le colonne del CSV con il ruolo dato dall'import (id evento, timestamp, attività, entità, valore o non usata), le torte della composizione (Event, Entity, CORR, DF) e dei tempi delle fasi di costruzione (secondi, da `meta.process_info`; assente se l'import non ha salvato i tempi). |
+| **Interrogazioni** (`ekg_views.queries`) | Le `GraphQuery` di `ekg.queries` di qualunque package, raggruppate per `group`, ognuna con il form dei suoi campi; azione `query` `{key, params}` → `{key, label, blocks}`, mostrati con `<soup-report-view>`. Le 20 di ekg_views coprono tutte le letture della vecchia interfaccia: nodi evento ed entità, un'entità per tipo, entità di un tipo, eventi di un'attività, relazioni CORR, DF e DF di un tipo, conteggi (eventi, entità, CORR, DF, tutti i nodi), attività distinte e loro frequenza, chiavi delle entità ed entità per tipo, valori nulli, primo e ultimo timestamp, massimo numero di elementi mostrabili. |
+| **JSON del grafo** (`ekg_views.json`) | Campo `parts` (multiselect): le parti di `ekg.json_parts`. Un file `{<etichetta della parte>: dati}` nel formato del vecchio export JSON: `Event nodes` e `Entity nodes` (proprietà dei nodi), `CORR relationships` `{corr_data: [{event, relation_type, related_event, relation_id}], corr_count}`, `DF relationships` `{df_data, df_count}`. |
 
 I punti di estensione (`soup_pkg_ekg_views.api`, per chi elenca `ekg_views` in `requires`; si
 contribuisce con `ctx.contribute(POINT, item, key=item.key)`):
@@ -241,13 +630,12 @@ contiene il suo kind. `data()` di Grafo, Statistiche e Interrogazioni porta `not
 (es. **Grafo aggregato**).
 
 I contributi si rileggono a ogni richiesta: un package abilitato o disabilitato a runtime aggiunge o
-toglie subito le sue viste, interrogazioni e parti. Le rotte `/api/v2` di lettura restano servite dai
-vecchi controller fino al commit 11.
+toglie subito le sue viste, interrogazioni e parti.
 
 ## Analisi: il package `ekg_analysis`
 
 `requires: ["ekg", "ekg_views", "soup_base"]`, `requires_tools: ["memgraph", "storage", "catalog"]`
-(il catalogo serve per adottare le analisi già sul volume), `api_version: "3.1"`.
+(il catalogo serve per adottare le analisi già sul volume), `api_version: "4.0"` (usa `Exporter.applies`, dalla `"3.1"`).
 
 Un'analisi è un oggetto `ekg` **derivato**: `parents` = l'oggetto `ekg` di partenza, `meta.state` =
 `{provider: "analysis", spec: {name, description, filters: {chiave del filtro: [condizione, ...]}}}`
@@ -255,8 +643,8 @@ Un'analisi è un oggetto `ekg` **derivato**: `parents` = l'oggetto `ekg` di part
 `meta.counts` = `{before, after}` (nodi e relazioni) e `meta.result` = `"changed"` o `"unchanged"`.
 La configurazione è salvata anche in `/soup/<dataset>/Analyses/<nome>.json` nel vecchio formato (le
 chiavi `timestamp`, `performance`, `includeActivities`, `excludeActivities`, `frequence`, `variant`
-sempre presenti, più `dataset_name`, `analysis_name`, `analysis_description`), così le pagine `/api/v2`
-la leggono ancora.
+sempre presenti, più `dataset_name`, `analysis_name`, `analysis_description`), così le analisi
+salvate dalla vecchia interfaccia e quelle nuove hanno lo stesso file.
 
 | Contributo | |
 |---|---|
@@ -295,14 +683,13 @@ l'adozione segue quest'ordine (prima i padri) e, se il padre manca o c'è un cic
 sotto la radice con `meta.warning` e un avviso nel log. Dettagli, prova su Memgraph
 (`tests/memgraph_smoke.py`) e verifica manuale in [ekg_analysis/README.md](ekg_analysis/README.md).
 
-Le rotte `/api/v2/analyses/*` restano servite dai vecchi controller fino al commit 11.
-
 ## Grafo aggregato: il package `ekg_class_graph`
 
 `requires: ["ekg", "ekg_views", "soup_base"]`, `requires_tools: ["memgraph"]`.
 
 **Costruisci grafo aggregato** (`ekg_class_graph.build`, `ekg` → `ekg_class`): campi `name` ed
-`entity_types` (multiselect dei tipi di entità del grafo, i vecchi `filtered_columns`). Con
+`entity_types` (multiselect dei tipi di entità del grafo, i vecchi `filtered_columns`; un tipo con
+eventi a valore nullo porta l'avviso `"N nodi hanno valore NaN."`, da `NullEntities` di ekg_views). Con
 `ekg.derive_state` costruisce sul grafo caricato i nodi `:Class` (uno per combinazione distinta dei
 valori dei tipi scelti, con il peso `Count`), le relazioni `:OBSERVED` dagli eventi e `:DF_C` tra classi.
 L'oggetto `ekg_class` è un derivato: `meta.state` = `{provider: "ekg_class_graph.classes", spec:
@@ -321,8 +708,6 @@ nome dell'evento, non richiede `ekg_analysis`) e cancella i propri nodi `:Class`
 ne restino. Nessun altro package chiama il suo codice. Con il package disattivato le analisi
 funzionano, le interrogazioni e le parti delle classi spariscono e gli oggetti `ekg_class` restano
 senza operazioni, visualizzatori ed exporter.
-
-Le rotte `/api/v2/graph/class*` restano servite dai vecchi controller fino al commit 11.
 
 ## Regole per il codice del package
 
@@ -346,7 +731,7 @@ Le rotte `/api/v2/graph/class*` restano servite dai vecchi controller fino al co
 - Se lo stesso nome compare in due cartelle vince la versione più alta.
 - `SOUP_PACKAGES`: elenco esplicito dei package da attivare all'avvio (vuoto = nessuno). Se
   assente, sono attivi tutti quelli trovati tranne quelli disabilitati dall'utente.
-  `SOUP_PLUGINS` è ancora letto come vecchio nome.
+  Il vecchio nome `SOUP_PLUGINS` non è più letto.
 
 ## Ciclo di vita
 
@@ -434,5 +819,6 @@ curl -F file=@dist/my_package-1.0.0.zip http://localhost:8080/api/v3/packages
 ```
 
 L'immagine Docker del server esegue `npm ci && npm run build:packages`, quindi i bundle dei package
-forniti sono sempre aggiornati. Per partire da un esempio copia [`_template`](_template/README.md)
-(un importer di file `.txt` e il suo visualizzatore).
+forniti sono sempre aggiornati. Per partire da un esempio segui "Scrivere un package" in cima a
+questa pagina, o copia [`_template`](_template/README.md) (un importer di file `.txt` e il suo
+visualizzatore).

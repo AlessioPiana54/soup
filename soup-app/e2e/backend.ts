@@ -1,4 +1,4 @@
-import { APIRequestContext, expect } from '@playwright/test';
+import { APIRequestContext, expect, Page } from '@playwright/test';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -19,6 +19,22 @@ export const PACKAGES_DIR = join(__dirname, '..', '..', 'soup-packages');
 export const CORE_TOOLS = 'test_core_tools';
 
 export const zipOf = (name: string) => join(PACKAGES_DIR, 'dist', `${name}-1.0.0.zip`);
+
+/** The preference of the first-access hint (the host shows it on the first /o/:id ever opened). */
+export const ONBOARDING_URL = `**/api/v3/preferences/onboarding.first_time`;
+
+/**
+ * For the specs that are not about it: the hint counts as already shown, so
+ * its modal never covers the page (whichever package provides the
+ * preferences at that moment).
+ */
+export async function skipFirstAccessHint(page: Page): Promise<void> {
+  await page.route(ONBOARDING_URL, (route) =>
+    route.fulfill({
+      json: { http_status_code: 200, message: 'ok', response_data: { key: 'onboarding.first_time', value: false } }
+    })
+  );
+}
 
 export interface PackageInfo {
   name: string;

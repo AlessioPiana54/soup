@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import Callable, Iterable, Optional, Union
 
-from soup.core.contracts import GraphDatabase
+from soup_pkg_tool_memgraph.api import GraphDatabase
 
 from . import schema
 from .build import BuildContext, EkgBuildStep

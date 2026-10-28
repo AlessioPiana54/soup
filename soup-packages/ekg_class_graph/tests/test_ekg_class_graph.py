@@ -126,6 +126,18 @@ def test_entity_types_are_checked_against_the_graph(setup):
     assert not any("MERGE (c:`Class`" in text for text in db.texts())
 
 
+def test_entity_types_with_null_values_carry_the_warning(setup):
+    engine, db, root = setup
+    nulls = bundled_module("ekg_views", "builtin_queries").NullEntities()
+    db.set_response(nulls.build({}).text, [{"prop": "order", "count": 2}])
+
+    [_name, entity_types] = engine.operation_router.fields("ekg_class_graph.build", [root.id])
+
+    assert [(choice.value, choice.label) for choice in entity_types.choices] == [
+        ("item", "item"), ("order", "order (2 nodi hanno valore NaN.)"),
+    ]
+
+
 def test_ensure_loaded_rebuilds_the_parent_and_applies_the_classes_once(setup):
     engine, db, root = setup
     obj = _build(engine, root)

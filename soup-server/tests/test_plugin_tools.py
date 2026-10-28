@@ -3,7 +3,7 @@
 File : test_plugin_tools.py
 Description: Tests for tools in the package lifecycle: a package whose
              required tools are missing is dropped (with the reason in
-             the PluginReport, or an error in strict mode), providers
+             the PackageReport, or an error in strict mode), providers
              load before consumers, a package failing half-way is rolled
              back, ToolBox refuses tools that were not declared, and the
              engine reports missing core tools (catalog, preferences).

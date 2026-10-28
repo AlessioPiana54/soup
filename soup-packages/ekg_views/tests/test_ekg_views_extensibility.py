@@ -31,7 +31,7 @@ OPTIONS = {"event_id": "case", "timestamp": "time", "activity": "activity", "ent
 MANIFEST = {
     "name": "views_test",
     "version": "1.0.0",
-    "api_version": "3.0",
+    "api_version": "4.0",
     "requires": ["ekg", "ekg_views"],
     "requires_tools": [],
     "server": {"module": "server", "plugin": "plugin:Plugin"},

@@ -16,8 +16,7 @@ Project : soup-packages/causal_df
 
 from __future__ import annotations
 
-from soup.core.contracts import GraphDatabase
-from soup_pkg_ekg.api import BuildContext, EkgBuildStep
+from soup_pkg_ekg.api import BuildContext, EkgBuildStep, GraphDatabase
 
 from .cypher import reveal_causal_relationships_queries
 

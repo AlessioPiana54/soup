@@ -29,18 +29,18 @@ def client():
 
 
 def test_unknown_route_returns_404(client):
-    response = client.get("/api/v2/this-route-does-not-exist")
+    response = client.get("/api/v3/this-route-does-not-exist")
     assert response.status_code == 404
 
 
 def test_wrong_method_on_known_route_returns_405(client):
-    # POST /api/v2/graph exists; GET on it does not.
-    response = client.get("/api/v2/graph")
+    # POST /api/v3/imports exists; GET on it does not.
+    response = client.get("/api/v3/imports")
     assert response.status_code == 405
 
 
 def test_404_body_is_werkzeugs_own_not_the_domain_error_envelope(client):
-    response = client.get("/api/v2/this-route-does-not-exist")
+    response = client.get("/api/v3/this-route-does-not-exist")
     # The generic Exception handler would have wrapped this as
     # {"http_status_code": 500, ...}; a passthrough HTTPException does not.
     assert response.status_code == 404

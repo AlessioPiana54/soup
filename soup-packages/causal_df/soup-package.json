@@ -1,7 +1,7 @@
 {
   "name": "causal_df",
   "version": "1.0.0",
-  "api_version": "3.0",
+  "api_version": "4.0",
   "label": "Causal directly-follows",
   "description": "Contributes the causal :DF build step (order 450) to ekg.build_steps, for trigger/target entity-type pairs.",
   "author": "SOUP",

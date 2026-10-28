@@ -5,9 +5,9 @@
     <div>
       <h3 style="color: black">Welcome to SOUP</h3>
       <p>
-        SOUP is a tool designed for the manipulation and analysis of Event Knowledge Graphs (EKGs).  
+        SOUP is a tool designed for the manipulation and analysis of Event Knowledge Graphs (EKGs).
         <br />
-        Unlock the power of object-centric process mining and simplify the analysis of your systems — all in one intuitive platform.        
+        Unlock the power of object-centric process mining and simplify the analysis of your systems — all in one intuitive platform.
       </p>
     </div>
 
@@ -16,5 +16,36 @@
         [text]="'SOUP Documentation'"
         (buttonClick)="this.onGoDocumentation()"></sp-btn>
     </div>
+
+    <!--State of the tools (/api/v3/health)-->
+    <section
+      class="tools"
+      aria-label="Stato dei tool">
+      @if (this.engineOff()) {
+        <p class="tools-state off">Engine non raggiungibile</p>
+      }
+      @if (this.health(); as state) {
+        <p
+          class="tools-state"
+          [class.degraded]="state.status === 'degraded'">
+          {{ state.status === 'ok' ? 'Tutti i tool sono attivi' : 'Alcuni tool non rispondono' }}
+        </p>
+        <ul>
+          @for (tool of state.tools; track tool.name) {
+            <li [class.down]="!tool.ok">
+              <i [class]="tool.ok ? 'bi bi-check-circle' : 'bi bi-x-circle'"></i>
+              {{ tool.name }} <span class="package">({{ tool.package }})</span>
+            </li>
+          }
+        </ul>
+        @if (state.problems.length) {
+          <ul class="problems">
+            @for (problem of state.problems; track problem) {
+              <li>{{ problem }}</li>
+            }
+          </ul>
+        }
+      }
+    </section>
   </div>
 </div>

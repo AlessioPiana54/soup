@@ -5,7 +5,9 @@ Description: BuildClassGraph ("build", "Costruisci grafo aggregato"; the
              legacy POST /api/v2/graph/class and buildClassGraph of the
              detail and graph pages): from an "ekg" object, with the
              entity types to aggregate on (multiselect of the types of the
-             graph, the legacy filtered_columns), an "ekg_class" object
+             graph, the legacy filtered_columns; a type whose events have
+             null values carries the warning of the old entity selection,
+             from ekg_views' NullEntities), an "ekg_class" object
              derived from it - meta.state {provider:
              "ekg_class_graph.classes", spec: {entity_types}}, meta.graph_key
              (ekg's derive_state: the classes are built on the loaded
@@ -21,8 +23,9 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
-from soup.core.contracts import Field, ObjectDraft, ObjectRef, Operation, OperationInput, ValidationError
+from soup.core.contracts import Choice, Field, ObjectDraft, ObjectRef, Operation, OperationInput, ValidationError
 import soup_pkg_ekg.api as ekg
+import soup_pkg_ekg_views.api as views_api
 
 from .classes import build_classes, class_counts, entity_types_query
 from .provider import CLASSES_PROVIDER
@@ -37,6 +40,16 @@ def graph_entity_types(obj: ObjectRef, tools) -> list[str]:
             if row.get("entity_type") is not None]
 
 
+def entity_type_choices(types: list[str], tools) -> tuple[Choice, ...]:
+    """The entity types, labelled with the warning of the ones with null values (the graph is loaded)."""
+
+    nulls = views_api.NullEntities()
+    counts = nulls.rows(tools.get(MEMGRAPH).run(nulls.build({})))
+    return tuple(
+        Choice(name, f"{name} ({views_api.warning_label(counts[name])})" if counts.get(name) else name) for name in types
+    )
+
+
 class BuildClassGraph(Operation):
     id = "build"
     label = "Costruisci grafo aggregato"
@@ -49,7 +62,8 @@ class BuildClassGraph(Operation):
     def fields(self, inputs: Mapping[str, ObjectRef], tools) -> list[Field]:
         obj = inputs["ekg"]
         types = graph_entity_types(obj, tools)
-        entity = (Field("entity_types", "Tipi di entità", type="multiselect", required=True, choices=tuple(types),
+        entity = (Field("entity_types", "Tipi di entità", type="multiselect", required=True,
+                        choices=entity_type_choices(types, tools),
                         help="Una classe per ogni combinazione distinta dei loro valori negli eventi.")
                   if types else
                   Field("entity_types", "Tipi di entità", type="columns", required=True, help="Il grafo non ha entità."))

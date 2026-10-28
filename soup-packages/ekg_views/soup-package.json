@@ -1,7 +1,7 @@
 {
   "name": "ekg_views",
   "version": "1.0.0",
-  "api_version": "3.0",
+  "api_version": "4.0",
   "label": "Viste dell'EKG",
   "description": "Visualizers and exporter of 'ekg' objects: the graph (views contributed to ekg.graph_views), the statistics, the queries contributed to ekg.queries and the JSON of the graph (parts contributed to ekg.json_parts).",
   "author": "SOUP",

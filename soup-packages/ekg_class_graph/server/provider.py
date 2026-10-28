@@ -15,7 +15,8 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
-from soup.core.contracts import GraphDatabase, ValidationError
+from soup.core.contracts import ValidationError
+from soup_pkg_ekg.api import GraphDatabase
 import soup_pkg_ekg.api as ekg
 
 from .classes import build_classes

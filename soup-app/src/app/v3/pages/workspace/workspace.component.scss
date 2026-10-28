@@ -47,3 +47,13 @@
 .soup-rename {
   max-width: 420px;
 }
+
+.soup-description-input {
+  margin-top: 4px;
+}
+
+.soup-description {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

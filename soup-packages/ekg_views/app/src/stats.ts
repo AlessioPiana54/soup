@@ -2,7 +2,8 @@
  * <soup-pkg-ekg-stats>: the "Statistiche" visualizer of "ekg" objects,
  * like the old detail page of a dataset: the counts and the time range
  * (<soup-keyvalue>), the distinct activities, the entity types with the
- * warning of the ones with null values (<soup-table>) and two pies
+ * warning of the ones with null values, the columns of the dataset with
+ * the role the import gave them (<soup-table>) and two pies
  * (<soup-chart>): the composition of the graph and the times of the build
  * phases (only when meta.process_info has them). Everything is in `data`:
  * no action.
@@ -19,11 +20,29 @@ export interface EntityStat {
   warning: string | null;
 }
 
+export type ColumnRole = 'event_id' | 'timestamp' | 'activity' | 'entity' | 'value' | '';
+
+export interface DatasetColumn {
+  name: string;
+  role: ColumnRole;
+}
+
+const ROLE_LABELS: Record<ColumnRole, string> = {
+  event_id: 'id evento',
+  timestamp: 'timestamp',
+  activity: 'attività',
+  entity: 'entità',
+  value: 'valore',
+  '': 'non usata'
+};
+
 export interface StatsData {
   counts: { event_nodes: number; entity_nodes: number; corr_rel: number; df_rel: number };
   timestamps: { min: string | null; max: string | null };
   activities: string[];
   entities: EntityStat[];
+  // Absent for data of an older ekg_views
+  columns?: DatasetColumn[];
   charts: { data: ChartData; process: ChartData | null };
   notice?: string | null;
 }
@@ -73,6 +92,10 @@ export class SoupPkgEkgStats extends HTMLElement implements SoupVisualizerElemen
     const activities = document.createElement('soup-table') as SoupTableElement;
     activities.data = { columns: ['attività'], rows: this.data.activities.map((name) => [name]) };
 
+    const columns = this.data.columns ?? [];
+    const columnTable = document.createElement('soup-table') as SoupTableElement;
+    columnTable.data = { columns: ['colonna', 'ruolo'], rows: columns.map((column) => [column.name, ROLE_LABELS[column.role] ?? column.role]) };
+
     const charts = h('div', { className: 'charts' }, this.chart('Composizione del grafo', this.data.charts.data));
     if (this.data.charts.process) charts.append(this.chart('Tempi di costruzione (secondi)', this.data.charts.process));
     else charts.append(h('p', { className: 'info', text: 'Tempi di costruzione non salvati per questo grafo.' }));
@@ -86,7 +109,8 @@ export class SoupPkgEkgStats extends HTMLElement implements SoupVisualizerElemen
       ...(warnings.length ? [warningList] : []),
       entities,
       h('h4', { text: 'Attività' }),
-      activities
+      activities,
+      ...(columns.length ? [h('h4', { text: 'Colonne del dataset' }), columnTable] : [])
     );
   }
 

@@ -21,6 +21,10 @@ COPY soup-server/requirements.txt .
 
 RUN pip install --no-cache-dir -r requirements.txt
 
+# A binary incompatibility (e.g. numpy 2.x under pandas 2.1.1) fails the
+# build here instead of the start of the packages.
+RUN python -c "import numpy, pandas, neo4j, docker; print(numpy.__version__, pandas.__version__)"
+
 COPY soup-server/ .
 COPY --from=packages /srv/soup-packages/ /srv/soup-packages/
 

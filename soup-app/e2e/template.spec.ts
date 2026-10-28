@@ -1,7 +1,7 @@
 import { expect, Page, test } from '@playwright/test';
 import { execSync } from 'node:child_process';
 
-import { API, PackageChanges, PACKAGES_DIR, zipOf } from './backend';
+import { API, PackageChanges, PACKAGES_DIR, skipFirstAccessHint, zipOf } from './backend';
 
 /**
  * The packages of soup-packages, packed as zips, on the e2e backend. The
@@ -31,6 +31,8 @@ async function dropTextFile(page: Page): Promise<void> {
 }
 
 test.describe.serial('packages installed at runtime', () => {
+  test.beforeEach(({ page }) => skipFirstAccessHint(page));
+
   test.beforeAll(async ({ request }) => {
     execSync('npm run build:packages -- _template soup_base', { cwd: PACKAGES_DIR, stdio: 'inherit' });
     execSync('npm run pack -- _template', { cwd: PACKAGES_DIR, stdio: 'inherit' });

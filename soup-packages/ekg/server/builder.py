@@ -17,8 +17,8 @@ Description: build_ekg - what the legacy EventLogHandler
              (compensating action, same intent as the legacy code's
              cleanup-on-failure in Services/Graph/graph_service.py's
              create_new_dataset_s); the memgraph tool then has no active
-             state. The config keeps the legacy shape, so the /api/v2
-             pages still read the dataset; meta_from_config() is the
+             state. The config keeps the legacy shape, so datasets built
+             before and after the packages read the same; meta_from_config() is the
              object's meta built from it.
 Project : soup-packages/ekg
 ------------------------------------------------------------------------
@@ -29,7 +29,8 @@ from __future__ import annotations
 import uuid
 from typing import Any, Iterable, Optional, Sequence
 
-from soup.core.contracts import ConflictError, GraphDatabase, ValidationError, validate_name
+from soup.core.contracts import ConflictError, ValidationError, validate_name
+from soup_pkg_tool_memgraph.api import GraphDatabase
 
 from .build import BuildContext
 from .dataset_repository import DatasetRepository

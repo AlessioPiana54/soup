@@ -25,7 +25,6 @@ from typing import Any, Mapping
 import pytest
 
 from soup.core.contracts import (
-    GraphDatabase,
     NotFoundError,
     ObjectDraft,
     ObjectRef,
@@ -41,6 +40,7 @@ from tests.fakes import FakeDatabase, ekg_engine, volume_files
 from tests.packages import bundled_api
 
 ekg = bundled_api("ekg")
+GraphDatabase = ekg.GraphDatabase
 
 CSV = b"case,activity,time,order,item\n1,Create,2021-01-01T10:00:00.000,o1,i1\n2,Ship,2021-01-01T11:00:00.000,o1,i2\n"
 OPTIONS = {"event_id": "case", "timestamp": "time", "activity": "activity", "entities": ["order", "item"]}

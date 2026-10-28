@@ -1,6 +1,6 @@
 import { DatePipe, NgTemplateOutlet } from '@angular/common';
 import { Component, computed, OnInit, signal } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 
 import { ApiResponse } from '../../../core/models/api_response.model';
 import { WorkspaceNode } from '../../../core/v3/v3.models';
@@ -23,8 +23,9 @@ interface PendingDelete {
 /**
  * /workspace - every object as a tree of provenance (derived objects under
  * the objects they come from), with kind, package and creator; filters by
- * kind and package, search by name; rename and delete (optionally with the
- * derived objects). Thumbnails are images loaded from .../thumbnail: the
+ * kind and package, search by name (also from ?search=, where the old
+ * dataset addresses land when no object matches); rename, edit the
+ * description and delete (optionally with the derived objects). Thumbnails are images loaded from .../thumbnail: the
  * SVG is never inserted in the page.
  */
 @Component({
@@ -48,8 +49,8 @@ export class WorkspaceComponent implements OnInit {
   public readonly visible = computed(() => filterTree(this.nodes(), { search: this.search(), kind: this.kind(), package: this.package() }));
   public readonly total = computed(() => new Set(flatten(this.nodes()).map((node) => node.object.id)).size);
 
-  // Rename in progress
-  public readonly renaming = signal<{ id: string; name: string } | null>(null);
+  // Rename (and description edit) in progress
+  public readonly renaming = signal<{ id: string; name: string; description: string } | null>(null);
 
   public readonly pendingDelete = signal<PendingDelete | null>(null);
 
@@ -63,13 +64,16 @@ export class WorkspaceComponent implements OnInit {
    * Constructor for WorkspaceComponent component
    * @param api the V3ApiService service
    * @param notifications the NotificationService service
+   * @param route the ActivatedRoute
    */
   constructor(
     public api: V3ApiService,
-    private notifications: NotificationService
+    private notifications: NotificationService,
+    private route: ActivatedRoute
   ) {}
 
   public ngOnInit(): void {
+    this.search.set(this.route.snapshot.queryParamMap.get('search') ?? '');
     this.refresh();
   }
 
@@ -100,13 +104,13 @@ export class WorkspaceComponent implements OnInit {
 
   // --- rename -------------------------------------------------------------- //
   public startRename(node: WorkspaceNode): void {
-    this.renaming.set({ id: node.object.id, name: node.object.name });
+    this.renaming.set({ id: node.object.id, name: node.object.name, description: node.object.description });
   }
 
-  public onRenameInput(event: Event): void {
+  public onRenameInput(event: Event, field: 'name' | 'description' = 'name'): void {
     const current = this.renaming();
     if (current) {
-      this.renaming.set({ ...current, name: (event.target as HTMLInputElement).value });
+      this.renaming.set({ ...current, [field]: (event.target as HTMLInputElement | HTMLTextAreaElement).value });
     }
   }
 
@@ -115,10 +119,10 @@ export class WorkspaceComponent implements OnInit {
     if (!current) {
       return;
     }
-    this.api.updateObject(current.id, { name: current.name.trim() }).subscribe({
+    this.api.updateObject(current.id, { name: current.name.trim(), description: current.description.trim() }).subscribe({
       next: (updated) => {
         this.renaming.set(null);
-        notify(this.notifications, `Rinominato in '${updated.name}'`, 'success');
+        notify(this.notifications, `Salvato '${updated.name}'`, 'success');
         this.refresh();
       },
       error: (error) => notify(this.notifications, errorMessage(error), 'error')

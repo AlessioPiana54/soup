@@ -1,17 +1,4 @@
-# Dependencies needed to run the test suite under tests/.
-#
-# NOT `-r requirements.txt`: on some machines (no Microsoft C++ Build
-# Tools) pip cannot build a couple of the legacy backend's old pinned
-# packages (e.g. bcrypt==4.0.1/cryptography==41.0.4, which predate
-# prebuilt wheels for newer Python) from source. The soup/ package and
-# its tests only need neo4j and docker from that list, listed here
-# directly (unpinned/ranged like in requirements.txt) plus pytest, and
-# packaging (manifest versions and python_dependencies checks).
+# Dependencies needed to run the test suite under tests/ (and the tests
+# next to the packages): the runtime ones plus pytest.
+-r requirements.txt
 pytest==8.3.3
-neo4j
-docker~=7.1.0
-pandas==2.1.1
-Flask==2.3.3
-Flask-Cors==4.0.0
-Flask-SocketIO
-packaging

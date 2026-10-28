@@ -2,7 +2,7 @@
 ------------------------------------------------------------------------
 File : test_query_ident.py
 Description: Tests for the Query value object and the ident() identifier
-             guard (soup.core.contracts.query).
+             guard of the tool_memgraph package (soup_pkg_tool_memgraph.api).
 Project : soup-server
 ------------------------------------------------------------------------
 """
@@ -11,7 +11,11 @@ import dataclasses
 
 import pytest
 
-from soup.core.contracts import Query, ident
+from tests.packages import bundled_api
+
+_api = bundled_api("tool_memgraph")
+Query = _api.Query
+ident = _api.ident
 
 
 def test_query_holds_text_and_params():

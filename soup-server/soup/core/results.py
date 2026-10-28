@@ -1,12 +1,9 @@
 """
 ------------------------------------------------------------------------
 File : results.py
-Description: Result - the JSON envelope of the /api/v2 routes of
-             soup/api. Its to_dict() shape mirrors
-             Models/api_response_model.py's ApiResponse.to_dict() exactly
-             (http_status_code/response_data/message), so soup/api can
-             turn a Result straight into the same JSON envelope the
-             legacy ApiResponse produced - no frontend-visible change.
+Description: Result - the JSON envelope of the /api/v3 routes of
+             soup/api: {http_status_code, response_data, message}, the
+             shape the frontend's ApiService reads.
 Project : soup-server
 ------------------------------------------------------------------------
 """

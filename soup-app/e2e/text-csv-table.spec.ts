@@ -1,7 +1,7 @@
 import { expect, Page, test } from '@playwright/test';
 import { execSync } from 'node:child_process';
 
-import { CORE_TOOLS, PackageChanges, packages, PACKAGES_DIR, zipOf } from './backend';
+import { CORE_TOOLS, PackageChanges, packages, PACKAGES_DIR, skipFirstAccessHint, zipOf } from './backend';
 
 /**
  * The text and csv_table packages on the e2e backend, with the packages
@@ -58,6 +58,8 @@ async function importAs(page: Page, name: string): Promise<void> {
 }
 
 test.describe.serial('text and csv_table', () => {
+  test.beforeEach(({ page }) => skipFirstAccessHint(page));
+
   test.beforeAll(async ({ request }) => {
     execSync('npm run build:packages -- soup_base text csv_table', { cwd: PACKAGES_DIR, stdio: 'inherit' });
     for (const name of ['soup_base', 'tool_storage', 'text', 'csv_table']) {

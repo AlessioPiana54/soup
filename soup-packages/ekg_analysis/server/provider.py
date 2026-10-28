@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Mapping
 
-from soup.core.contracts import GraphDatabase
+from soup_pkg_ekg.api import GraphDatabase
 import soup_pkg_ekg.api as ekg
 
 from .analysis import ANALYSIS_PROVIDER, Analysis

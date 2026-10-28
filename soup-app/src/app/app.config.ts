@@ -4,9 +4,7 @@ import { provideAnimationsAsync } from '@angular/platform-browser/animations/asy
 import { provideRouter } from '@angular/router';
 
 import { routes } from './app.routes';
-import { provideSoupPlugins } from './core/plugins/provide-soup-plugins';
 import { PackageLoaderService } from './core/v3/package-loader.service';
-import { csvImportPlugin } from './plugins/csv-import/csv-import.plugin';
 
 // Application provider configuration
 export const appConfig: ApplicationConfig = {
@@ -15,7 +13,6 @@ export const appConfig: ApplicationConfig = {
     provideRouter(routes),
     provideAnimationsAsync(),
     provideHttpClient(),
-    provideSoupPlugins(csvImportPlugin),
     // Load the frontend bundles of the active packages, without delaying the start
     {
       provide: APP_INITIALIZER,

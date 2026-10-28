@@ -38,3 +38,45 @@ p {
   align-items: center;
   justify-content: center;
 }
+
+// ================================
+// Region: Tools state
+// ================================
+.tools {
+  margin-top: 30px;
+  font-family: system-ui, sans-serif;
+  font-size: 14px;
+
+  .tools-state {
+    margin-top: 0;
+    font-size: 15px;
+    font-weight: bold;
+
+    &.degraded,
+    &.off {
+      color: #b45309;
+    }
+  }
+
+  ul {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px 18px;
+    padding: 0;
+    list-style: none;
+  }
+
+  li.down {
+    color: #b91c1c;
+  }
+
+  .package {
+    color: #555;
+  }
+
+  .problems {
+    flex-direction: column;
+    color: #b91c1c;
+  }
+}

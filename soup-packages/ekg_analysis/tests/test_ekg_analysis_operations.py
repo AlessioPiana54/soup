@@ -257,7 +257,7 @@ def test_an_invalid_configuration_is_refused_filter_by_filter(setup, tmp_path, c
 TEST_MANIFEST = {
     "name": "filter_test",
     "version": "1.0.0",
-    "api_version": "3.1",
+    "api_version": "4.0",
     "requires": ["ekg_analysis"],
     "requires_tools": [],
     "server": {"module": "server", "plugin": "plugin:Plugin"},

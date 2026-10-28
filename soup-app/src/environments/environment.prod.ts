@@ -1,5 +1,6 @@
 export const environment = {
   production: true,
   v3BaseUrl: '/api/v3',
-  backendOrigin: ''
+  backendOrigin: '',
+  prosLabUrl: 'https://pros.unicam.it/soup/'
 };

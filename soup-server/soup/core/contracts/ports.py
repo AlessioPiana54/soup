@@ -1,12 +1,12 @@
 """
 ------------------------------------------------------------------------
 File : ports.py
-Description: Stable ports (abstract interfaces) for the graph database
-             and file storage, implemented in the tool packages
-             (soup-packages/tool_memgraph: the "memgraph" tool is a
-             GraphDatabase; soup-packages/tool_storage: its backends and
-             each storage namespace are FileStorage). Depends only on the Query value
-             object - no pandas, no neo4j driver, no Docker SDK, no Flask.
+Description: FileStorage, the stable port (abstract interface) of file
+             storage, implemented in soup-packages/tool_storage (its
+             backends and each storage namespace are FileStorage). The
+             graph database port (GraphDatabase) and the Query value
+             object live in soup-packages/tool_memgraph, with the tool
+             that implements them: the core knows nothing of Cypher.
 Project : soup-server
 ------------------------------------------------------------------------
 """
@@ -14,18 +14,6 @@ Project : soup-server
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any
-
-from soup.core.contracts.query import Query
-
-
-class GraphDatabase(ABC):
-    """Port for running parameterized Cypher queries against the graph store."""
-
-    @abstractmethod
-    def run(self, query: Query) -> list[dict[str, Any]]:
-        """Execute `query` and return the result rows as a list of dicts."""
-        raise NotImplementedError
 
 
 class FileStorage(ABC):

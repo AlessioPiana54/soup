@@ -7,7 +7,7 @@ estensione `ekg.analysis_filters` con i sei filtri del vecchio codice, il visual
 rollback sono descritti nella sezione "Analisi" di [../README.md](../README.md).
 
 `requires: ["ekg", "ekg_views", "soup_base"]`, `requires_tools: ["memgraph", "storage", "catalog"]`,
-`api_version: "3.1"` (usa `Exporter.applies`).
+`api_version: "4.0"` (usa `Exporter.applies`, dalla `"3.1"`).
 
 ## Analisi annidate
 

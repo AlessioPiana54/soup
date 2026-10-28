@@ -9,8 +9,10 @@ Project : soup-server
 
 import pytest
 
-from soup.core.contracts import Query
 from tests.fakes import FakeDatabase, InMemoryFileStorage
+from tests.packages import bundled_api
+
+Query = bundled_api("tool_memgraph").Query
 
 
 def test_in_memory_file_storage_round_trip():

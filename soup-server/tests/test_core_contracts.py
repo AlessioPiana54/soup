@@ -36,10 +36,10 @@ EKG = bundled_plugin("ekg")
 
 
 def test_contracts_version_is_3_1_and_built_in_plugins_declare_3_0():
-    assert CONTRACTS_API_VERSION == "3.1"
-    assert CSV_EKG.api_version == "3.0"
-    assert EKG.api_version == "3.0"
-    assert CAUSAL_DF.api_version == "3.0"
+    assert CONTRACTS_API_VERSION == "4.0"
+    assert CSV_EKG.api_version == "4.0"
+    assert EKG.api_version == "4.0"
+    assert CAUSAL_DF.api_version == "4.0"
 
 
 def test_block_factories_produce_the_documented_shapes():

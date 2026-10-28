@@ -1,7 +1,7 @@
 {
   "name": "tool_storage",
   "version": "1.0.0",
-  "api_version": "3.0",
+  "api_version": "4.0",
   "label": "Storage, catalog and preferences",
   "description": "Provides the 'storage' (files by namespace), 'catalog' (workspace objects) and 'preferences' tools.",
   "author": "SOUP",

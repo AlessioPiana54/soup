@@ -23,7 +23,7 @@ class Exporter(ABC):
     `extension` (e.g. ".csv") and `mime` describe the produced file;
     `requires_tools` must be among the tools its package requires or
     provides. applies() narrows `accepts` to some objects of those kinds
-    (since contracts "3.1").
+    (since contracts "3.1", kept in "4.0").
     """
 
     id: str = ""

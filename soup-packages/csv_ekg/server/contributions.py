@@ -2,7 +2,7 @@
 ------------------------------------------------------------------------
 File : contributions.py
 Description: The contributions of csv_ekg, which replaces the csv_reader
-             package and the /api/v2/graph form:
+             package and the old "New dataset" form:
              - CsvEkgImporter ("csv", "CSV come event log (EKG su
                Memgraph)"): a .csv read with pandas (dtype=str) becomes an
                "ekg" object. inspect() shows the first rows and the fields
@@ -220,7 +220,8 @@ class CsvEkgImporter(Importer):
     def import_(self, upload: Upload, obj: ObjectRef, options: Mapping[str, Any], tools) -> dict[str, Any]:
         data = read_csv(upload.stream)
         parsed = parse_options(options, data.events.columns)
-        # "dataset" (the folder) and "all_columns" are only sent by /api/v2/graph.
+        # Optional: "dataset" names the folder (default: the object name),
+        # "all_columns" the columns recorded in the config (default: the header).
         dataset = options.get("dataset")
         if dataset is not None and not isinstance(dataset, str):
             raise ValidationError("'dataset' must be a string")

@@ -18,7 +18,8 @@ Description: Public API of the ekg package. Other packages import it as
              - the extension points: BUILD_STEPS_POINT (EkgBuildStep,
                BuildContext) and STATE_PROVIDERS_POINT (StateProvider);
              - the events EKG_BEFORE_RESET and EKG_BUILT, the kind
-               EKG_KIND, and Query/ident to write the Cypher of a step.
+               EKG_KIND, and GraphDatabase and Query/ident to write the Cypher
+               of a step.
              The callers pass their own tools: build_ekg needs "memgraph"
              and "storage", ensure_loaded, derive_state and dispose only
              "memgraph" (the datasets are read with this package's own
@@ -27,7 +28,7 @@ Project : soup-packages/ekg
 ------------------------------------------------------------------------
 """
 
-from soup_pkg_tool_memgraph.api import Query, ident
+from soup_pkg_tool_memgraph.api import GraphDatabase, Query, ident
 
 from .adoption import LEGACY_IMPORTER, LEGACY_PACKAGE
 from .build import BuildContext, EkgBuildStep
@@ -51,6 +52,7 @@ __all__ = [
     "ColumnMapping",
     "DatasetRepository",
     "EkgBuildStep",
+    "GraphDatabase",
     "EventLog",
     "EventLogData",
     "Query",

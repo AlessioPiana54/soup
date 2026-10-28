@@ -2,8 +2,7 @@
 ------------------------------------------------------------------------
 File : settings.py
 Description: Engine settings, read from the environment with explicit
-             defaults - replacing the hard-coded `debug` flag that used
-             to live in Shared/support_config.py. Only what the host
+             defaults. Only what the host
              itself needs: Memgraph and file storage are configured by
              the packages providing those tools (tool_memgraph reads
              MEMGRAPH_HOST/MEMGRAPH_PORT, tool_storage reads
@@ -95,8 +94,7 @@ class Settings:
         source = os.environ if env is None else env
 
         # SOUP_PACKAGES="" disables every package; absent means all of them.
-        # TODO(commit 11): drop SOUP_PLUGINS, the old name of SOUP_PACKAGES.
-        raw_packages = source.get("SOUP_PACKAGES", source.get("SOUP_PLUGINS"))
+        raw_packages = source.get("SOUP_PACKAGES")
         installed_dir = source.get("SOUP_INSTALLED_PACKAGES_DIR", DEFAULT_INSTALLED_PACKAGES_DIR)
         raw_path = source.get("SOUP_PACKAGES_PATH")
         packages_path = _split_paths(raw_path) if raw_path is not None else (DEFAULT_BUNDLED_PACKAGES_DIR,)

@@ -38,7 +38,7 @@ T = TypeVar("T", bound=Tool)
 ObjectLike = Union[ObjectRef, str]
 
 # Core tools: (name, port) pairs that build_engine checks after loading
-# the packages, so a missing one is reported in the PluginReport.
+# the packages, so a missing one is reported in the PackageReport.
 CORE_TOOLS: tuple[tuple[str, type[Tool]], ...] = (
     (CATALOG_TOOL, Catalog),
     (PREFERENCES_TOOL, Preferences),
@@ -112,7 +112,7 @@ class CoreTools:
 
 
 def missing_core_tools(tools: Registry[Tool]) -> list[str]:
-    """Human-readable problems with the core tools, for the PluginReport."""
+    """Human-readable problems with the core tools, for the PackageReport."""
 
     problems = []
     for name, port in CORE_TOOLS:

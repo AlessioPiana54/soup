@@ -12,10 +12,8 @@ from pathlib import Path
 import pytest
 
 # soup-server root (parent of this tests/ package). The project is not
-# packaged (no setup.py/pyproject.toml, no __init__.py under Controllers/
-# Services/Models/Utils/Shared), so its modules are imported as top-level
-# namespace packages (e.g. `from Services.dataset_service import ...`).
-# Importing them in tests therefore requires soup-server/ on sys.path.
+# packaged (no setup.py/pyproject.toml), so `soup` and `tests` are imported
+# from soup-server/, which therefore goes on sys.path.
 SERVER_ROOT = Path(__file__).resolve().parent.parent
 
 if str(SERVER_ROOT) not in sys.path:
@@ -40,7 +38,7 @@ def sample_event_log_csv(fixtures_dir: Path) -> Path:
 
 
 @pytest.fixture
-def legacy_routes_json(fixtures_dir: Path) -> Path:
-    """Path to the auto-extracted legacy routes JSON fixture."""
+def api_v3_routes_json(fixtures_dir: Path) -> Path:
+    """Path to the saved list of the /api/v3 routes (tests/tools/dump_v3_routes.py)."""
 
-    return fixtures_dir / "legacy_routes.json"
+    return fixtures_dir / "api_v3_routes.json"

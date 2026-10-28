@@ -2,13 +2,10 @@ import { animate, group, query, style, transition, trigger } from '@angular/anim
 import { CommonModule } from '@angular/common';
 import { Component, Renderer2 } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
-import { NgbModule } from '@ng-bootstrap/ng-bootstrap';
 
 import { FooterComponent } from './shared/components/footer/footer.component';
 import { NavbarComponent } from './shared/components/navbar/navbar.component';
-import { DeleteDatasetModalComponent } from './shared/components/s-modals/s-delete-dataset-modal/s-delete-dataset-modal.component';
 import { GenericModalComponent } from './shared/components/s-modals/s-generic-modal/s-generic-modal.component';
-import { InputModalComponent } from './shared/components/s-modals/s-input-modal/s-input-modal.component';
 import { SToastComponent } from './shared/components/s-toast/s-toast.component';
 
 /**
@@ -23,14 +20,11 @@ import { SToastComponent } from './shared/components/s-toast/s-toast.component';
   imports: [
     CommonModule,
     RouterOutlet,
-    NgbModule,
     // Component import
     NavbarComponent,
     FooterComponent,
     SToastComponent,
-    InputModalComponent,
-    GenericModalComponent,
-    DeleteDatasetModalComponent
+    GenericModalComponent
   ],
   templateUrl: './app.component.html',
   styleUrls: ['./app.component.scss'],

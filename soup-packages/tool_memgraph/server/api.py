@@ -9,7 +9,8 @@ Project : soup-packages/tool_memgraph
 ------------------------------------------------------------------------
 """
 
+from .port import GraphDatabase
 from .query import Query, ident
 from .tool import MEMGRAPH_TOOL, Loader, MemgraphTool, Run
 
-__all__ = ["MEMGRAPH_TOOL", "Loader", "MemgraphTool", "Query", "Run", "ident"]
+__all__ = ["GraphDatabase", "MEMGRAPH_TOOL", "Loader", "MemgraphTool", "Query", "Run", "ident"]

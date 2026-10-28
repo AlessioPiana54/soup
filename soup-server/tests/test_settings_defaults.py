@@ -73,9 +73,8 @@ def test_explicit_empty_soup_packages_disables_everything():
     assert sorted(engine.report.disabled) == BUNDLED
 
 
-def test_soup_plugins_is_still_read_as_an_alias_of_soup_packages():
-    assert Settings.from_env({"SOUP_PLUGINS": "csv_ekg"}).packages == ("csv_ekg",)
-    assert Settings.from_env({"SOUP_PACKAGES": "causal_df", "SOUP_PLUGINS": "csv_ekg"}).packages == ("causal_df",)
+def test_soup_plugins_is_no_longer_read():
+    assert Settings.from_env({"SOUP_PLUGINS": "csv_ekg"}).packages is None
 
 
 def test_package_settings_from_env(tmp_path):

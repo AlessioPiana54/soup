@@ -9,10 +9,10 @@ Description: Version of the stable contracts exposed by the host to
              Compatibility rule: a package is compatible when it has the
              same MAJOR as the host and a MINOR lower than or equal to the
              host's. A minor release only adds to the contracts, so a
-             host "3.1" accepts packages "3.0" and "3.1"; it refuses
-             "3.2" (needs something the host does not have yet) and any
-             other major ("2.x", "4.0"), which may have removed or changed
-             something.
+             host "4.1" would accept packages "4.0" and "4.1"; a host
+             "4.0" refuses "4.1" (needs something the host does not have
+             yet) and any other major ("3.x", "5.0"), which may have
+             removed or changed something.
 
              History: "3.0" (commit 8) removed add_input_reader,
              add_input_handler and add_build_step from PluginContext (the
@@ -21,7 +21,11 @@ Description: Version of the stable contracts exposed by the host to
              packages written for "2.x" no longer load. "3.1" (commit 10)
              added Exporter.applies(obj, tools), so an exporter can be
              offered only for some objects of a kind; "3.0" packages load
-             unchanged.
+             unchanged. "4.0" (commit 11) removed Query, ident and
+             GraphDatabase from soup.core.contracts: they belong to the
+             tool_memgraph package (soup_pkg_tool_memgraph.api, re-exported
+             by soup_pkg_ekg.api), so a "3.x" package importing them from
+             the contracts no longer loads.
 Project : soup-server
 ------------------------------------------------------------------------
 """
@@ -31,7 +35,7 @@ from __future__ import annotations
 import re
 from typing import Optional
 
-CONTRACTS_API_VERSION = "3.1"
+CONTRACTS_API_VERSION = "4.0"
 
 _API_VERSION_RE = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 

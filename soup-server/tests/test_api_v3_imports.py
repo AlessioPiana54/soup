@@ -125,15 +125,9 @@ def test_import_without_catalog_is_503():
     assert import_file(client, "feat.csv").status_code == 503
 
 
-def test_upload_limit_applies_to_v3_only():
+def test_upload_limit_applies_to_v3():
     client, _, _ = code_client(FeaturePackage("feat", importers=[FakeImporter("csv", "CSV")]), max_upload_mb=1)
     big = b"x" * (1024 * 1024 + 1)
 
     assert import_file(client, "feat.csv", content=big).status_code == 413
     assert import_file(client, "feat.csv", content=b"small").status_code == 201
-    # v2 keeps having no limit: the request reaches the route (which then
-    # fails for its own reasons, not with 413).
-    legacy = client.post(
-        "/api/v2/graph", data={"file": (io.BytesIO(big), "log.csv")}, content_type="multipart/form-data"
-    )
-    assert legacy.status_code != 413

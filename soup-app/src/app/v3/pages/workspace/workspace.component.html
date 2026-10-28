@@ -133,12 +133,23 @@
                 Annulla
               </button>
             </div>
+            <textarea
+              class="form-control form-control-sm soup-description-input"
+              rows="2"
+              aria-label="Descrizione"
+              placeholder="Descrizione"
+              [value]="this.renaming()?.description"
+              (input)="this.onRenameInput($event, 'description')"
+              (keyup.escape)="this.cancelRename()"></textarea>
           } @else {
             <a
               class="soup-name"
               [routerLink]="['/o', node.object.id]">
               {{ node.object.name }}
             </a>
+            @if (node.object.description) {
+              <div class="soup-description text-muted small">{{ node.object.description }}</div>
+            }
           }
           <div class="soup-meta">
             <span class="badge text-bg-light">{{ node.object.kind }}</span>
@@ -162,7 +173,7 @@
           <button
             type="button"
             class="btn btn-sm btn-link"
-            title="Rinomina"
+            title="Rinomina e descrivi"
             (click)="this.startRename(node)">
             <i class="bi bi-pencil"></i>
           </button>

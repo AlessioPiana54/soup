@@ -19,7 +19,8 @@ Description: The visualizers and the exporter of ekg_views, for objects of
              - StatsVisualizer ("stats", <soup-pkg-ekg-stats>): the counts,
                the time range, the distinct activities, the entity types
                with the number of events with a null value (the warning of
-               getEntityWarningLabel) and the two pies of the old detail
+               getEntityWarningLabel), the columns of the dataset with
+               their role (dataset_columns) and the two pies of the old detail
                page (createDataPieChart, createProcessPieChart: the phase
                times from meta.process_info, in seconds like
                support.service's calculateDuration);
@@ -223,6 +224,31 @@ def phase_times(process_info: Any) -> Optional[dict[str, Any]]:
             "datasets": [{"label": "secondi", "data": [value or 0 for value in durations]}]}
 
 
+# The roles of the mapping in meta.mapping, in the order they are shown.
+COLUMN_ROLES = (("event_id", "event_id"), ("timestamp", "timestamp"), ("activity", "activity"))
+
+
+def dataset_columns(meta: Mapping[str, Any]) -> list[dict[str, str]]:
+    """
+    The columns of the CSV of a dataset (meta.columns) with the role the
+    import gave them (meta.mapping): event_id, timestamp, activity,
+    entity, value, or "" for a column left out - the old "CSV Columns"
+    panel of the datasets page.
+    """
+
+    mapping = meta.get("mapping") if isinstance(meta.get("mapping"), Mapping) else {}
+    roles: dict[str, str] = {}
+    for column in mapping.get("values") or ():
+        roles[str(column)] = "value"
+    for column in mapping.get("entities") or ():
+        roles[str(column)] = "entity"
+    for key, role in COLUMN_ROLES:
+        if mapping.get(key):
+            roles[str(mapping[key])] = role
+    columns = [str(column) for column in meta.get("columns") or ()]
+    return [{"name": column, "role": roles.get(column, "")} for column in columns]
+
+
 def warning_label(count: int) -> str:
     """getEntityWarningLabel."""
 
@@ -253,6 +279,8 @@ class StatsVisualizer(_EkgContribution, Visualizer):
         for name in keys.rows(rows(keys)):
             nan_nodes = null_counts.get(name, 0)
             entities.append({"name": name, "nan_nodes": nan_nodes, "warning": warning_label(nan_nodes) if nan_nodes else None})
+        # A derived object (an analysis) has the columns of its dataset.
+        source = obj if obj.meta.get("columns") else ekg.root_of(obj)
         composition = {"chart": "pie", "labels": ["Event", "Entity", "CORR", "DF"],
                        "datasets": [{"label": "numero", "data": list(counts.values())}]}
         return {
@@ -260,6 +288,7 @@ class StatsVisualizer(_EkgContribution, Visualizer):
             "timestamps": timestamps.rows(rows(timestamps)),
             "activities": activities.rows(rows(activities)),
             "entities": entities,
+            "columns": dataset_columns(source.meta),
             "charts": {"data": composition, "process": phase_times(obj.meta.get("process_info"))},
             "notice": notice_of(obj),
         }

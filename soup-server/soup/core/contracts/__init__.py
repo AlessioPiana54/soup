@@ -33,8 +33,7 @@ from soup.core.contracts.errors import (
     ValidationError,
 )
 from soup.core.contracts.naming import validate_name
-from soup.core.contracts.query import Query, ident
-from soup.core.contracts.ports import FileStorage, GraphDatabase
+from soup.core.contracts.ports import FileStorage
 from soup.core.contracts.plugin import EventHandler, PluginContext, SoupPlugin, contribution_key
 from soup.core.contracts.upload import Upload
 from soup.core.contracts.objects import (
@@ -80,10 +79,7 @@ __all__ = [
     "ForbiddenError",
     "ServiceUnavailableError",
     "validate_name",
-    "Query",
-    "ident",
     "FileStorage",
-    "GraphDatabase",
     "EventHandler",
     "PluginContext",
     "SoupPlugin",

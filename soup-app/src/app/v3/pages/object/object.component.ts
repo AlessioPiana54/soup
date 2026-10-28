@@ -6,8 +6,10 @@ import { download, FormValues } from '@soup/sdk';
 import { forkJoin, of } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 
+import { OnboardingService } from '../../../core/v3/onboarding.service';
 import { ExporterInfo, Field, ObjectRef, OperationInfo, VisualizerInfo, WorkspaceNode } from '../../../core/v3/v3.models';
 import { V3ApiService } from '../../../core/v3/v3-api.service';
+import { ModalService } from '../../../shared/components/s-modals/modal.service';
 import { NotificationService } from '../../../shared/components/s-toast/toast.service';
 import { DynamicFormComponent } from '../../components/dynamic-form.component';
 import { errorMessage, notify } from '../../components/notify';
@@ -18,6 +20,16 @@ import { findNode, flatten } from '../workspace/workspace-tree';
 export function visualizerPreferenceKey(kind: string): string {
   return `visualizer.${kind}`;
 }
+
+// The first-access hint, with the text of the old dataset page
+export const FIRST_ACCESS_HINT = {
+  title: 'Welcome to SOUP!',
+  message: `Thanks for using SOUP. We're happy to have you on board! 🎉
+
+If you’d like to share your thoughts, you can leave feedback using the button at the top right of the Home Page.`,
+  button: 'Got it!'
+};
+const FIRST_ACCESS_HINT_DELAY_MS = 200;
 
 // The operation or exporter whose form is open
 interface OpenForm<T> {
@@ -31,7 +43,8 @@ interface OpenForm<T> {
  * objects), the visualizer selector as in ProM (the first one is the
  * default, the choice is remembered per kind in the preferences), the
  * "Azioni" panel with the operations applicable to the object (their form,
- * then the new object's page) and the "Esporta" menu.
+ * then the new object's page) and the "Esporta" menu. The first object
+ * ever opened also shows the first-access hint (OnboardingService).
  */
 @Component({
   selector: 'app-object',
@@ -83,18 +96,49 @@ export class ObjectComponent implements OnInit {
    * @param router the Router
    * @param notifications the NotificationService service
    * @param destroyRef the DestroyRef
+   * @param onboarding the OnboardingService service
+   * @param modals the ModalService service
    */
   constructor(
     private api: V3ApiService,
     private route: ActivatedRoute,
     private router: Router,
     private notifications: NotificationService,
-    private destroyRef: DestroyRef
+    private destroyRef: DestroyRef,
+    private onboarding: OnboardingService,
+    private modals: ModalService
   ) {}
 
   public ngOnInit(): void {
     // The same component shows the next object after an operation or a link.
     this.route.paramMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => this.load(params.get('id') ?? ''));
+    // As on the old dataset page: shortly after the page opens.
+    const timer = setTimeout(() => this.showFirstAccessHint(), FIRST_ACCESS_HINT_DELAY_MS);
+    this.destroyRef.onDestroy(() => clearTimeout(timer));
+  }
+
+  private showFirstAccessHint(): void {
+    this.onboarding
+      .firstTime()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((first) => {
+        if (first) {
+          this.modals.showGenericModal(
+            FIRST_ACCESS_HINT.title,
+            FIRST_ACCESS_HINT.message,
+            false,
+            false,
+            '',
+            FIRST_ACCESS_HINT.button,
+            'var(--primary-color)',
+            '',
+            '',
+            () => undefined,
+            () => Promise.resolve(),
+            () => undefined
+          );
+        }
+      });
   }
 
   public load(id: string): void {

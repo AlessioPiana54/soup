@@ -40,7 +40,8 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Mapping
 
-from soup.core.contracts import Catalog, GraphDatabase, NotFoundError, ObjectRef, ValidationError
+from soup.core.contracts import Catalog, NotFoundError, ObjectRef, ValidationError
+from soup_pkg_tool_memgraph.api import GraphDatabase
 
 from .builder import (
     EKG_BEFORE_RESET,

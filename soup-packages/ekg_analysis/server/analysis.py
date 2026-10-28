@@ -14,8 +14,8 @@ Description: Analysis - the generic model of an analysis (scheda C29):
                parseAndValidateJson of details-dataset; every error names
                the filter and the position ("performance[0]: seconds ...").
              to_legacy() is the file saved in <dataset>/Analyses/<name>.json
-             (the six legacy keys always present, so the /api/v2 pages
-             still read it; "based_on", the name of the parent analysis
+             (the six legacy keys always present, so analyses saved before
+             the packages stay readable; "based_on", the name of the parent analysis
              of a nested one, is an extra key the legacy format ignores).
              is_analysis() and analysis_file() read the meta of the
              objects of an analysis. ordered() pairs every condition with its

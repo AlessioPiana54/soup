@@ -1,7 +1,7 @@
 {
   "name": "ekg",
   "version": "1.0.0",
-  "api_version": "3.0",
+  "api_version": "4.0",
   "label": "Event log ed EKG",
   "description": "Event log (normalization, entities, canonical CSV), datasets on the volume and the EKG on Memgraph: build pipeline, graph state of the 'ekg' objects and the datasets already on the volume added to the catalog.",
   "author": "SOUP",
@@ -9,6 +9,6 @@
   "requires_tools": ["memgraph", "storage", "catalog"],
   "provides_tools": [],
   "extension_points": ["ekg.build_steps", "ekg.state_providers"],
-  "python_dependencies": ["pandas>=2"],
+  "python_dependencies": ["pandas>=2", "numpy>=1.23,<2"],
   "server": {"module": "server", "plugin": "plugin:Plugin"}
 }

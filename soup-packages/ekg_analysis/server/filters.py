@@ -430,6 +430,6 @@ def builtin_filters() -> list[AnalysisFilter]:
     ]
 
 
-# The keys of the legacy configuration file, always written (the /api/v2
-# process_analysis reads each of them without a default).
+# The keys of the legacy configuration file, always written (the old
+# configuration files have each of them, so the format stays the same).
 LEGACY_FILTER_KEYS = tuple(item.key for item in builtin_filters())

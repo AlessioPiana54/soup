@@ -18,7 +18,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
-from soup.core.contracts import GraphDatabase
+from soup_pkg_tool_memgraph.api import GraphDatabase
 
 
 @dataclass

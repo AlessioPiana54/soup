@@ -2,7 +2,8 @@
 ------------------------------------------------------------------------
 File : fakes.py
 Description: In-memory fakes used by every test instead of Memgraph and
-             Docker: FakeDatabase (GraphDatabase) and InMemoryFileStorage
+             Docker: FakeDatabase (shaped like tool_memgraph's GraphDatabase
+             port: a run(query) method) and InMemoryFileStorage
              (a FileStorage backend), the catalog and preferences tools
              (InMemoryCatalog, InMemoryPreferences, CoreToolsPackage),
              and the "memgraph" and "storage" tools of the tool_memgraph
@@ -25,14 +26,18 @@ from soup.core.contracts import (
     Catalog,
     ConflictError,
     FileStorage,
-    GraphDatabase,
     NotFoundError,
     ObjectRef,
     PluginContext,
     Preferences,
-    Query,
     SoupPlugin,
 )
+
+# The memgraph tool's database: tool_memgraph's GraphDatabase, or any object
+# with run(query) -> rows. The fakes do not import the package, so that
+# importing tests.fakes loads no package module.
+GraphDatabase = Any
+Query = Any
 
 
 class InMemoryFileStorage(FileStorage):
@@ -74,7 +79,7 @@ class InMemoryFileStorage(FileStorage):
         return sorted(self._files)
 
 
-class FakeDatabase(GraphDatabase):
+class FakeDatabase:
     """
     GraphDatabase fake that records every Query it receives (text and
     params, in order) and returns a configurable canned response per

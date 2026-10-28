@@ -48,6 +48,16 @@ def test_preferences():
     assert client.get("/api/v3/preferences/a..b").status_code == 400
 
 
+def test_onboarding_first_time_preference():
+    # The host's first-access hint: unset (null) the first time, false once shown.
+    client, _, core = code_client()
+
+    assert data_of(client.get("/api/v3/preferences/onboarding.first_time"))["value"] is None
+    assert client.put("/api/v3/preferences/onboarding.first_time", json={"value": False}).status_code == 200
+    assert data_of(client.get("/api/v3/preferences/onboarding.first_time"))["value"] is False
+    assert core.preferences.values == {"onboarding.first_time": False}
+
+
 def test_preferences_without_the_tool_are_503():
     client, _, _ = code_client(with_core_tools=False)
 
@@ -99,15 +109,9 @@ def test_health_degraded_by_sick_tools_and_failed_packages(tmp_path):
     assert any("connection refused" in problem for problem in health["problems"])
 
 
-def test_v2_routes_are_still_served():
+def test_v2_routes_are_gone():
     client, _, _ = code_client()
 
-    assert client.get("/api/v2/welcome").status_code == 200
-    # Without the "memgraph" tool, memgraph-connect answers 503 as before.
-    assert client.get("/api/v2/memgraph-connect").status_code == 503
-    no_file = client.post("/api/v2/graph", data={}, content_type="multipart/form-data")
-    assert no_file.status_code == 400
-    assert no_file.get_json()["message"] == "Bad request. File not found"
-    legacy = client.post("/api/v2/graph", data={"file": (io.BytesIO(b"a"), "x.csv")},
-                         content_type="multipart/form-data")
-    assert legacy.status_code != 404
+    assert client.get("/api/v2/welcome").status_code == 404
+    assert client.get("/api/v2/memgraph-connect").status_code == 404
+    assert client.post("/api/v2/graph", data={}, content_type="multipart/form-data").status_code == 404

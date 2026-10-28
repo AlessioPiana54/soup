@@ -22,8 +22,9 @@ from __future__ import annotations
 import threading
 from typing import Any, Callable, Optional
 
-from soup.core.contracts import ConflictError, GraphDatabase, Tool
+from soup.core.contracts import ConflictError, Tool
 
+from .port import GraphDatabase
 from .query import Query
 
 MEMGRAPH_TOOL = "memgraph"
@@ -109,8 +110,8 @@ class MemgraphTool(Tool, GraphDatabase):
     def invalidate(self) -> None:
         """
         Forget the active state without touching the data, for callers
-        that write to the database outside ensure_loaded (the legacy
-        /api/v2 pages): the next ensure_loaded always reloads.
+        that write to the database outside ensure_loaded: the next
+        ensure_loaded always reloads.
         """
 
         with self._lock:
