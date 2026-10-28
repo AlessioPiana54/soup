@@ -23,12 +23,14 @@ Project : soup-packages/ekg_class_graph
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime
-from typing import Any, Mapping, Optional
+from typing import Any
 
-from soup.core.contracts import ObjectRef, Visualizer
 import soup_pkg_ekg.api as ekg
 from soup_pkg_ekg_views.api import GraphVisualizer, notice_of
+
+from soup.core.contracts import ObjectRef, ToolAccess, Visualizer
 
 from .classes import class_counts
 from .views import CLASS_KIND
@@ -55,7 +57,7 @@ class ClassGraphVisualizer(GraphVisualizer):
         return {**dedicated, **views}
 
 
-def _seconds(start: Any, finish: Any) -> Optional[float]:
+def _seconds(start: Any, finish: Any) -> float | None:
     """support.service's calculateDuration: finish - start, in seconds."""
 
     if not start or not finish:
@@ -66,7 +68,7 @@ def _seconds(start: Any, finish: Any) -> Optional[float]:
         return None
 
 
-def process_chart(process_info: Any) -> Optional[dict[str, Any]]:
+def process_chart(process_info: Any) -> dict[str, Any] | None:
     info = process_info if isinstance(process_info, Mapping) else {}
     durations = [_seconds(info.get(f"init_{phase}_time"), info.get(f"finish_{phase}_time")) for _, phase in PHASES]
     if all(value is None for value in durations):
@@ -82,11 +84,12 @@ class ClassStatsVisualizer(Visualizer):
     accepts = (CLASS_KIND,)
     requires_tools = (MEMGRAPH,)
 
-    def data(self, obj: ObjectRef, params: Mapping[str, Any], tools) -> Any:
+    def data(self, obj: ObjectRef, params: Mapping[str, Any], tools: ToolAccess) -> Any:
         ekg.ensure_loaded(obj, tools)
         counts = class_counts(tools.get(MEMGRAPH).run)
         composition = {"chart": "pie", "labels": ["Class Nodes", "OBS", "DF_C"],
-                       "datasets": [{"label": "numero", "data": [counts["class_nodes"], counts["obs_rel"], counts["dfc_rel"]]}]}
+                       "datasets": [{"label": "numero",
+                           "data": [counts["class_nodes"], counts["obs_rel"], counts["dfc_rel"]]}]}
         return {
             "counts": counts,
             "entity_types": list(obj.meta.get("entity_types") or []),

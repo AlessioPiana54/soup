@@ -36,7 +36,7 @@ export async function skipFirstAccessHint(page: Page): Promise<void> {
   );
 }
 
-export interface PackageInfo {
+interface PackageInfo {
   name: string;
   status: string;
   origin: string;

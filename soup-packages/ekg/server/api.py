@@ -30,11 +30,11 @@ Project : soup-packages/ekg
 
 from soup_pkg_tool_memgraph.api import GraphDatabase, Query, ident
 
-from .adoption import LEGACY_IMPORTER, LEGACY_PACKAGE
 from .build import BuildContext, EkgBuildStep
 from .builder import EKG_BEFORE_RESET, EKG_BUILT, EKG_KIND, build_ekg, new_graph_key
 from .dataset_repository import ANALYSES_FOLDER, DatasetRepository
 from .event_log import ColumnMapping, EventLog, EventLogData
+from .migration import LEGACY_IMPORTER, LEGACY_PACKAGE
 from .runtime import BUILD_STEPS_POINT, STATE_PROVIDERS_POINT
 from .state import StateProvider, derive_state, dispose, ensure_loaded, graph_key_of, is_derived, root_of
 from .tables import Table, from_dataframe, to_dataframe

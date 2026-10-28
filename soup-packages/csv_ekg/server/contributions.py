@@ -28,8 +28,13 @@ Project : soup-packages/csv_ekg
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Mapping, Optional, Sequence
+from typing import Any
+
+from soup_pkg_csv_table.api import KIND as TABLE_KIND
+from soup_pkg_csv_table.api import read_table
+from soup_pkg_ekg.api import EKG_KIND, ColumnMapping, EventLogData, Table, build_ekg, dispose
 
 from soup.core.contracts import (
     Field,
@@ -39,13 +44,11 @@ from soup.core.contracts import (
     ObjectRef,
     Operation,
     OperationInput,
+    ToolAccess,
     Upload,
     ValidationError,
     report,
 )
-from soup_pkg_csv_table.api import KIND as TABLE_KIND
-from soup_pkg_csv_table.api import read_table
-from soup_pkg_ekg.api import EKG_KIND, ColumnMapping, EventLogData, Table, build_ekg, dispose
 
 from .multiplicity import multiplicity_block
 from .reader import FORMAT_ID, read_csv
@@ -53,6 +56,7 @@ from .reader import FORMAT_ID, read_csv
 MEMGRAPH = "memgraph"
 STORAGE = "storage"
 PREVIEW_ROWS = 20
+PAIR_LENGTH = 2  # [trigger, target]
 
 STANDARD_FIELDS = ("event_id", "timestamp", "activity")
 
@@ -69,7 +73,7 @@ def _key(name: str) -> str:
     return re.sub(r"[\s_\-]+", "", name).lower()
 
 
-def _guess(columns: Sequence[str], field: str) -> Optional[str]:
+def _guess(columns: Sequence[str], field: str) -> str | None:
     keys = {column: _key(column) for column in columns}
     for keyword in _GUESSES[field]:
         for column, key in keys.items():
@@ -142,7 +146,11 @@ def _pairs(options: Mapping[str, Any], entities: Sequence[str]) -> tuple[tuple[s
         raise ValidationError("'trigger_target' must be a list of [trigger, target] pairs")
     pairs = []
     for pair in value:
-        if not isinstance(pair, (list, tuple)) or len(pair) != 2 or not all(isinstance(item, str) for item in pair):
+        if (
+            not isinstance(pair, (list, tuple))
+            or len(pair) != PAIR_LENGTH
+            or not all(isinstance(item, str) for item in pair)
+        ):
             raise ValidationError(f"Each trigger/target pair must be two column names, got {pair!r}")
         missing = [item for item in pair if item not in entities]
         if missing:
@@ -183,7 +191,7 @@ def _preview_table(table: Table) -> dict[str, Any]:
     return report.table(list(table.columns), rows, total=len(table), title=f"Prime {PREVIEW_ROWS} righe")
 
 
-def _optional_list(options: Mapping[str, Any], name: str) -> Optional[list[str]]:
+def _optional_list(options: Mapping[str, Any], name: str) -> list[str] | None:
     value = options.get(name)
     if value is None:
         return None
@@ -203,11 +211,11 @@ class CsvEkgImporter(Importer):
     produces = EKG_KIND
     requires_tools = (MEMGRAPH, STORAGE)
 
-    def inspect(self, upload: Upload, tools) -> Inspection:
+    def inspect(self, upload: Upload, tools: ToolAccess) -> Inspection:
         table = read_csv(upload.stream).events
         return Inspection(preview=(_preview_table(table),), fields=tuple(mapping_fields(table.columns)))
 
-    def preview(self, upload: Upload, options: Mapping[str, Any], tools) -> list[dict[str, Any]]:
+    def preview(self, upload: Upload, options: Mapping[str, Any], tools: ToolAccess) -> list[dict[str, Any]]:
         table = read_csv(upload.stream).events
         blocks = [_preview_table(table)]
         standard = {options.get(name) for name in STANDARD_FIELDS}
@@ -217,7 +225,7 @@ class CsvEkgImporter(Importer):
             blocks.append(graph)
         return blocks
 
-    def import_(self, upload: Upload, obj: ObjectRef, options: Mapping[str, Any], tools) -> dict[str, Any]:
+    def import_(self, upload: Upload, obj: ObjectRef, options: Mapping[str, Any], tools: ToolAccess) -> dict[str, Any]:
         data = read_csv(upload.stream)
         parsed = parse_options(options, data.events.columns)
         # Optional: "dataset" names the folder (default: the object name),
@@ -237,7 +245,7 @@ class CsvEkgImporter(Importer):
             save_process_times=parsed.save_process_times,
         )
 
-    def dispose(self, obj: ObjectRef, tools) -> None:
+    def dispose(self, obj: ObjectRef, tools: ToolAccess) -> None:
         dispose(obj, tools)
 
 
@@ -254,10 +262,10 @@ class TableToEkg(Operation):
     produces = (EKG_KIND,)
     requires_tools = (MEMGRAPH, STORAGE)
 
-    def fields(self, inputs: Mapping[str, ObjectRef], tools) -> list[Field]:
+    def fields(self, inputs: Mapping[str, ObjectRef], tools: ToolAccess) -> list[Field]:
         return mapping_fields(inputs["table"].meta.get("columns") or [])
 
-    def run(self, inputs: Mapping[str, ObjectRef], params: Mapping[str, Any], tools) -> list[ObjectDraft]:
+    def run(self, inputs: Mapping[str, ObjectRef], params: Mapping[str, Any], tools: ToolAccess) -> list[ObjectDraft]:
         source = inputs["table"]
         columns, rows = read_table(source, tools)
         # The stored table keeps empty cells as "": as None, like pandas reads them.
@@ -275,5 +283,5 @@ class TableToEkg(Operation):
         )
         return [draft]
 
-    def dispose(self, obj: ObjectRef, tools) -> None:
+    def dispose(self, obj: ObjectRef, tools: ToolAccess) -> None:
         dispose(obj, tools)

@@ -37,14 +37,13 @@ Project : soup-server
 from __future__ import annotations
 
 import re
-from typing import Optional
 
 CONTRACTS_API_VERSION = "4.1"
 
 _API_VERSION_RE = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 
 
-def parse_api_version(value: object) -> Optional[tuple[int, int]]:
+def parse_api_version(value: object) -> tuple[int, int] | None:
     """(major, minor) for a "MAJOR.MINOR" string, None for anything else."""
 
     if not isinstance(value, str):

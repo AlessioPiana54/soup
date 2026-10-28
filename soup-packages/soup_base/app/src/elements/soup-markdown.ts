@@ -1,9 +1,10 @@
+import { h } from '@soup/sdk';
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 
-import { BlockElement, h } from '../dom';
+import { BlockElement } from '../dom';
 
-export interface MarkdownData {
+interface MarkdownData {
   markdown: string;
 }
 

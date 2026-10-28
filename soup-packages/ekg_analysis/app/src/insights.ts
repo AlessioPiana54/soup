@@ -10,9 +10,9 @@
  * above.
  */
 
-import { SoupVisualizerElement, VisualizerContext } from '@soup/sdk';
+import { errorMessage, h, SoupVisualizerElement, VisualizerContext } from '@soup/sdk';
 
-import { errorMessage, h, NOTICE_CSS, noticeBox } from './dom';
+import { NOTICE_CSS, noticeBox } from './dom';
 import { ChartData, SoupChartElement, SoupKeyValueElement, SoupTableElement, TableData } from './soup-base';
 
 export interface Average {
@@ -128,6 +128,14 @@ export class SoupPkgEkgInsights extends HTMLElement implements SoupVisualizerEle
       this.entitySection.replaceChildren(h('p', { className: 'info', text: 'Il grafo non ha tipi di entità.' }));
       return;
     }
+    const parts: (Node | string)[] = [h('div', { className: 'bar' }, h('label', {}, 'Tipo di entità', this.entitySelect()))];
+    const indicators = this.indicators;
+    if (indicators && indicators.entity === this.entity) parts.push(...indicatorParts(indicators));
+    this.entitySection.replaceChildren(...parts);
+  }
+
+  /** The select of the entity types, the current one selected. */
+  private entitySelect(): HTMLSelectElement {
     const select = h('select', {
       attrs: { 'aria-label': 'Tipo di entità' },
       on: { change: (event) => void this.chooseEntity((event.target as HTMLSelectElement).value) }
@@ -137,39 +145,7 @@ export class SoupPkgEkgInsights extends HTMLElement implements SoupVisualizerEle
       option.selected = name === this.entity;
       select.append(option);
     }
-    const parts: (Node | string)[] = [h('div', { className: 'bar' }, h('label', {}, 'Tipo di entità', select))];
-    const indicators = this.indicators;
-    if (indicators && indicators.entity === this.entity) {
-      const summary = document.createElement('soup-keyvalue') as SoupKeyValueElement;
-      summary.data = {
-        items: [
-          { key: 'Durata media delle tracce', value: indicators.duration?.formatted ?? '—' },
-          { key: 'Durata media (secondi)', value: indicators.duration?.average_seconds ?? '—' },
-          { key: 'Tracce con una durata', value: indicators.duration?.count ?? 0 },
-          { key: 'Varianti', value: indicators.variants.length }
-        ]
-      };
-      parts.push(
-        summary,
-        h('h4', { text: 'Occorrenze delle attività' }),
-        h(
-          'div',
-          { className: 'charts' },
-          chart({
-            chart: 'bar',
-            labels: indicators.activities.map((item) => item.activity),
-            datasets: [{ label: 'occorrenze', data: indicators.activities.map((item) => item.occurrences) }]
-          })
-        ),
-        table({ columns: ['attività', 'occorrenze'], rows: indicators.activities.map((item) => [item.activity, item.occurrences]) }),
-        h('h4', { text: 'Varianti' }),
-        table({
-          columns: ['variante', 'occorrenze', 'durata media', 'secondi'],
-          rows: indicators.variants.map((item) => [item.variant.join(' → '), item.occurrences, item.formatted ?? '—', item.average_seconds ?? '—'])
-        })
-      );
-    }
-    this.entitySection.replaceChildren(...parts);
+    return select;
   }
 
   private drawFrequency(): void {
@@ -187,4 +163,36 @@ export class SoupPkgEkgInsights extends HTMLElement implements SoupVisualizerEle
         : h('p', { className: 'info', text: 'Nessuna attività con questa frequenza.' })
     );
   }
+}
+
+/** The indicators of one entity type: the summary, the activities and the variants. */
+function indicatorParts(indicators: Indicators): Node[] {
+  const summary = document.createElement('soup-keyvalue') as SoupKeyValueElement;
+  summary.data = {
+    items: [
+      { key: 'Durata media delle tracce', value: indicators.duration?.formatted ?? '—' },
+      { key: 'Durata media (secondi)', value: indicators.duration?.average_seconds ?? '—' },
+      { key: 'Tracce con una durata', value: indicators.duration?.count ?? 0 },
+      { key: 'Varianti', value: indicators.variants.length }
+    ]
+  };
+  return [
+    summary,
+    h('h4', { text: 'Occorrenze delle attività' }),
+    h(
+      'div',
+      { className: 'charts' },
+      chart({
+        chart: 'bar',
+        labels: indicators.activities.map((item) => item.activity),
+        datasets: [{ label: 'occorrenze', data: indicators.activities.map((item) => item.occurrences) }]
+      })
+    ),
+    table({ columns: ['attività', 'occorrenze'], rows: indicators.activities.map((item) => [item.activity, item.occurrences]) }),
+    h('h4', { text: 'Varianti' }),
+    table({
+      columns: ['variante', 'occorrenze', 'durata media', 'secondi'],
+      rows: indicators.variants.map((item) => [item.variant.join(' → '), item.occurrences, item.formatted ?? '—', item.average_seconds ?? '—'])
+    })
+  ];
 }

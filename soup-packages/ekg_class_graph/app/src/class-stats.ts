@@ -8,9 +8,9 @@
  * Everything is in `data`: no action.
  */
 
-import { SoupVisualizerElement, VisualizerContext } from '@soup/sdk';
+import { h, SoupVisualizerElement, VisualizerContext } from '@soup/sdk';
 
-import { h, NOTICE_CSS, noticeBox } from './dom';
+import { NOTICE_CSS, noticeBox } from './dom';
 import { ChartData, SoupChartElement, SoupKeyValueElement } from './soup-base';
 
 export interface ClassStatsData {

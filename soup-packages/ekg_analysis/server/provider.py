@@ -15,10 +15,11 @@ Project : soup-packages/ekg_analysis
 
 from __future__ import annotations
 
-from typing import Any, Callable, Mapping
+from collections.abc import Callable, Mapping
+from typing import Any
 
-from soup_pkg_ekg.api import GraphDatabase
 import soup_pkg_ekg.api as ekg
+from soup_pkg_ekg.api import GraphDatabase
 
 from .analysis import ANALYSIS_PROVIDER, Analysis
 from .filters import AnalysisFilter

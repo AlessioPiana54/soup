@@ -26,8 +26,8 @@ Project : soup-packages/ekg_views
 
 from .builtin_queries import NullEntities
 from .contributions import GRAPH_VIEWS_POINT, JSON_PARTS_POINT, QUERIES_POINT, GraphVisualizer, notice_of, warning_label
-from .kinds import DEFAULT_KINDS, STANDARD_KINDS
 from .json_parts import JsonPart, NodesPart, RelationshipsPart
+from .kinds import DEFAULT_KINDS, STANDARD_KINDS
 from .queries import CountQuery, GraphQuery, NodeListQuery, RelationshipListQuery, count_of
 from .values import clean
 from .views import EdgeListGraphView, GraphView, StandardGraphView

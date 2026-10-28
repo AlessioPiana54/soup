@@ -12,7 +12,8 @@ Project : soup-packages/ocel
 ------------------------------------------------------------------------
 """
 
-from .cache import DEFAULT_MAX_BYTES, DEFAULT_MAX_OBJECTS, ParsedCache, limits_from_env
+from soup_pkg_soup_base.api import DEFAULT_MAX_BYTES, DEFAULT_MAX_OBJECTS, ParsedCache, limits_from_env
+
 from .graph import DecomposeToEkg, OcelEkgImporter, event_log_data, graph_time
 from .model import (
     EVENT_OBJECTS,
@@ -32,8 +33,9 @@ from .model import (
     to_json,
     to_tables,
 )
-from .store import EXTENSIONS, TABLES_KIND, OcelTables, load_tables, new_cache, read_log, read_table
+from .store import EXTENSIONS, TABLES_KIND, OcelTables, load_tables, read_log, read_table
 from .tables import OcelJsonExporter, OcelSummaryVisualizer, OcelTablesImporter, OcelTablesVisualizer
+from .tables_cache import new_cache
 
 __all__ = [
     "DEFAULT_MAX_BYTES",

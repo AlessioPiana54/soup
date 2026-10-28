@@ -25,5 +25,3 @@ PACKAGE_LOADED = "package.loaded"
 # A package's contributions were removed (shutdown, or deactivation at
 # runtime). Payload: {"package": name, "version": version}.
 PACKAGE_UNLOADED = "package.unloaded"
-
-CORE_EVENTS = (OBJECT_CREATED, OBJECT_BEFORE_DELETE, PACKAGE_LOADED, PACKAGE_UNLOADED)

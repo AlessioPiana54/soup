@@ -12,7 +12,7 @@ Project : soup-server
 from __future__ import annotations
 
 import io
-from typing import BinaryIO, Optional
+from typing import BinaryIO
 
 
 class Upload:
@@ -26,11 +26,11 @@ class Upload:
     def __init__(self, filename: str, source: BinaryIO, content_type: str = ""):
         self.filename = filename
         self.content_type = content_type or ""
-        self._source: Optional[BinaryIO] = source
-        self._data: Optional[bytes] = None
+        self._source: BinaryIO | None = source
+        self._data: bytes | None = None
 
     @classmethod
-    def from_bytes(cls, filename: str, data: bytes, content_type: str = "") -> "Upload":
+    def from_bytes(cls, filename: str, data: bytes, content_type: str = "") -> Upload:
         upload = cls(filename, io.BytesIO(b""), content_type)
         upload._data = bytes(data)
         upload._source = None

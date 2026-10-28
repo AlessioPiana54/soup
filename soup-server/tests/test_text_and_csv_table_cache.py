@@ -2,7 +2,7 @@
 ------------------------------------------------------------------------
 File : test_text_and_csv_table_cache.py
 Description: Tests for the cache of the parsed files of the text and
-             csv_table packages (server/cache.py of each): with a storage
+             csv_table packages (the ParsedCache of soup_base, used by both): with a storage
              that counts its reads, several "page" actions (and the other
              reads of a table) on the same object read the file once, and
              so do the "lines"/"search" actions of a text; dispose()

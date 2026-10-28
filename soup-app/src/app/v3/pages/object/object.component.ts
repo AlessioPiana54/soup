@@ -3,32 +3,17 @@ import { Component, computed, DestroyRef, OnInit, signal, ViewChild } from '@ang
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { download, FormValues } from '@soup/sdk';
-import { forkJoin, of } from 'rxjs';
-import { catchError } from 'rxjs/operators';
 
-import { OnboardingService } from '../../../core/v3/onboarding.service';
-import { ExporterInfo, Field, ObjectRef, OperationInfo, VisualizerInfo, WorkspaceNode } from '../../../core/v3/v3.models';
+import { ExporterInfo, Field, ObjectRef, OperationInfo, VisualizerInfo } from '../../../core/v3/v3.models';
 import { V3ApiService } from '../../../core/v3/v3-api.service';
-import { ModalService } from '../../../shared/components/s-modals/modal.service';
 import { NotificationService } from '../../../shared/components/s-toast/toast.service';
 import { DynamicFormComponent } from '../../components/dynamic-form.component';
 import { errorMessage, notify } from '../../components/notify';
 import { VisualizerHostComponent } from '../../components/visualizer-host.component';
-import { findNode, flatten } from '../workspace/workspace-tree';
+import { FirstAccessHintService } from './services/first-access-hint.service';
+import { ObjectProvenanceService } from './services/object-provenance.service';
+import { VisualizerChoiceService } from './services/visualizer-choice.service';
 
-/** The preference remembering the visualizer chosen for a kind. */
-export function visualizerPreferenceKey(kind: string): string {
-  return `visualizer.${kind}`;
-}
-
-// The first-access hint, with the text of the old dataset page
-export const FIRST_ACCESS_HINT = {
-  title: 'Welcome to SOUP!',
-  message: `Thanks for using SOUP. We're happy to have you on board! 🎉
-
-If you’d like to share your thoughts, you can leave feedback using the button at the top right of the Home Page.`,
-  button: 'Got it!'
-};
 const FIRST_ACCESS_HINT_DELAY_MS = 200;
 
 // The operation or exporter whose form is open
@@ -38,13 +23,31 @@ interface OpenForm<T> {
   values: FormValues;
 }
 
+interface OperationGroup {
+  name: string;
+  items: OperationInfo[];
+}
+
+/** The operations by group, in the order of their first appearance ("Altro" without one). */
+function groupOperations(operations: readonly OperationInfo[]): OperationGroup[] {
+  const groups = new Map<string, OperationInfo[]>();
+  for (const operation of operations) {
+    const group = operation.group || 'Altro';
+    groups.set(group, [...(groups.get(group) ?? []), operation]);
+  }
+  return Array.from(groups, ([name, items]) => ({ name, items }));
+}
+
 /**
  * /o/:id - one object: header and provenance (parents and derived
  * objects), the visualizer selector as in ProM (the first one is the
  * default, the choice is remembered per kind in the preferences), the
  * "Azioni" panel with the operations applicable to the object (their form,
  * then the new object's page) and the "Esporta" menu. The first object
- * ever opened also shows the first-access hint (OnboardingService).
+ * ever opened also shows the first-access hint. The choice of the
+ * visualizer, the provenance and the hint are services
+ * (VisualizerChoiceService, ObjectProvenanceService,
+ * FirstAccessHintService): this component keeps the state of the page.
  */
 @Component({
   selector: 'app-object',
@@ -66,14 +69,7 @@ export class ObjectComponent implements OnInit {
   public readonly visualizer = computed(() => this.visualizers().find((item) => item.id === this.visualizerId()) ?? null);
 
   public readonly operations = signal<OperationInfo[]>([]);
-  public readonly groups = computed(() => {
-    const groups = new Map<string, OperationInfo[]>();
-    for (const operation of this.operations()) {
-      const group = operation.group || 'Altro';
-      groups.set(group, [...(groups.get(group) ?? []), operation]);
-    }
-    return Array.from(groups, ([name, items]) => ({ name, items }));
-  });
+  public readonly groups = computed(() => groupOperations(this.operations()));
   public readonly operationForm = signal<OpenForm<OperationInfo> | null>(null);
 
   public readonly exporters = signal<ExporterInfo[]>([]);
@@ -96,8 +92,9 @@ export class ObjectComponent implements OnInit {
    * @param router the Router
    * @param notifications the NotificationService service
    * @param destroyRef the DestroyRef
-   * @param onboarding the OnboardingService service
-   * @param modals the ModalService service
+   * @param choice the VisualizerChoiceService service
+   * @param provenance the ObjectProvenanceService service
+   * @param hint the FirstAccessHintService service
    */
   constructor(
     private api: V3ApiService,
@@ -105,40 +102,20 @@ export class ObjectComponent implements OnInit {
     private router: Router,
     private notifications: NotificationService,
     private destroyRef: DestroyRef,
-    private onboarding: OnboardingService,
-    private modals: ModalService
+    private choice: VisualizerChoiceService,
+    private provenance: ObjectProvenanceService,
+    private hint: FirstAccessHintService
   ) {}
 
   public ngOnInit(): void {
     // The same component shows the next object after an operation or a link.
     this.route.paramMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => this.load(params.get('id') ?? ''));
     // As on the old dataset page: shortly after the page opens.
-    const timer = setTimeout(() => this.showFirstAccessHint(), FIRST_ACCESS_HINT_DELAY_MS);
+    const timer = setTimeout(
+      () => this.hint.showIfFirstTime().pipe(takeUntilDestroyed(this.destroyRef)).subscribe(),
+      FIRST_ACCESS_HINT_DELAY_MS
+    );
     this.destroyRef.onDestroy(() => clearTimeout(timer));
-  }
-
-  private showFirstAccessHint(): void {
-    this.onboarding
-      .firstTime()
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((first) => {
-        if (first) {
-          this.modals.showGenericModal(
-            FIRST_ACCESS_HINT.title,
-            FIRST_ACCESS_HINT.message,
-            false,
-            false,
-            '',
-            FIRST_ACCESS_HINT.button,
-            'var(--primary-color)',
-            '',
-            '',
-            () => undefined,
-            () => Promise.resolve(),
-            () => undefined
-          );
-        }
-      });
   }
 
   public load(id: string): void {
@@ -167,37 +144,24 @@ export class ObjectComponent implements OnInit {
     const object = this.object();
     this.visualizerId.set(id);
     if (object) {
-      this.api.setPreference(visualizerPreferenceKey(object.kind), id).subscribe({ error: () => undefined });
+      this.choice.remember(object.kind, id);
     }
   }
 
   private loadVisualizers(object: ObjectRef): void {
     this.visualizersLoaded.set(false);
-    forkJoin({
-      visualizers: this.api.visualizers(object.id),
-      preferred: this.api.preference<string>(visualizerPreferenceKey(object.kind)).pipe(catchError(() => of(null)))
-    }).subscribe({
-      next: ({ visualizers, preferred }) => {
-        this.visualizers.set(visualizers);
-        const chosen = visualizers.find((item) => item.id === preferred) ?? visualizers[0];
-        this.visualizerId.set(chosen?.id ?? null);
-        this.visualizersLoaded.set(true);
-      },
-      error: () => {
-        this.visualizers.set([]);
-        this.visualizerId.set(null);
-        this.visualizersLoaded.set(true);
-      }
+    this.choice.load(object).subscribe(({ visualizers, chosen }) => {
+      this.visualizers.set(visualizers);
+      this.visualizerId.set(chosen);
+      this.visualizersLoaded.set(true);
     });
   }
 
   private loadProvenance(object: ObjectRef): void {
-    this.api.objects().subscribe({
-      next: (nodes: WorkspaceNode[]) => {
-        const all = flatten(nodes).map((node) => node.object);
-        this.parents.set(object.parents.map((id) => all.find((item) => item.id === id)).filter((item): item is ObjectRef => !!item));
-        const node = findNode(nodes, object.id);
-        this.children.set(node ? node.children.map((child) => child.object) : []);
+    this.provenance.of(object).subscribe({
+      next: ({ parents, children }) => {
+        this.parents.set(parents);
+        this.children.set(children);
       },
       error: () => undefined
     });

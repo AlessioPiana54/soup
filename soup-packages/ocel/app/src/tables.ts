@@ -7,9 +7,8 @@
  * (event type for the events, object type for the others).
  */
 
-import { SoupVisualizerElement, VisualizerContext } from '@soup/sdk';
+import { h, SoupVisualizerElement, VisualizerContext } from '@soup/sdk';
 
-import { h } from './dom';
 import { SoupTableElement, TablePage, TableQuery } from './soup-base';
 
 export interface OcelTab {

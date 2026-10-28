@@ -21,11 +21,22 @@ Project : soup-packages/ekg_class_graph
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
-from soup.core.contracts import Choice, Field, ObjectDraft, ObjectRef, Operation, OperationInput, ValidationError
 import soup_pkg_ekg.api as ekg
 import soup_pkg_ekg_views.api as views_api
+
+from soup.core.contracts import (
+    Choice,
+    Field,
+    ObjectDraft,
+    ObjectRef,
+    Operation,
+    OperationInput,
+    ToolAccess,
+    ValidationError,
+)
 
 from .classes import build_classes, class_counts, entity_types_query
 from .provider import CLASSES_PROVIDER
@@ -34,42 +45,47 @@ from .views import CLASS_KIND
 MEMGRAPH = "memgraph"
 
 
-def graph_entity_types(obj: ObjectRef, tools) -> list[str]:
+def graph_entity_types(obj: ObjectRef, tools: ToolAccess) -> list[str]:
     ekg.ensure_loaded(obj, tools)
     return [str(row["entity_type"]) for row in tools.get(MEMGRAPH).run(entity_types_query())
             if row.get("entity_type") is not None]
 
 
-def entity_type_choices(types: list[str], tools) -> tuple[Choice, ...]:
+def entity_type_choices(types: list[str], tools: ToolAccess) -> tuple[Choice, ...]:
     """The entity types, labelled with the warning of the ones with null values (the graph is loaded)."""
 
     nulls = views_api.NullEntities()
     counts = nulls.rows(tools.get(MEMGRAPH).run(nulls.build({})))
     return tuple(
-        Choice(name, f"{name} ({views_api.warning_label(counts[name])})" if counts.get(name) else name) for name in types
+        Choice(name, f"{name} ({views_api.warning_label(counts[name])})"
+            if counts.get(name) else name) for name in types
     )
 
 
 class BuildClassGraph(Operation):
     id = "build"
     label = "Costruisci grafo aggregato"
-    description = "Aggrega gli eventi in classi secondo i tipi di entità scelti (nodi Class, relazioni OBSERVED e DF_C)."
+    description = (
+        "Aggrega gli eventi in classi secondo i tipi di entità scelti (nodi Class, "
+        "relazioni OBSERVED e DF_C)."
+    )
     group = "EKG"
     inputs = (OperationInput("ekg", (ekg.EKG_KIND,)),)
     produces = (CLASS_KIND,)
     requires_tools = (MEMGRAPH,)
 
-    def fields(self, inputs: Mapping[str, ObjectRef], tools) -> list[Field]:
+    def fields(self, inputs: Mapping[str, ObjectRef], tools: ToolAccess) -> list[Field]:
         obj = inputs["ekg"]
         types = graph_entity_types(obj, tools)
         entity = (Field("entity_types", "Tipi di entità", type="multiselect", required=True,
                         choices=entity_type_choices(types, tools),
                         help="Una classe per ogni combinazione distinta dei loro valori negli eventi.")
                   if types else
-                  Field("entity_types", "Tipi di entità", type="columns", required=True, help="Il grafo non ha entità."))
+                  Field("entity_types", "Tipi di entità", type="columns", required=True,
+                      help="Il grafo non ha entità."))
         return [Field("name", "Nome", required=True, default=f"{obj.name} aggregato"), entity]
 
-    def run(self, inputs: Mapping[str, ObjectRef], params: Mapping[str, Any], tools) -> list[ObjectDraft]:
+    def run(self, inputs: Mapping[str, ObjectRef], params: Mapping[str, Any], tools: ToolAccess) -> list[ObjectDraft]:
         parent = inputs["ekg"]
         chosen = list(params["entity_types"])
         types = graph_entity_types(parent, tools)
@@ -93,5 +109,5 @@ class BuildClassGraph(Operation):
         }
         return [ObjectDraft(params["name"], CLASS_KIND, meta)]
 
-    def dispose(self, obj: ObjectRef, tools) -> None:
+    def dispose(self, obj: ObjectRef, tools: ToolAccess) -> None:
         ekg.dispose(obj, tools)

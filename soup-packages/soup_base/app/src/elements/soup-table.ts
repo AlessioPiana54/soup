@@ -1,7 +1,8 @@
-import { BASE_CSS, display, h, style } from '../dom';
+import { h } from '@soup/sdk';
+import { BASE_CSS, display, style } from '../dom';
 import { LoadPage, localPage, nextSort, pageCount, Row, TablePage, TableQuery, TableSort } from './table-model';
 
-export interface TableData {
+interface TableData {
   columns: string[];
   rows: Row[];
   /** The full row count when `rows` is only the first part (a report block). */
@@ -147,21 +148,29 @@ export class SoupTable extends HTMLElement {
   private draw(): void {
     const { search, chooser, note, wrap, pager } = this.ensureSkeleton();
     if (search.value !== this.searchText && this.root.activeElement !== search) search.value = this.searchText;
+    this.drawChooser(chooser);
+    this.drawTable(wrap);
+    this.drawPager(pager);
+    this.drawNote(note);
+  }
 
-    if (this.chooserFor !== this.columns) {
-      this.chooserFor = this.columns;
-      chooser.replaceChildren(
-        ...this.columns.map((name, index) => {
-          const box = h('input', {
-            attrs: { type: 'checkbox' },
-            on: { change: (event) => this.setColumnVisible(index, (event.target as HTMLInputElement).checked) }
-          });
-          box.checked = !this.hiddenColumns.has(index);
-          return h('label', {}, box, ` ${name}`);
-        })
-      );
-    }
+  /** The checkboxes of the visible columns, redrawn only when the columns change. */
+  private drawChooser(chooser: HTMLElement): void {
+    if (this.chooserFor === this.columns) return;
+    this.chooserFor = this.columns;
+    chooser.replaceChildren(
+      ...this.columns.map((name, index) => {
+        const box = h('input', {
+          attrs: { type: 'checkbox' },
+          on: { change: (event) => this.setColumnVisible(index, (event.target as HTMLInputElement).checked) }
+        });
+        box.checked = !this.hiddenColumns.has(index);
+        return h('label', {}, box, ` ${name}`);
+      })
+    );
+  }
 
+  private drawTable(wrap: HTMLElement): void {
     const visible = this.visibleColumns();
     const head = h('tr');
     for (const index of visible) {
@@ -174,7 +183,9 @@ export class SoupTable extends HTMLElement {
       body.append(h('tr', {}, ...visible.map((index) => h('td', { text: display(row[index]) }))));
     }
     wrap.replaceChildren(h('table', {}, h('thead', {}, head), body));
+  }
 
+  private drawPager(pager: HTMLElement): void {
     const pages = pageCount(this.current.total, this.pageSize);
     const first = this.current.total === 0 ? 0 : this.page * this.pageSize + 1;
     const last = Math.min(this.current.total, (this.page + 1) * this.pageSize);
@@ -191,7 +202,10 @@ export class SoupTable extends HTMLElement {
     previous.disabled = this.page === 0;
     next.disabled = this.page >= pages - 1;
     pager.replaceChildren(previous, h('span', { className: 'range', text: `${first}–${last} di ${this.current.total}` }), next);
+  }
 
+  /** With local paging, a note when the data says the table has more rows than it was given. */
+  private drawNote(note: HTMLElement): void {
     note.textContent =
       !this.loadPage && this.declaredTotal !== null && this.declaredTotal > this.rows.length
         ? `Mostrate ${this.rows.length} righe su ${this.declaredTotal}`

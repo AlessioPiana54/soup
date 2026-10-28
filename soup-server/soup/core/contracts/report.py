@@ -33,7 +33,8 @@ Project : soup-server
 from __future__ import annotations
 
 import base64 as _base64
-from typing import Any, Iterable, Mapping, Optional, Sequence, Union
+from collections.abc import Iterable, Mapping, Sequence
+from typing import Any
 
 from soup.core.contracts.objects import ObjectDraft
 
@@ -131,7 +132,7 @@ def svg(markup: str, title: str = "") -> dict[str, Any]:
 
 
 def table(
-    columns: Sequence[str], rows: Iterable[Sequence[Any]], total: Optional[int] = None, title: str = ""
+    columns: Sequence[str], rows: Iterable[Sequence[Any]], total: int | None = None, title: str = ""
 ) -> dict[str, Any]:
     data: dict[str, Any] = {"columns": list(columns), "rows": [list(row) for row in rows]}
     if total is not None:
@@ -165,12 +166,13 @@ def graph(
     return make_block(GRAPH, {"nodes": node_list, "edges": edge_list, "directed": directed}, title)
 
 
-def chart(chart_kind: str, labels: Sequence[str], datasets: Iterable[Mapping[str, Any]], title: str = "") -> dict[str, Any]:
+def chart(chart_kind: str, labels: Sequence[str],
+    datasets: Iterable[Mapping[str, Any]], title: str = "") -> dict[str, Any]:
     dataset_list = [{"label": item.get("label", ""), "data": list(item["data"])} for item in datasets]
     return make_block(CHART, {"chart": chart_kind, "labels": list(labels), "datasets": dataset_list}, title)
 
 
-def keyvalue(items: Union[Mapping[str, Any], Iterable[tuple[str, Any]]], title: str = "") -> dict[str, Any]:
+def keyvalue(items: Mapping[str, Any] | Iterable[tuple[str, Any]], title: str = "") -> dict[str, Any]:
     pairs = items.items() if isinstance(items, Mapping) else items
     return make_block(KEYVALUE, {"items": [{"key": key, "value": value} for key, value in pairs]}, title)
 

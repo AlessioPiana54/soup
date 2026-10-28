@@ -28,7 +28,8 @@ Project : soup-packages/ekg_views
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Mapping, Sequence
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 from soup_pkg_ekg.api import Query, ident
 
@@ -74,7 +75,7 @@ class RelationshipsPart(JsonPart):
     numbered from 1.
     """
 
-    def __init__(self, key: str, label: str, source_label: str, relationship: str, target_label: str, prefix: str,
+    def __init__(self, key: str, label: str, source_label: str, relationship: str, target_label: str, prefix: str,  # noqa: PLR0913, PLR0917 - public API (soup_pkg_ekg_views.api)
                  kinds: Sequence[str] = DEFAULT_KINDS):
         self.key = key
         self.kinds = tuple(kinds)

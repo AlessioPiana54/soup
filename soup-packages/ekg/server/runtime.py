@@ -15,7 +15,8 @@ Project : soup-packages/ekg
 from __future__ import annotations
 
 import threading
-from typing import Any, Mapping, Optional
+from collections.abc import Mapping
+from typing import Any
 
 from soup.core.contracts import PluginContext, ServiceUnavailableError, ToolAccess
 
@@ -46,17 +47,17 @@ class EkgRuntime:
 
 
 _lock = threading.Lock()
-_current: Optional[EkgRuntime] = None
+_current: EkgRuntime | None = None
 
 
 def activate(runtime: EkgRuntime) -> None:
-    global _current
+    global _current  # noqa: PLW0603 - the runtime the functions of soup_pkg_ekg.api read (their signatures are public)
     with _lock:
         _current = runtime
 
 
 def deactivate(runtime: EkgRuntime) -> None:
-    global _current
+    global _current  # noqa: PLW0603 - see activate()
     with _lock:
         if _current is runtime:
             _current = None

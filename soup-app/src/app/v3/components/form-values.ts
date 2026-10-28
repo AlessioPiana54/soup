@@ -1,4 +1,4 @@
-import { Field, FileValue, FormValues, ItemValue, LIST_FIELD_TYPES, PairValue, Variant } from '@soup/sdk';
+import { Field, FieldType, FileValue, FormValues, ItemValue, LIST_FIELD_TYPES, PairValue, Variant } from '@soup/sdk';
 
 /**
  * The values of a soup-dynamic-form, as plain functions: the initial
@@ -7,7 +7,7 @@ import { Field, FileValue, FormValues, ItemValue, LIST_FIELD_TYPES, PairValue, V
  * the shapes soup/core/field_validation.py accepts.
  */
 
-export const REQUIRED_MESSAGE = 'Campo obbligatorio';
+const REQUIRED_MESSAGE = 'Campo obbligatorio';
 
 const SUMMARY_MAX = 120;
 
@@ -16,19 +16,18 @@ function copy<T>(value: T): T {
   return value === undefined ? value : (JSON.parse(JSON.stringify(value)) as T);
 }
 
-export function emptyValue(field: Field): unknown {
+// The value of an empty field, per type (a list for the list types, '' for the others).
+const EMPTY_VALUES: Partial<Record<FieldType, () => unknown>> = {
+  bool: () => false,
+  number: () => null,
+  file: () => null
+};
+
+function emptyValue(field: Field): unknown {
   if (LIST_FIELD_TYPES.includes(field.type)) {
     return [];
   }
-  switch (field.type) {
-    case 'bool':
-      return false;
-    case 'number':
-    case 'file':
-      return null;
-    default:
-      return '';
-  }
+  return (EMPTY_VALUES[field.type] ?? (() => ''))();
 }
 
 /** Every field's value: the one given, else its default, else its empty value. */
@@ -46,7 +45,7 @@ export function initialValues(fields: readonly Field[], given: FormValues | null
   return values;
 }
 
-export function isEmpty(field: Field, value: unknown): boolean {
+function isEmpty(field: Field, value: unknown): boolean {
   if (value === null || value === undefined) {
     return true;
   }
@@ -75,23 +74,28 @@ export function formatValue(field: Field, value: unknown): string {
   if (isEmpty(field, value)) {
     return '-';
   }
-  switch (field.type) {
-    case 'bool':
-      return value ? 'sì' : 'no';
-    case 'pairs':
-      return (value as PairValue[]).map(([first, second]) => `${first} → ${second}`).join(', ');
-    case 'file':
-      return (value as FileValue).filename;
-    case 'items':
-      return `${(value as ItemValue[]).length} elementi`;
-    case 'select':
-      return field.choices.find((choice) => choice.value === value)?.label ?? String(value);
-    case 'multiselect':
-      return (value as string[]).map((item) => field.choices.find((choice) => choice.value === item)?.label ?? item).join(', ');
-    default:
-      return Array.isArray(value) ? value.join(', ') : String(value);
-  }
+  return (FORMATTERS[field.type] ?? plainText)(field, value);
 }
+
+type Formatter = (field: Field, value: unknown) => string;
+
+function plainText(_field: Field, value: unknown): string {
+  return Array.isArray(value) ? value.join(', ') : String(value);
+}
+
+function choiceLabel(field: Field, value: unknown): string {
+  return field.choices.find((choice) => choice.value === value)?.label ?? String(value);
+}
+
+// The short text of a value, per type (plainText for the others).
+const FORMATTERS: Partial<Record<FieldType, Formatter>> = {
+  bool: (_field, value) => (value ? 'sì' : 'no'),
+  pairs: (_field, value) => (value as PairValue[]).map(([first, second]) => `${first} → ${second}`).join(', '),
+  file: (_field, value) => (value as FileValue).filename,
+  items: (_field, value) => `${(value as ItemValue[]).length} elementi`,
+  select: choiceLabel,
+  multiselect: (field, value) => (value as string[]).map((item) => choiceLabel(field, item)).join(', ')
+};
 
 /** The text of the tile of an "items" element: "field: value; ...". */
 export function summarize(variant: Variant | undefined, item: ItemValue): string {

@@ -61,7 +61,7 @@ function num(value: unknown, fallback: number): number {
 }
 
 /** The Timestamp of an EKG node as the old page showed it. */
-export function formatTimestamp(value: unknown): string {
+function formatTimestamp(value: unknown): string {
   const date = new Date(String(value));
   if (Number.isNaN(date.getTime())) return str(value);
   return date.toLocaleString('en-US', {

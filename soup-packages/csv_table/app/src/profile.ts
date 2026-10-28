@@ -6,19 +6,18 @@
  * context.action('distribution', {column, top}).
  */
 
-import { SoupVisualizerElement, VisualizerContext } from '@soup/sdk';
+import { errorMessage, h, SoupVisualizerElement, VisualizerContext } from '@soup/sdk';
 
-import { errorMessage, h } from './dom';
 import { ChartData, SoupChartElement, SoupTableElement } from './soup-base';
 
-export interface ColumnProfile {
+interface ColumnProfile {
   name: string;
   distinct: number;
   empty: number;
   examples: string[];
 }
 
-export interface ProfileData {
+interface ProfileData {
   rows: number;
   columns: ColumnProfile[];
 }
@@ -31,8 +30,8 @@ export interface Distribution {
   total: number;
 }
 
-export const TOP_VALUES = 20;
-export const OTHER_LABEL = '(altri)';
+const TOP_VALUES = 20;
+const OTHER_LABEL = '(altri)';
 
 const CSS = `
   :host { display: block; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 0.95rem; }

@@ -2,8 +2,8 @@
 ------------------------------------------------------------------------
 File : test_ocel_cache.py
 Description: Tests for the cache of the tables of the ocel package
-             (server/cache.py, a copy of csv_table's, and
-             store.CachedTables): with a storage that counts its reads,
+             (the ParsedCache of soup_base, soup_pkg_soup_base.api, and
+             tables_cache.CachedTables): with a storage that counts its reads,
              the data and "page" actions of "Tabelle OCEL", the export and
              "Scomponi in EKG" read every file of an object once; a new
              import and dispose() invalidate the entry; two objects never
@@ -30,8 +30,9 @@ from tests.fakes import FakeDatabase, InMemoryFileStorage, ekg_engine, fake_stor
 from tests.packages import bundled_module
 
 store = bundled_module("ocel", "store")
+tables_cache = bundled_module("ocel", "tables_cache")
 tables = bundled_module("ocel", "tables")
-cache_module = bundled_module("ocel", "cache")
+cache_module = bundled_module("soup_base", "cache")
 
 FIXTURE = Path(__file__).parent / "fixtures" / "orders.json"
 DATA = FIXTURE.read_bytes()
@@ -91,7 +92,7 @@ def tools(files):
 
 
 def test_data_pages_export_read_every_file_of_an_object_once(files, tools):
-    cache = store.new_cache()
+    cache = tables_cache.new_cache()
     obj = _import(cache, tools, "t1")
     visualizer = tables.OcelTablesVisualizer(cache)
 
@@ -116,7 +117,7 @@ def test_data_pages_export_read_every_file_of_an_object_once(files, tools):
 
 def test_decompose_into_ekg_reads_the_cached_tables(files, tools, monkeypatch):
     graph = bundled_module("ocel", "graph")
-    cache = store.new_cache()
+    cache = tables_cache.new_cache()
     obj = _import(cache, tools, "t1")
     tables.OcelTablesVisualizer(cache).data(obj, {}, tools)
     built = []
@@ -130,7 +131,7 @@ def test_decompose_into_ekg_reads_the_cached_tables(files, tools, monkeypatch):
 
 
 def test_a_new_import_and_dispose_invalidate_the_entry(files, tools):
-    cache = store.new_cache()
+    cache = tables_cache.new_cache()
     importer = tables.OcelTablesImporter(cache)
     visualizer = tables.OcelTablesVisualizer(cache)
     obj = _import(cache, tools, "t1")
@@ -152,7 +153,7 @@ def test_a_new_import_and_dispose_invalidate_the_entry(files, tools):
 
 
 def test_two_objects_never_mix(tools):
-    cache = store.new_cache()
+    cache = tables_cache.new_cache()
     first = _import(cache, tools, "t1")
     document = json.loads(DATA)
     document["events"] = document["events"][:2]
@@ -165,7 +166,7 @@ def test_two_objects_never_mix(tools):
 
 
 def test_the_lru_keeps_the_given_number_of_objects_and_never_a_log_over_the_size_limit(files, tools):
-    cache = store.new_cache(max_objects=1)
+    cache = tables_cache.new_cache(max_objects=1)
     visualizer = tables.OcelTablesVisualizer(cache)
     first, second = _import(cache, tools, "t1"), _import(cache, tools, "t2")
 
@@ -177,7 +178,7 @@ def test_the_lru_keeps_the_given_number_of_objects_and_never_a_log_over_the_size
 
     loaded = store.load_tables(first, tools)  # without a cache: one more read
     assert _reads(files, "t1")["events"] == 3
-    small = store.new_cache(max_bytes=store.estimated_size(loaded) - 1)
+    small = tables_cache.new_cache(max_bytes=tables_cache.estimated_size(loaded) - 1)
     small_visualizer = tables.OcelTablesVisualizer(small)
     small_visualizer.data(first, {}, tools)
     small_visualizer.data(first, {}, tools)

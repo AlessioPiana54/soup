@@ -17,6 +17,7 @@ Project : soup-server
 from __future__ import annotations
 
 from flask import Blueprint
+from flask.typing import ResponseReturnValue
 
 from soup.api import request_args, serializers
 from soup.core.engine import Engine
@@ -29,16 +30,16 @@ def build_operation_blueprint(engine: Engine) -> Blueprint:
     operations = engine.operation_router
 
     @blueprint.route("/api/v3/operations", methods=["GET"])
-    def list_operations():
+    def list_operations() -> ResponseReturnValue:
         entries = operations.operations_for(request_args.object_ids())
         return serializers.ok("Operations", [serializers.operation(entry) for entry in entries])
 
     @blueprint.route("/api/v3/operations/<op_id>/fields", methods=["GET"])
-    def operation_fields(op_id: str):
+    def operation_fields(op_id: str) -> ResponseReturnValue:
         return serializers.ok("Fields", serializers.fields(operations.fields(op_id, request_args.object_ids())))
 
     @blueprint.route("/api/v3/operations/<op_id>/run", methods=["POST"])
-    def run_operation(op_id: str):
+    def run_operation(op_id: str) -> ResponseReturnValue:
         body = request_args.json_body()
         outputs = operations.run(op_id, request_args.selection(body), body.get("params"))
         return serializers.ok(f"Operation '{op_id}' completed", serializers.object_refs(outputs), 201)

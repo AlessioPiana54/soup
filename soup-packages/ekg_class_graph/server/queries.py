@@ -19,7 +19,15 @@ Project : soup-packages/ekg_class_graph
 
 from __future__ import annotations
 
-from soup_pkg_ekg_views.api import CountQuery, GraphQuery, JsonPart, NodeListQuery, NodesPart, RelationshipListQuery, RelationshipsPart
+from soup_pkg_ekg_views.api import (
+    CountQuery,
+    GraphQuery,
+    JsonPart,
+    NodeListQuery,
+    NodesPart,
+    RelationshipListQuery,
+    RelationshipsPart,
+)
 
 from .classes import CLASS, DF_C, EVENT, OBSERVED
 from .views import CLASS_KIND

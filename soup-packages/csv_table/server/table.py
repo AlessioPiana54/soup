@@ -18,8 +18,9 @@ from __future__ import annotations
 import csv
 import io
 from collections import Counter
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from typing import Any, Iterable, Optional, Sequence
+from typing import Any
 
 COMMA, SEMICOLON, TAB = ",", ";", "\t"
 SEPARATORS = (COMMA, SEMICOLON, TAB)
@@ -89,12 +90,13 @@ def parse(text: str, separator: str, header: bool) -> tuple[list[str], list[Row]
 
     records = [row for row in csv.reader(io.StringIO(text, newline=""), delimiter=separator) if row]
     names = records.pop(0) if header and records else []
-    width = max([len(names), *(len(row) for row in records)] or [0])
+    width = max([len(names), *(len(row) for row in records)])
     rows = [row + [""] * (width - len(row)) for row in records]
     return _unique_columns(names, width), rows
 
 
-def write_csv(columns: Sequence[str], rows: Iterable[Sequence[Any]], separator: str = COMMA, header: bool = True) -> bytes:
+def write_csv(columns: Sequence[str], rows: Iterable[Sequence[Any]],
+    separator: str = COMMA, header: bool = True) -> bytes:
     buffer = io.StringIO(newline="")
     writer = csv.writer(buffer, delimiter=separator, lineterminator="\n")
     if header:
@@ -157,11 +159,11 @@ def filter_rows(rows: Rows, filters: Sequence[tuple[int, str]], search: str = ""
     ]
 
 
-def page(
+def page(  # noqa: PLR0913, PLR0917 - public API (soup_pkg_csv_table.api)
     rows: Rows,
     offset: int,
     limit: int,
-    sort: Optional[tuple[int, str]] = None,
+    sort: tuple[int, str] | None = None,
     filters: Sequence[tuple[int, str]] = (),
     search: str = "",
 ) -> dict[str, Any]:

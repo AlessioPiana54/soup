@@ -522,7 +522,7 @@ class Plugin(SoupPlugin):
 | Package | Contenuto |
 |---|---|
 | `tool_memgraph`, `tool_storage` | I tool (vedi sotto). |
-| `soup_base` | Visualizzatore **Report** (kind `report`), exporter **Report in JSON** e gli elementi riusabili `soup-text`, `soup-markdown`, `soup-image`, `soup-table`, `soup-chart`, `soup-keyvalue`, `soup-file-link`, `soup-error`, `soup-report-view`, `soup-graph-view`. Disegna anche l'anteprima dell'import. Un package che usa questi elementi dichiara `requires: ["soup_base"]`. API in [soup_base/README.md](soup_base/README.md). |
+| `soup_base` | Visualizzatore **Report** (kind `report`), exporter **Report in JSON**, la `ParsedCache` lato server (`soup_pkg_soup_base.api`: la cache LRU dei contenuti già letti, usata da `text`, `csv_table` e `ocel`) e gli elementi riusabili `soup-text`, `soup-markdown`, `soup-image`, `soup-table`, `soup-chart`, `soup-keyvalue`, `soup-file-link`, `soup-error`, `soup-report-view`, `soup-graph-view`. Disegna anche l'anteprima dell'import. Un package che usa questi elementi dichiara `requires: ["soup_base"]`. API in [soup_base/README.md](soup_base/README.md). |
 | `text` | Importer **Testo** (`.txt`, `.md`, `.log`, kind `text`): il file resta com'è nello spazio `text` dello storage, la `meta` ha dimensione, righe e codifica (UTF-8, altrimenti Latin-1). Visualizzatore **Testo** (`<soup-pkg-text-viewer>`): `<soup-text>` o, per i `.md`, `<soup-markdown>`; blocchi di righe con l'azione `lines` `{from, count}` e ricerca in tutto il file con `search` `{query}`. La `meta` ha anche l'estensione originale (`extension`: `.txt`, `.md` o `.log`). Exporter **File originale**: con `Exporter.file_type` scarica `<nome>.md`, `<nome>.log` o `<nome>.txt` con il MIME del file (`text/markdown` per i `.md`, `text/plain` altrimenti); per gli oggetti importati prima, senza `meta.extension`, l'estensione viene da `meta.filename` (o da `format: "markdown"`), altrimenti `.txt`. `api_version: "4.1"`. |
 | `csv_table` | Importer **CSV come tabella** (`.csv`, `.tsv`, kind `table`, modulo `csv`): separatore (`comma`, `semicolon`, `tab`) e intestazione proposti da `csv.Sniffer`; la tabella è salvata come CSV canonico nello spazio `csv_table`. Visualizzatori **Tabella CSV** (`<soup-pkg-csv-table-viewer>`, paginazione remota con l'azione `page` `{offset, limit, sort: {column, direction}, filter: [{column, value}], search}`, colonne per indice, ordinamento e un filtro per colonna) e **Profilo colonne** (`<soup-pkg-csv-profile>`, valori distinti, celle vuote, esempi e il grafico di `distribution` `{column, top}`). Operazione **Distribuzione di una colonna** (`table` → `report` con un grafico a barre e una tabella). Exporter **CSV** con separatore e intestazione a scelta. |
 | `ekg` | Solo server. L'event log (`Table` e conversioni pandas, `EventLogData` piatto o separato, `ColumnMapping`, `EventLog` con normalizzazione, millisecondi, entità e CSV canonici), i dataset sul volume (`/soup/<nome>/<nome>.csv`, `_entity.csv`, `_config.json`, `Analyses/`) e l'EKG su Memgraph: step di costruzione 100-500, il punto di estensione `ekg.build_steps`, lo stato del grafo degli oggetti `ekg` (`ensure_loaded`, `ekg.state_providers`), gli eventi `ekg.before_reset` ed `ekg.built`, l'operazione **Carica in Memgraph**. All'avvio aggiunge al catalogo i dataset già presenti sul volume. Vedi sotto. |
@@ -540,8 +540,8 @@ dei visualizzatori e li rimuove in `dispose`.
 
 Per non rileggere il file a ogni pagina, ordinamento, filtro o blocco di righe (con
 `DockerVolumeStorage` ogni lettura copia il file fuori dal container), ognuno dei due tiene una cache
-in memoria del contenuto già analizzato (`server/cache.py`: righe decodificate per `text`, colonne e
-righe per `csv_table`), con chiave l'id dell'oggetto. È una LRU limitata per numero di oggetti e per
+in memoria del contenuto già analizzato (righe decodificate per `text`, colonne e righe per `csv_table`):
+una `ParsedCache` di `soup_base` (`soup_base/server/cache.py`, esportata da `soup_pkg_soup_base.api`), con chiave l'id dell'oggetto. È una LRU limitata per numero di oggetti e per
 dimensione stimata, thread-safe, creata dal `Plugin` in `register()` e condivisa dai suoi contributi:
 non c'è stato globale di modulo, e un disable/enable riparte da una cache vuota (`on_shutdown` la
 svuota). `dispose` e ogni scrittura del file invalidano l'oggetto; un file la cui stima supera il
@@ -764,8 +764,7 @@ eventi.
 Tutti i tempi passano da `parse_time` (`model.py`), che legge anche il suffisso `Z` (UTC): `datetime.fromisoformat` lo accetta solo da Python 3.11.
 
 Le tabelle si leggono dallo storage una volta per oggetto: Tabelle OCEL, l'exporter e Scomponi in EKG usano una
-`ParsedCache` per istanza del plugin, come `csv_table` (`server/cache.py` è una copia di quella di `csv_table`;
-la duplicazione va tolta nel commit 13), con i limiti `SOUP_OCEL_CACHE_OBJECTS` e `SOUP_OCEL_CACHE_MB` (default 8
+`ParsedCache` per istanza del plugin, come `csv_table` (quella di `soup_base`, `soup_pkg_soup_base.api`), con i limiti `SOUP_OCEL_CACHE_OBJECTS` e `SOUP_OCEL_CACHE_MB` (default 8
 oggetti e 200 MB; un valore non intero positivo fa fallire il caricamento del package). Un nuovo import e `dispose`
 invalidano l'oggetto; `read_table`, `read_log` e `load_tables` dell'api leggono sempre dallo storage.
 
@@ -841,11 +840,17 @@ nessun framework), mai dal codice dell'host.
 
 - **Tipi condivisi**: `ObjectRef`, `Field` (i 13 tipi di campo), `Block` (i 9 tipi di blocco di
   `report.py`), `FileValue`, `ItemValue`.
+- **DOM**: `h(tag, {className, text, attrs, on}, ...children)` crea un elemento (il testo sempre
+  come `textContent`; `null` e `undefined` tra i figli si saltano) ed `errorMessage(error)` dà il
+  testo di un errore. Prima ogni package ne aveva una copia in `app/src/dom.ts`.
 - **Visualizzatori**: l'host crea l'elemento con il tag dichiarato in `Visualizer.element`, imposta
   `data` (la risposta di `data()`) e `context`, poi lo inserisce nella pagina. `VisualizerContext`:
   `object`, `theme`, `action(name, params)` (chiama `Visualizer.action` del proprio visualizzatore),
   `openObject(id)`, `notify(message, level)`, `setThumbnail(svg)` (anteprima mostrata nel workspace
-  come immagine), `download(filename, mime, data)`.
+  come immagine), `download(filename, mime, data)`. È l'unione di interfacce piccole, una per
+  capacità (`ObjectContext`, `ActionContext`, `NavigationContext`, `NotifyContext`,
+  `ThumbnailContext`, `DownloadContext`): un elemento o una funzione che usa solo una parte dichiara
+  quella (`<soup-graph-view>` riceve un `NotifyContext`), e un `VisualizerContext` va bene ovunque.
 - **Configurazione degli importer**: un importer con `config_element` sostituisce il form generico
   con un proprio elemento, che riceve un `ConfigContext`: `fields`, `columns` (colonne
   dell'anteprima), `value`, `preview(options)` e `emit(options)` per le opzioni dell'import.
@@ -876,8 +881,8 @@ Dalla radice di `soup-packages` (workspace npm: `sdk` e l'`app/` di ogni package
 
 ```sh
 npm install                          # una volta, e dopo aver aggiunto un package con app/
-npm run lint
-npm test                             # unit test vitest (jsdom) di */app/test/
+npm run lint                         # eslint (con complexity e max-lines-per-function), knip, tsc dell'SDK
+npm test                             # unit test vitest (jsdom) di */app/test/ e sdk/test/
 npm run build:packages               # SDK, poi type check + esbuild di ogni app/ -> app/dist/index.js (ES module unico, minificato, con sourcemap)
 npm run build:packages -- my_package # solo alcuni package
 npm run pack -- my_package           # dist/my_package-<versione>.zip: manifest, server/, app/dist/

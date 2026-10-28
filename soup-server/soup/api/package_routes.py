@@ -26,7 +26,10 @@ Project : soup-server
 
 from __future__ import annotations
 
+from typing import BinaryIO, cast
+
 from flask import Blueprint, send_file
+from flask.typing import ResponseReturnValue
 
 from soup.api import request_args, serializers
 from soup.core.engine import Engine
@@ -40,37 +43,38 @@ def build_package_blueprint(engine: Engine) -> Blueprint:
     frontend = engine.frontend
 
     @blueprint.route("/api/v3/packages", methods=["GET"])
-    def list_packages():
+    def list_packages() -> ResponseReturnValue:
         return serializers.ok("Packages", [serializers.package(info) for info in packages.list()])
 
     @blueprint.route("/api/v3/packages", methods=["POST"])
-    def install_package():
+    def install_package() -> ResponseReturnValue:
         archive = request_args.uploaded_file()
-        info = packages.install(archive.stream, allow_override=request_args.flag("allow_override"))
+        stream = cast(BinaryIO, archive.stream)  # werkzeug types it as IO[bytes]
+        info = packages.install(stream, allow_override=request_args.flag("allow_override"))
         return serializers.ok(f"Package '{info.name}' installed", serializers.package(info), 201)
 
     @blueprint.route("/api/v3/packages/<name>/enable", methods=["POST"])
-    def enable_package(name: str):
+    def enable_package(name: str) -> ResponseReturnValue:
         info = packages.enable(name)
         return serializers.ok(f"Package '{name}' enabled", serializers.package(info))
 
     @blueprint.route("/api/v3/packages/<name>/disable", methods=["POST"])
-    def disable_package(name: str):
+    def disable_package(name: str) -> ResponseReturnValue:
         disabled = packages.disable(name, cascade=request_args.flag("cascade"))
         return serializers.ok(f"Package '{name}' disabled", {"disabled": disabled})
 
     @blueprint.route("/api/v3/packages/<name>", methods=["DELETE"])
-    def uninstall_package(name: str):
+    def uninstall_package(name: str) -> ResponseReturnValue:
         packages.uninstall(name)
         return serializers.ok(f"Package '{name}' uninstalled", {"name": name})
 
     @blueprint.route("/api/v3/packages/<name>/app/<path:path>", methods=["GET"])
-    def package_app_file(name: str, path: str):
+    def package_app_file(name: str, path: str) -> ResponseReturnValue:
         static = frontend.app_file(name, path)
         return send_file(static.path, mimetype=static.mime, etag=static.etag, conditional=True, max_age=0)
 
     @blueprint.route("/api/v3/frontend/manifest", methods=["GET"])
-    def frontend_manifest():
+    def frontend_manifest() -> ResponseReturnValue:
         return serializers.ok("Frontend manifest", [serializers.frontend_module(m) for m in frontend.manifest()])
 
     return blueprint

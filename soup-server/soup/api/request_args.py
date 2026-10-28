@@ -17,7 +17,7 @@ Project : soup-server
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, BinaryIO, cast
 
 from flask import request
 from werkzeug.datastructures import FileStorage
@@ -41,7 +41,8 @@ def uploaded_file(field: str = "file") -> FileStorage:
 
 def upload(field: str = "file") -> Upload:
     file = uploaded_file(field)
-    return Upload(file.filename or "", file.stream, file.mimetype or "")
+    # werkzeug types the stream as IO[bytes]: a binary file, what Upload reads.
+    return Upload(file.filename or "", cast(BinaryIO, file.stream), file.mimetype or "")
 
 
 def required_form(name: str) -> str:
@@ -102,7 +103,7 @@ def query_params() -> dict[str, Any]:
 
     raw = request.args.get("params")
     if raw is None:
-        return request.args.to_dict(flat=True)
+        return dict(request.args.to_dict())
     value = _parse_json(raw, "Query argument 'params'")
     if not isinstance(value, dict):
         raise ValidationError("Query argument 'params' must be a JSON object")

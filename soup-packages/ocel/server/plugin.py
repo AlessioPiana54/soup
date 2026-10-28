@@ -17,20 +17,21 @@ Project : soup-packages/ocel
 from __future__ import annotations
 
 import os
-from typing import Optional
+
+from soup_pkg_soup_base.api import ParsedCache, limits_from_env
 
 from soup.core.contracts import PluginContext, SoupPlugin
 
-from .cache import ParsedCache, limits_from_env
 from .graph import DecomposeToEkg, OcelEkgImporter
-from .store import OcelTables, new_cache
+from .store import OcelTables
 from .tables import OcelJsonExporter, OcelSummaryVisualizer, OcelTablesImporter, OcelTablesVisualizer
+from .tables_cache import new_cache
 
 ENV_PREFIX = "SOUP_OCEL"
 
 
 class Plugin(SoupPlugin):
-    cache: Optional[ParsedCache[OcelTables]] = None
+    cache: ParsedCache[OcelTables] | None = None
 
     def register(self, ctx: PluginContext) -> None:
         max_objects, max_bytes = limits_from_env(os.environ, ENV_PREFIX)

@@ -12,7 +12,7 @@
     "build:sdk": "tsc -p sdk",
     "build:packages": "node sdk/scripts/build-packages.mjs",
     "pack": "node sdk/scripts/pack.mjs",
-    "lint": "eslint .",
+    "lint": "eslint . && knip && tsc -p sdk --noEmit",
     "typecheck": "tsc -p sdk --noEmit",
     "test": "vitest run"
   },
@@ -22,6 +22,7 @@
     "eslint": "^9.15.0",
     "fflate": "^0.8.2",
     "jsdom": "^25.0.1",
+    "knip": "5.88.1",
     "typescript": "~5.5.2",
     "typescript-eslint": "^8.29.0",
     "vitest": "^2.1.4"

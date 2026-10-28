@@ -24,6 +24,7 @@ from __future__ import annotations
 import io
 
 from flask import Blueprint, send_file
+from flask.typing import ResponseReturnValue
 
 from soup.api import request_args, serializers
 from soup.core.engine import Engine
@@ -38,36 +39,36 @@ def build_visualizer_blueprint(engine: Engine) -> Blueprint:
     frontend = engine.frontend
 
     @blueprint.route("/api/v3/objects/<object_id>/visualizers", methods=["GET"])
-    def list_visualizers(object_id: str):
+    def list_visualizers(object_id: str) -> ResponseReturnValue:
         return serializers.ok("Visualizers", [
             serializers.visualizer(entry, serializers.module_url(entry.package, frontend.entry(entry.package)))
             for entry in visualizers.visualizers_for(object_id)
         ])
 
     @blueprint.route("/api/v3/visualizers", methods=["GET"])
-    def list_visualizers_for_kind():
+    def list_visualizers_for_kind() -> ResponseReturnValue:
         return serializers.ok("Visualizers", [
             serializers.visualizer(entry, serializers.module_url(entry.package, frontend.entry(entry.package)))
             for entry in visualizers.visualizers_for_kind(request_args.required_arg("kind"))
         ])
 
     @blueprint.route("/api/v3/objects/<object_id>/visualizers/<visualizer_id>/data", methods=["GET"])
-    def visualizer_data(object_id: str, visualizer_id: str):
+    def visualizer_data(object_id: str, visualizer_id: str) -> ResponseReturnValue:
         return serializers.ok("Data", visualizers.data(visualizer_id, object_id, request_args.query_params()))
 
     @blueprint.route("/api/v3/objects/<object_id>/visualizers/<visualizer_id>/actions/<name>", methods=["POST"])
-    def visualizer_action(object_id: str, visualizer_id: str, name: str):
+    def visualizer_action(object_id: str, visualizer_id: str, name: str) -> ResponseReturnValue:
         return serializers.ok("Action", visualizers.action(visualizer_id, object_id, name, request_args.json_body()))
 
     @blueprint.route("/api/v3/objects/<object_id>/exporters", methods=["GET"])
-    def list_exporters(object_id: str):
+    def list_exporters(object_id: str) -> ResponseReturnValue:
         return serializers.ok("Exporters", [
             serializers.exporter(entry, exporters.fields(entry.key, object_id))
             for entry in exporters.exporters_for(object_id)
         ])
 
     @blueprint.route("/api/v3/objects/<object_id>/export/<exporter_id>", methods=["GET"])
-    def export_object(object_id: str, exporter_id: str):
+    def export_object(object_id: str, exporter_id: str) -> ResponseReturnValue:
         exported = exporters.export(exporter_id, object_id, request_args.query_params())
         return send_file(
             io.BytesIO(exported.content),

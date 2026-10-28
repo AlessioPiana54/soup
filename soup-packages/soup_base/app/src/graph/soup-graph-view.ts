@@ -1,18 +1,19 @@
-import { dispatchSoupEvent, SOUP_EVENTS, VisualizerContext } from '@soup/sdk';
+import { dispatchSoupEvent, errorMessage, h, NotifyContext, SOUP_EVENTS } from '@soup/sdk';
 
-import { BASE_CSS, display, h, style } from '../dom';
+import { BASE_CSS, style } from '../dom';
 import { DagreGraphRenderer } from './dagre-renderer';
 import { GraphEdgeModel, GraphModel, GraphNodeModel, searchModel, SearchPage, SearchTarget, toGraphModel } from './model';
 import { RelationshipPalette } from './palette';
+import { propertiesPanel, searchPanel, toolbarControls } from './panels';
 import { GraphRenderer, GraphRendererFactory, NodeShape } from './renderer';
 
 /** Remote search: a visualizer may page the matches on the server (e.g. through its actions). */
-export type GraphSearch = (query: string, target: SearchTarget, offset: number, limit: number) => Promise<SearchPage<GraphNodeModel | GraphEdgeModel>>;
+type GraphSearch = (query: string, target: SearchTarget, offset: number, limit: number) => Promise<SearchPage<GraphNodeModel | GraphEdgeModel>>;
 
 /** The full properties of a node (e.g. one found by the remote search and not drawn); null: unknown. */
-export type GraphNodeDetails = (id: string) => Promise<GraphNodeModel | null>;
+type GraphNodeDetails = (id: string) => Promise<GraphNodeModel | null>;
 
-export const SEARCH_PAGE_SIZE = 50;
+const SEARCH_PAGE_SIZE = 50;
 // The thumbnail is saved only below this size (the catalog accepts 1 MB).
 const MAX_THUMBNAIL_CHARS = 512 * 1024;
 
@@ -62,7 +63,8 @@ export class SoupGraphView extends HTMLElement {
 
   public static readonly observedAttributes = ['engine'];
 
-  public context: VisualizerContext | null = null;
+  // Only notify() is used: any VisualizerContext fits.
+  public context: NotifyContext | null = null;
   /** Remote search; null searches the model in the browser. */
   public search: GraphSearch | null = null;
   /** Asked for the properties of the selected node; null shows the ones of the model. */
@@ -183,7 +185,7 @@ export class SoupGraphView extends HTMLElement {
       this.selected = { ...this.selected, label: node.label || this.selected.label, props: { ...node.props } };
       this.drawSide();
     } catch (error) {
-      this.context?.notify(error instanceof Error ? error.message : String(error), 'error');
+      this.context?.notify(errorMessage(error), 'error');
     }
   }
 
@@ -259,27 +261,21 @@ export class SoupGraphView extends HTMLElement {
   private drawToolbar(): void {
     const toolbar = this.root.querySelector('.toolbar');
     if (!toolbar) return;
-    const shape = h('select', { attrs: { 'aria-label': 'Forma dei nodi' }, on: { change: (event) => this.setNodeShape((event.target as HTMLSelectElement).value as NodeShape) } });
-    for (const [value, label] of [['rect', 'Rettangoli'], ['circle', 'Cerchi']]) {
-      const option = h('option', { text: label, attrs: { value } });
-      option.selected = value === this.shape;
-      shape.append(option);
-    }
-
-    const list = h('div');
-    for (const entry of this.palette.relationshipTypes()) {
-      const box = h('input', { attrs: { type: 'checkbox', 'data-type': entry.name }, on: { change: (event) => this.setRelationshipVisible(entry.name, (event.target as HTMLInputElement).checked) } });
-      box.checked = entry.visible;
-      const swatch = h('span', { className: 'swatch' });
-      swatch.style.background = entry.color;
-      list.append(h('label', {}, box, swatch, entry.name || '(senza tipo)'));
-    }
-    const relationships = h('details', { className: 'relationships' }, h('summary', { text: 'Relazioni' }), list);
-
-    const searchButton = h('button', { text: this.searchOpen ? 'Chiudi ricerca' : 'Cerca', attrs: { type: 'button', 'aria-pressed': String(this.searchOpen) }, on: { click: () => this.toggleSearch() } });
-    const exportButton = h('button', { text: 'Esporta SVG', attrs: { type: 'button' }, on: { click: () => this.downloadSvg() } });
-    const counts = h('span', { className: 'muted', text: `${this.model.nodes.length} nodi, ${this.model.edges.length} archi` });
-    toolbar.replaceChildren(shape, relationships, searchButton, exportButton, counts);
+    const state = {
+      shape: this.shape,
+      relationships: this.palette.relationshipTypes(),
+      searchOpen: this.searchOpen,
+      nodes: this.model.nodes.length,
+      edges: this.model.edges.length
+    };
+    toolbar.replaceChildren(
+      ...toolbarControls(state, {
+        setShape: (shape) => this.setNodeShape(shape),
+        setRelationshipVisible: (type, visible) => this.setRelationshipVisible(type, visible),
+        toggleSearch: () => this.toggleSearch(),
+        exportSvg: () => this.downloadSvg()
+      })
+    );
   }
 
   private toggleSearch(): void {
@@ -293,28 +289,16 @@ export class SoupGraphView extends HTMLElement {
     if (!side) return;
     side.hidden = !this.searchOpen && !this.selected;
     const parts: Node[] = [];
-
     if (this.searchOpen) {
-      const tabs = h('div', { className: 'tabs', attrs: { role: 'tablist' } });
-      for (const [target, label] of [['nodes', 'Nodi'], ['edges', 'Archi']] as const) {
-        tabs.append(h('button', { text: label, attrs: { type: 'button', role: 'tab', 'aria-selected': String(this.target === target) }, on: { click: () => void this.runSearch(this.query, target).then(() => this.drawSide()) } }));
-      }
-      const input = h('input', { attrs: { type: 'search', placeholder: 'Cerca', 'aria-label': 'Cerca nel grafo' }, on: { input: (event) => void this.runSearch((event.target as HTMLInputElement).value) } });
-      input.value = this.query;
-      const results = h('ul', { className: 'results', on: { scroll: (event) => this.onResultsScroll(event.target as HTMLElement) } });
-      this.fillResults(results);
-      parts.push(tabs, input, results);
+      const search = searchPanel(this.target, this.query, {
+        setTarget: (target) => void this.runSearch(this.query, target).then(() => this.drawSide()),
+        setQuery: (query) => void this.runSearch(query),
+        scrolled: (list) => this.onResultsScroll(list)
+      });
+      this.fillResults(search.results);
+      parts.push(...search.parts);
     }
-
-    if (this.selected) {
-      const list = h('dl');
-      list.append(h('dt', { text: 'id' }), h('dd', { text: this.selected.id }));
-      for (const [key, value] of Object.entries(this.selected.props)) {
-        list.append(h('dt', { text: key }), h('dd', { text: display(value) }));
-      }
-      const close = h('button', { text: '×', attrs: { type: 'button', 'aria-label': 'Chiudi' }, on: { click: () => this.selectNode(null) } });
-      parts.push(h('div', { className: 'properties' }, h('div', { className: 'toolbar' }, h('strong', { text: this.selected.label }), close), list));
-    }
+    if (this.selected) parts.push(propertiesPanel(this.selected, () => this.selectNode(null)));
     side.replaceChildren(...parts);
   }
 
@@ -359,7 +343,7 @@ export class SoupGraphView extends HTMLElement {
       this.results = [...this.results, ...page.items];
       this.resultsTotal = page.total;
     } catch (error) {
-      this.context?.notify(error instanceof Error ? error.message : String(error), 'error');
+      this.context?.notify(errorMessage(error), 'error');
     } finally {
       this.loadingMore = false;
     }

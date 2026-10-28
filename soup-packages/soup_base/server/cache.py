@@ -1,18 +1,21 @@
 """
 ------------------------------------------------------------------------
 File : cache.py
-Description: ParsedCache - a small in-memory LRU cache of the text files
-             already read from the storage and decoded into lines, keyed
-             by object id, so the visualizer actions (every block of
-             lines, every search) do not read the whole file again: with
-             DockerVolumeStorage each read copies the file out of the
-             container. Bounded by number of objects and by estimated
-             size; an entry larger than the size
-             limit is never kept (it is read every time, as without a
-             cache). Thread-safe. The Plugin creates one per instance in
-             register(): there is no module-level cache shared between
-             plugin instances.
-Project : soup-packages/text
+Description: ParsedCache - a small in-memory LRU cache of the contents
+             a package has already read from the storage and parsed,
+             keyed by object id, so the visualizer actions (every page,
+             sort, filter, block of lines) do not read the whole file
+             again: with DockerVolumeStorage each read copies the file out
+             of the container. Bounded by number of objects and by
+             estimated size; an entry larger than the size limit is never
+             kept (it is read every time, as without a cache).
+             Thread-safe. Each package creates its own in its Plugin's
+             register() (there is no module-level cache shared between
+             plugin instances), with the limits of limits_from_env:
+             <PREFIX>_CACHE_OBJECTS and <PREFIX>_CACHE_MB. Used by text,
+             csv_table and ocel through soup_pkg_soup_base.api (they all
+             require soup_base): one copy instead of three.
+Project : soup-packages/soup_base
 ------------------------------------------------------------------------
 """
 
@@ -20,7 +23,8 @@ from __future__ import annotations
 
 import threading
 from collections import OrderedDict
-from typing import Callable, Generic, Mapping, TypeVar
+from collections.abc import Callable, Mapping
+from typing import Generic, TypeVar
 
 V = TypeVar("V")
 

@@ -5,12 +5,11 @@
  * same bars, as an SVG built from numbers only, are the object's thumbnail.
  */
 
-import { SoupVisualizerElement, VisualizerContext } from '@soup/sdk';
+import { h, SoupVisualizerElement, VisualizerContext } from '@soup/sdk';
 
-import { h } from './dom';
 import { ChartData, KeyValueData, SoupChartElement, SoupKeyValueElement } from './soup-base';
 
-export interface OcelCounts {
+interface OcelCounts {
   events: number;
   objects: number;
   event_types: number;
@@ -19,7 +18,7 @@ export interface OcelCounts {
   object_objects: number;
 }
 
-export interface OcelSummaryData {
+interface OcelSummaryData {
   counts: OcelCounts;
   events_per_type: Record<string, number>;
   objects_per_type: Record<string, number>;

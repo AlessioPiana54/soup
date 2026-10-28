@@ -10,8 +10,18 @@ Project : soup-packages/text
 ------------------------------------------------------------------------
 """
 
-from .cache import DEFAULT_MAX_BYTES, DEFAULT_MAX_OBJECTS, ParsedCache, limits_from_env
-from .text import OriginalFileExporter, TextFile, TextImporter, TextVisualizer, decode, extension_of, new_cache, stored_extension
+from soup_pkg_soup_base.api import DEFAULT_MAX_BYTES, DEFAULT_MAX_OBJECTS, ParsedCache, limits_from_env
+
+from .text import (
+    OriginalFileExporter,
+    TextFile,
+    TextImporter,
+    TextVisualizer,
+    decode,
+    extension_of,
+    new_cache,
+    stored_extension,
+)
 
 __all__ = [
     "DEFAULT_MAX_BYTES",

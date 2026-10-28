@@ -15,9 +15,10 @@ Project : soup-packages/soup_base
 from __future__ import annotations
 
 import json
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
-from soup.core.contracts import REPORT, Exporter, ObjectRef, Visualizer
+from soup.core.contracts import REPORT, Exporter, ObjectRef, ToolAccess, Visualizer
 
 
 def _blocks(obj: ObjectRef) -> list[Any]:
@@ -31,7 +32,7 @@ class ReportVisualizer(Visualizer):
     accepts = (REPORT,)
     element = "soup-report-view"
 
-    def data(self, obj: ObjectRef, params: Mapping[str, Any], tools) -> Any:
+    def data(self, obj: ObjectRef, params: Mapping[str, Any], tools: ToolAccess) -> Any:
         return {"name": obj.name, "description": obj.description, "blocks": _blocks(obj)}
 
 
@@ -42,7 +43,7 @@ class ReportJsonExporter(Exporter):
     extension = ".json"
     mime = "application/json"
 
-    def export(self, obj: ObjectRef, params: Mapping[str, Any], tools) -> bytes:
+    def export(self, obj: ObjectRef, params: Mapping[str, Any], tools: ToolAccess) -> bytes:
         document = {
             "name": obj.name,
             "description": obj.description,

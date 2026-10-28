@@ -16,9 +16,8 @@ from __future__ import annotations
 
 import logging
 
-from typing import Optional
-
 from flask import Flask, Request, current_app, jsonify
+from flask.typing import ResponseReturnValue
 from flask_cors import CORS
 from flask_socketio import SocketIO
 from werkzeug.exceptions import HTTPException
@@ -29,10 +28,9 @@ from soup.api.package_routes import build_package_blueprint
 from soup.api.system_routes import build_system_blueprint
 from soup.api.visualizer_routes import build_visualizer_blueprint
 from soup.api.workspace_routes import build_workspace_blueprint
-from soup.core.engine import Engine
 from soup.core.contracts.errors import DomainError
+from soup.core.engine import Engine
 from soup.core.results import Result
-
 
 V3_PREFIX = "/api/v3/"
 V3_MAX_CONTENT_LENGTH = "SOUP_V3_MAX_CONTENT_LENGTH"
@@ -47,7 +45,7 @@ class SoupRequest(Request):
     """
 
     @property
-    def max_content_length(self) -> Optional[int]:  # type: ignore[override]
+    def max_content_length(self) -> int | None:  # type: ignore[override]
         if self.path.startswith(V3_PREFIX):
             return current_app.config.get(V3_MAX_CONTENT_LENGTH)
         return super().max_content_length
@@ -83,19 +81,19 @@ def _register_error_handlers(app: Flask) -> None:
     """One place that turns an exception into an HTTP response."""
 
     @app.errorhandler(DomainError)
-    def _handle_domain_error(error: DomainError):
+    def _handle_domain_error(error: DomainError) -> ResponseReturnValue:
         # `details` (e.g. the packages blocking a disable) go in response_data.
         result = Result(error.http_status_code, str(error), error.details or None)
         return jsonify(result.to_dict()), error.http_status_code
 
     @app.errorhandler(HTTPException)
-    def _handle_http_exception(error: HTTPException):
+    def _handle_http_exception(error: HTTPException) -> ResponseReturnValue:
         # Flask/Werkzeug's own routing errors (404 Not Found, 405 Method
         # Not Allowed, ...) are already well-formed responses - let them
         # through as-is instead of flattening them into a 500.
         return error
 
     @app.errorhandler(Exception)
-    def _handle_unexpected_error(error: Exception):
+    def _handle_unexpected_error(error: Exception) -> ResponseReturnValue:
         result = Result(500, f"Internal Server Error: {error}")
         return jsonify(result.to_dict()), 500

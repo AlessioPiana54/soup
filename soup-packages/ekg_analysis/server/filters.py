@@ -36,13 +36,16 @@ from __future__ import annotations
 import math
 import re
 from abc import ABC, abstractmethod
+from collections.abc import Callable, Mapping, Sequence
+from contextlib import suppress
 from datetime import datetime
-from typing import Any, Callable, Mapping, Optional, Sequence
+from typing import Any
 
-from soup.core.contracts import Choice, Field, ObjectRef, ValidationError
 import soup_pkg_ekg.api as ekg
 from soup_pkg_ekg.api import Query, ident
 from soup_pkg_ekg_views.api import clean
+
+from soup.core.contracts import Choice, Field, ObjectRef, ToolAccess, ValidationError
 
 MEMGRAPH = "memgraph"
 
@@ -61,7 +64,8 @@ Run = Callable[[Query], list[dict[str, Any]]]
 # What the filters read of the graph
 # ---------------------------------------------------------------------- #
 def entity_types_query() -> Query:
-    return Query(f"MATCH (n:{ident(ENTITY)}) WHERE n.Type IS NOT NULL RETURN DISTINCT n.Type AS entity_type ORDER BY entity_type")
+    return Query(f"MATCH (n:{ident(ENTITY)}) WHERE n.Type IS NOT NULL "
+                 "RETURN DISTINCT n.Type AS entity_type ORDER BY entity_type")
 
 
 def activities_query() -> Query:
@@ -84,23 +88,23 @@ def _column(rows: Sequence[Mapping[str, Any]], column: str) -> list[str]:
     return [str(row[column]) for row in rows if row.get(column) is not None]
 
 
-def _run(tools) -> Run:
+def _run(tools: ToolAccess) -> Run:
     return tools.get(MEMGRAPH).run
 
 
-def entity_types(obj: ObjectRef, tools) -> list[str]:
+def entity_types(obj: ObjectRef, tools: ToolAccess) -> list[str]:
     """The entity types of the graph of obj (loaded first)."""
 
     ekg.ensure_loaded(obj, tools)
     return _column(_run(tools)(entity_types_query()), "entity_type")
 
 
-def activities(obj: ObjectRef, tools) -> list[str]:
+def activities(obj: ObjectRef, tools: ToolAccess) -> list[str]:
     ekg.ensure_loaded(obj, tools)
     return _column(_run(tools)(activities_query()), "activity")
 
 
-def time_range(obj: ObjectRef, tools) -> tuple[Optional[str], Optional[str]]:
+def time_range(obj: ObjectRef, tools: ToolAccess) -> tuple[str | None, str | None]:
     """The first and the last timestamp of the events, as ISO text."""
 
     ekg.ensure_loaded(obj, tools)
@@ -160,10 +164,8 @@ def require_operator(spec: Mapping[str, Any]) -> str:
 def require_positive(spec: Mapping[str, Any], name: str, integer: bool = False) -> int | float:
     value = spec.get(name)
     if isinstance(value, str):
-        try:
+        with suppress(ValueError):
             value = float(value.strip()) if not integer else int(value.strip())
-        except ValueError:
-            pass
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
         raise ValidationError(f"{name}: required, a number greater than 0")
     if integer and value != int(value):
@@ -199,7 +201,7 @@ class AnalysisFilter(ABC):
     order: int = 0
 
     @abstractmethod
-    def fields(self, obj: ObjectRef, tools) -> list[Field]:
+    def fields(self, obj: ObjectRef, tools: ToolAccess) -> list[Field]:
         """The form of one condition; the names are the keys of the legacy format."""
         raise NotImplementedError
 
@@ -237,7 +239,7 @@ class EntityConditionFilter(AnalysisFilter):
     value_help: str = ""
     integer: bool = True
 
-    def fields(self, obj: ObjectRef, tools) -> list[Field]:
+    def fields(self, obj: ObjectRef, tools: ToolAccess) -> list[Field]:
         return [
             entity_field(entity_types(obj, tools)),
             operator_field(),
@@ -270,7 +272,7 @@ class TimestampFilter(AnalysisFilter):
     description = "Toglie le coppie di eventi consecutivi (:DF) che cadono entrambi fuori dall'intervallo."
     order = 100
 
-    def fields(self, obj: ObjectRef, tools) -> list[Field]:
+    def fields(self, obj: ObjectRef, tools: ToolAccess) -> list[Field]:
         first, last = time_range(obj, tools)
         return [
             Field("startDate", "Dal", type="datetime", required=True, default=first),
@@ -338,7 +340,7 @@ def exclude_activity_query(activity: str) -> Query:
 
 
 class _ActivitiesFilter(AnalysisFilter):
-    def fields(self, obj: ObjectRef, tools) -> list[Field]:
+    def fields(self, obj: ObjectRef, tools: ToolAccess) -> list[Field]:
         names = activities(obj, tools)
         if names:
             return [Field("activities", "Attività", type="multiselect", required=True, choices=tuple(names))]

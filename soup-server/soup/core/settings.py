@@ -16,9 +16,9 @@ Project : soup-server
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping, Optional
 
 DEFAULT_STRICT = False
 
@@ -55,7 +55,7 @@ def _split_paths(value: str) -> tuple[str, ...]:
     return tuple(item.strip() for item in value.split(os.pathsep) if item.strip())
 
 
-def _positive_int(name: str, value: Optional[str], default: int) -> int:
+def _positive_int(name: str, value: str | None, default: int) -> int:
     if value is None or not value.strip():
         return default
     try:
@@ -67,7 +67,7 @@ def _positive_int(name: str, value: Optional[str], default: int) -> int:
     return number
 
 
-def _as_bool(value: Optional[str], default: bool) -> bool:
+def _as_bool(value: str | None, default: bool) -> bool:
     if value is None:
         return default
     return value.strip().lower() in _TRUE_VALUES
@@ -76,7 +76,7 @@ def _as_bool(value: Optional[str], default: bool) -> bool:
 @dataclass(frozen=True)
 class Settings:
     # None: every package found; a tuple: only those (SOUP_PACKAGES).
-    packages: Optional[tuple[str, ...]] = None
+    packages: tuple[str, ...] | None = None
     packages_path: tuple[str, ...] = (DEFAULT_BUNDLED_PACKAGES_DIR, DEFAULT_INSTALLED_PACKAGES_DIR)
     installed_packages_dir: str = DEFAULT_INSTALLED_PACKAGES_DIR
     allow_package_install: bool = DEFAULT_ALLOW_PACKAGE_INSTALL
@@ -88,7 +88,7 @@ class Settings:
         return self.max_upload_mb * 1024 * 1024
 
     @classmethod
-    def from_env(cls, env: Optional[Mapping[str, str]] = None) -> "Settings":
+    def from_env(cls, env: Mapping[str, str] | None = None) -> Settings:
         """Build Settings from environment variables, with explicit defaults for each."""
 
         source = os.environ if env is None else env

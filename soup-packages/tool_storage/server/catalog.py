@@ -22,9 +22,10 @@ Project : soup-packages/tool_storage
 
 from __future__ import annotations
 
+import builtins
 import json
 import threading
-from typing import Any, Optional
+from typing import Any
 
 from soup.core.contracts import (
     Catalog,
@@ -51,7 +52,7 @@ class FileCatalog(Catalog):
         self._lock = threading.RLock()
         # None until the first read; then object id -> ObjectRef and
         # parent id -> ids of the objects listing it among their parents.
-        self._objects: Optional[dict[str, ObjectRef]] = None
+        self._objects: dict[str, ObjectRef] | None = None
         self._children: dict[str, set[str]] = {}
 
     def health(self) -> dict[str, Any]:
@@ -72,17 +73,17 @@ class FileCatalog(Catalog):
             self._write(obj)
             self._put(obj)
 
-    def get(self, object_id: str) -> Optional[ObjectRef]:
+    def get(self, object_id: str) -> ObjectRef | None:
         validate_name(object_id, label="Object id")
         with self._lock:
             return self._index().get(object_id)
 
-    def list(self) -> list[ObjectRef]:
+    def list(self) -> builtins.list[ObjectRef]:
         with self._lock:
             objects = list(self._index().values())
         return sorted(objects, key=lambda item: (item.created_at, item.id))
 
-    def children(self, object_id: str) -> list[ObjectRef]:
+    def children(self, object_id: str) -> builtins.list[ObjectRef]:
         with self._lock:
             objects = self._index()
             children = [objects[child_id] for child_id in self._children.get(object_id, ())]
@@ -112,14 +113,14 @@ class FileCatalog(Catalog):
     # ------------------------------------------------------------------ #
     # Thumbnails (read from disk: the index holds only the ObjectRefs)
     # ------------------------------------------------------------------ #
-    def get_thumbnail(self, object_id: str) -> Optional[str]:
+    def get_thumbnail(self, object_id: str) -> str | None:
         self._require(object_id)
         path = self._thumbnail_path(object_id)
         if not guard_os_errors(f"Thumbnail '{object_id}'", self._backend.exists, path):
             return None
         return guard_os_errors(f"Thumbnail '{object_id}'", self._backend.read, path).decode("utf-8")
 
-    def set_thumbnail(self, object_id: str, svg: Optional[str]) -> None:
+    def set_thumbnail(self, object_id: str, svg: str | None) -> None:
         with self._lock:
             self._require(object_id)
             path = self._thumbnail_path(object_id)

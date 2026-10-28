@@ -15,8 +15,9 @@ Project : soup-server
 
 from __future__ import annotations
 
+import builtins
 from abc import ABC, abstractmethod
-from typing import Any, Optional, Protocol, TypeVar
+from typing import Any, Protocol, TypeVar
 
 from soup.core.contracts.objects import ObjectRef
 
@@ -72,15 +73,15 @@ class Catalog(Tool):
         raise NotImplementedError
 
     @abstractmethod
-    def get(self, object_id: str) -> Optional[ObjectRef]:
+    def get(self, object_id: str) -> ObjectRef | None:
         raise NotImplementedError
 
     @abstractmethod
-    def list(self) -> list[ObjectRef]:
+    def list(self) -> builtins.list[ObjectRef]:
         raise NotImplementedError
 
     @abstractmethod
-    def children(self, object_id: str) -> list[ObjectRef]:
+    def children(self, object_id: str) -> builtins.list[ObjectRef]:
         raise NotImplementedError
 
     @abstractmethod
@@ -92,11 +93,11 @@ class Catalog(Tool):
         raise NotImplementedError
 
     @abstractmethod
-    def get_thumbnail(self, object_id: str) -> Optional[str]:
+    def get_thumbnail(self, object_id: str) -> str | None:
         raise NotImplementedError
 
     @abstractmethod
-    def set_thumbnail(self, object_id: str, svg: Optional[str]) -> None:
+    def set_thumbnail(self, object_id: str, svg: str | None) -> None:
         raise NotImplementedError
 
 

@@ -8,9 +8,9 @@
  * lines up to it and highlights the query.
  */
 
-import { SoupVisualizerElement, VisualizerContext } from '@soup/sdk';
+import { errorMessage, h, SoupVisualizerElement, VisualizerContext } from '@soup/sdk';
 
-import { errorMessage, formatSize, h } from './dom';
+import { formatSize } from './dom';
 import { SoupMarkdownElement, SoupTextElement } from './soup-base';
 
 export interface TextViewerData {
@@ -56,7 +56,7 @@ const CSS = `
 const EMPTY: TextViewerData = { filename: '', format: 'text', encoding: '', size: 0, total_lines: 0, chunk: 500, lines: [] };
 
 /** Bars of the line lengths, built only from numbers. */
-export function thumbnailFor(lines: readonly string[]): string {
+function thumbnailFor(lines: readonly string[]): string {
   const bars = lines
     .slice(0, 12)
     .map((line, index) => {

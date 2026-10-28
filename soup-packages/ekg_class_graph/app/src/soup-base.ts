@@ -60,16 +60,6 @@ export interface SoupChartElement extends HTMLElement {
   data: ChartData | undefined;
 }
 
-export interface TableData {
-  columns: string[];
-  rows: unknown[][];
-  total?: number;
-}
-
-export interface SoupTableElement extends HTMLElement {
-  data: TableData | undefined;
-}
-
 export interface SoupKeyValueElement extends HTMLElement {
   data: { items: { key: string; value: unknown }[] } | undefined;
 }

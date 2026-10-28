@@ -6,7 +6,7 @@ Description: The contributions of ocel for objects of kind "ocel_tables"
              store.py), with the standard library and the "storage" tool
              only - no pandas, no Memgraph. The visualizers and the
              exporter read the tables through the plugin's ParsedCache
-             (store.CachedTables): the files of an object are read once;
+             (tables_cache.CachedTables): the files of an object are read once;
              import_() and dispose() invalidate its entry.
              - OcelTablesImporter ("tables", "OCEL 2.0 come tabelle"):
                events, objects, event-object relationships (with their
@@ -31,9 +31,10 @@ Project : soup-packages/ocel
 from __future__ import annotations
 
 import json
-from typing import Any, Mapping, Optional, Sequence
+from collections.abc import Mapping, Sequence
+from typing import Any
 
-from soup.core.contracts import Exporter, NotFoundError, ObjectRef, Upload, ValidationError, Visualizer
+from soup.core.contracts import Exporter, NotFoundError, ObjectRef, ToolAccess, Upload, ValidationError, Visualizer
 
 from .model import EVENT_OBJECTS, EVENTS, OBJECT_OBJECTS, OBJECTS, Scalar, parse, to_json
 from .store import (
@@ -41,12 +42,12 @@ from .store import (
     EXTENSIONS,
     STORAGE,
     TABLES_KIND,
-    CachedTables,
     OcelImporterBase,
     dispose_tables,
     import_meta,
     save_tables,
 )
+from .tables_cache import CachedTables
 
 PAGE_SIZE = 25
 MAX_PAGE_SIZE = 500
@@ -74,14 +75,14 @@ class OcelTablesImporter(CachedTables, OcelImporterBase):
     produces = TABLES_KIND
     requires_tools = (STORAGE,)
 
-    def import_(self, upload: Upload, obj: ObjectRef, options: Mapping[str, Any], tools) -> dict[str, Any]:
+    def import_(self, upload: Upload, obj: ObjectRef, options: Mapping[str, Any], tools: ToolAccess) -> dict[str, Any]:
         log = parse(upload.read())
         save_tables(obj, log, tools)
         # Every write of the tables invalidates what was read before.
         self.cache.invalidate(obj.id)
         return import_meta(log, upload.filename)
 
-    def dispose(self, obj: ObjectRef, tools) -> None:
+    def dispose(self, obj: ObjectRef, tools: ToolAccess) -> None:
         self.cache.invalidate(obj.id)
         dispose_tables(obj, tools)
 
@@ -104,7 +105,7 @@ def _optional_text(params: Mapping[str, Any], name: str) -> str:
     return value
 
 
-def _sort(params: Mapping[str, Any], width: int) -> Optional[tuple[int, bool]]:
+def _sort(params: Mapping[str, Any], width: int) -> tuple[int, bool] | None:
     """(column, descending) from {column, direction}, or None."""
 
     value = params.get("sort")
@@ -168,7 +169,7 @@ class OcelTablesVisualizer(CachedTables, Visualizer):
     element = "soup-pkg-ocel-tables"
     requires_tools = (STORAGE,)
 
-    def data(self, obj: ObjectRef, params: Mapping[str, Any], tools) -> Any:
+    def data(self, obj: ObjectRef, params: Mapping[str, Any], tools: ToolAccess) -> Any:
         types = {
             "event": list(obj.meta.get("events_per_type") or {}),
             "object": list(obj.meta.get("objects_per_type") or {}),
@@ -187,7 +188,7 @@ class OcelTablesVisualizer(CachedTables, Visualizer):
             })
         return {"page_size": PAGE_SIZE, "tables": tabs}
 
-    def action(self, obj: ObjectRef, name: str, params: Mapping[str, Any], tools) -> Any:
+    def action(self, obj: ObjectRef, name: str, params: Mapping[str, Any], tools: ToolAccess) -> Any:
         if name != "page":
             raise NotFoundError(f"Visualizer '{self.id}' has no action '{name}'")
         table = params.get("table")
@@ -203,7 +204,7 @@ class OcelSummaryVisualizer(Visualizer):
     accepts = (TABLES_KIND,)
     element = "soup-pkg-ocel-summary"
 
-    def data(self, obj: ObjectRef, params: Mapping[str, Any], tools) -> Any:
+    def data(self, obj: ObjectRef, params: Mapping[str, Any], tools: ToolAccess) -> Any:
         counts = obj.meta.get("counts") or {}
         return {
             "counts": {key: int(counts.get(key, 0)) for key in (
@@ -228,5 +229,5 @@ class OcelJsonExporter(CachedTables, Exporter):
         extension = obj.meta.get("extension")
         return (extension if extension in EXTENSIONS else DEFAULT_EXTENSION), JSON_MIME
 
-    def export(self, obj: ObjectRef, params: Mapping[str, Any], tools) -> bytes:
+    def export(self, obj: ObjectRef, params: Mapping[str, Any], tools: ToolAccess) -> bytes:
         return json.dumps(to_json(self._tables(obj, tools).log()), ensure_ascii=False, indent=2).encode("utf-8")

@@ -21,6 +21,7 @@ Project : soup-packages/tool_storage
 
 from __future__ import annotations
 
+import builtins
 import posixpath
 from typing import Any
 
@@ -65,7 +66,7 @@ class StorageSpace(FileStorage):
         self.namespace = _namespace(namespace)
         self._folder = f"{self.namespace}/{folder}" if folder else self.namespace
 
-    def subspace(self, name: str) -> "StorageSpace":
+    def subspace(self, name: str) -> StorageSpace:
         """The folder `name` inside this one, e.g. space("orders").subspace("Analyses")."""
 
         relative = self._folder[len(self.namespace) + 1:]
@@ -87,7 +88,7 @@ class StorageSpace(FileStorage):
     def delete(self, path: str) -> None:
         guard_os_errors(f"File '{self._folder}/{path}'", self._backend.delete, self._path(path))
 
-    def list(self, prefix: str = "") -> list[str]:
+    def list(self, prefix: str = "") -> builtins.list[str]:
         names = guard_os_errors(f"Namespace '{self._folder}'", self._backend.list, self._folder)
         return sorted(name for name in names if name.startswith(prefix))
 

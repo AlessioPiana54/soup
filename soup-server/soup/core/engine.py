@@ -21,15 +21,16 @@ Project : soup-server
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from soup.core.contracts import CONTRACTS_API_VERSION
 from soup.core.event_bus import EventBus
-from soup.core.plugin_context import DefaultPluginContext
 from soup.core.packages import PackageManager, PackageManagerConfig
 from soup.core.packages.frontend import PackageFrontend
+from soup.core.plugin_context import DefaultPluginContext
 from soup.core.plugin_manager import PackageReport, PluginManager
 from soup.core.services.core_tools import CoreTools, missing_core_tools
 from soup.core.services.export_router import ExportRouter
@@ -68,7 +69,7 @@ class Engine:
 def build_engine(settings: Settings, extra_plugins: Iterable[Any] = ()) -> Engine:
     """
     Single composition root. `extra_plugins` are loaded together with the
-    packages found on disk (SoupPlugin instances/classes or specs); tests
+    packages found on disk (SoupPlugin instances or classes); tests
     use it for packages defined in the test itself, e.g. the in-memory
     tools of tests.fakes.FakeToolsPackage.
     """

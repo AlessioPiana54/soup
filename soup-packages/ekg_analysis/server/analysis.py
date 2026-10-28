@@ -28,8 +28,9 @@ Project : soup-packages/ekg_analysis
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 from soup.core.contracts import ObjectRef, ServiceUnavailableError, ValidationError, validate_name
 
@@ -78,7 +79,7 @@ class Analysis:
     # ------------------------------------------------------------------ #
     @classmethod
     def from_items(cls, name: str, items: Sequence[Mapping[str, Any]], filters: Sequence[AnalysisFilter],
-                   description: str = "") -> "Analysis":
+                   description: str = "") -> Analysis:
         known = _keyed(filters)
         grouped: dict[str, list[dict[str, Any]]] = {}
         errors = []
@@ -97,7 +98,7 @@ class Analysis:
         return cls(name, grouped, description)
 
     @classmethod
-    def from_legacy(cls, name: str, content: Any, filters: Sequence[AnalysisFilter], strict: bool = True) -> "Analysis":
+    def from_legacy(cls, name: str, content: Any, filters: Sequence[AnalysisFilter], strict: bool = True) -> Analysis:
         """
         A configuration file in the legacy format. With strict=False (the
         files already on the volume, read at startup before other packages
@@ -131,13 +132,14 @@ class Analysis:
         return cls(name, grouped, description if isinstance(description, str) else "")
 
     @classmethod
-    def from_spec(cls, spec: Mapping[str, Any]) -> "Analysis":
+    def from_spec(cls, spec: Mapping[str, Any]) -> Analysis:
         """meta.state.spec of a derived object (to_spec)."""
 
         filters = spec.get("filters") or {}
         if not isinstance(filters, Mapping):
             raise ValidationError("The analysis has no valid filters")
-        return cls(str(spec.get("name") or ""), {str(key): [dict(item) for item in items] for key, items in filters.items()},
+        return cls(str(spec.get("name") or ""),
+            {str(key): [dict(item) for item in items] for key, items in filters.items()},
                    str(spec.get("description") or ""))
 
     # ------------------------------------------------------------------ #
@@ -146,7 +148,8 @@ class Analysis:
                 "filters": {key: [dict(item) for item in items] for key, items in self.filters.items()}}
 
     def to_legacy(self, dataset: str, based_on: str | None = None) -> dict[str, Any]:
-        content: dict[str, Any] = {key: [dict(item) for item in self.filters.get(key, [])] for key in LEGACY_FILTER_KEYS}
+        content: dict[str, Any] = {key: [dict(item) for item in self.filters.get(key, [])]
+            for key in LEGACY_FILTER_KEYS}
         for key, items in self.filters.items():
             if key not in content:
                 content[key] = [dict(item) for item in items]

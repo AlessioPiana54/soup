@@ -14,8 +14,9 @@ Project : soup-server
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any, Mapping
+from typing import Any
 
 CREATED_BY_IMPORTER = "importer"
 CREATED_BY_OPERATION = "operation"
@@ -38,7 +39,7 @@ class CreatedBy:
         return {"type": self.type, "contributor_id": self.contributor_id, "package": self.package}
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any]) -> "CreatedBy":
+    def from_dict(cls, data: Mapping[str, Any]) -> CreatedBy:
         return cls(str(data["type"]), str(data["contributor_id"]), str(data["package"]))
 
 
@@ -78,7 +79,7 @@ class ObjectRef:
         }
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any]) -> "ObjectRef":
+    def from_dict(cls, data: Mapping[str, Any]) -> ObjectRef:
         return cls(
             id=str(data["id"]),
             name=str(data["name"]),

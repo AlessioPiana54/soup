@@ -20,7 +20,8 @@ Project : soup-packages/tool_memgraph
 from __future__ import annotations
 
 import threading
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from typing import Any
 
 from soup.core.contracts import ConflictError, Tool
 
@@ -41,7 +42,7 @@ class MemgraphTool(Tool, GraphDatabase):
 
     def __init__(self, db: GraphDatabase):
         self._db = db
-        self._state: Optional[str] = None
+        self._state: str | None = None
         self._lock = threading.RLock()
 
     def run(self, query: Query) -> list[dict[str, Any]]:
@@ -97,7 +98,7 @@ class MemgraphTool(Tool, GraphDatabase):
             mutate(self.run)
             self._state = to_state
 
-    def current_state(self) -> Optional[str]:
+    def current_state(self) -> str | None:
         return self._state
 
     def clear(self) -> None:

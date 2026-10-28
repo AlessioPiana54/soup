@@ -28,13 +28,14 @@ from __future__ import annotations
 
 import json
 from collections import Counter
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Iterable, Mapping, Optional, Sequence, Union
+from typing import Any
 
 from soup.core.contracts import ValidationError
 
-Scalar = Union[str, int, float, bool, None]
+Scalar = str | int | float | bool | None
 
 # The time of an object attribute without one: the initial value.
 EPOCH = "1970-01-01T00:00:00Z"
@@ -138,7 +139,7 @@ def _list(container: Mapping[str, Any], key: str, path: str, required: bool = Fa
     return value
 
 
-def _text(container: Mapping[str, Any], key: str, path: str, default: Optional[str] = None) -> str:
+def _text(container: Mapping[str, Any], key: str, path: str, default: str | None = None) -> str:
     if key not in container and default is not None:
         return default
     value = container.get(key)
@@ -163,7 +164,7 @@ def parse_time(text: str) -> datetime:
     return datetime.fromisoformat(f"{body}+00:00" if utc else body)
 
 
-def _time(container: Mapping[str, Any], key: str, path: str, default: Optional[str] = None) -> str:
+def _time(container: Mapping[str, Any], key: str, path: str, default: str | None = None) -> str:
     value = _text(container, key, path, default)
     try:
         parse_time(value)
@@ -179,7 +180,7 @@ def _scalar(container: Mapping[str, Any], path: str) -> Scalar:
     return value
 
 
-def _join(path: str, key: Union[str, int]) -> str:
+def _join(path: str, key: str | int) -> str:
     if isinstance(key, int):
         return f"{path}[{key}]"
     return f"{path}.{key}" if path else key
@@ -195,32 +196,33 @@ def _describe(value: Any) -> str:
     return repr(value) if isinstance(value, str) else _json_type(value)
 
 
-def _types(root: Mapping[str, Any], key: str) -> Optional[tuple[TypeDecl, ...]]:
+def _types(root: Mapping[str, Any], key: str) -> tuple[TypeDecl, ...] | None:
     if key not in root:
         return None
     declared: list[TypeDecl] = []
     names: set[str] = set()
-    for index, item in enumerate(_list(root, key, "")):
+    for index, raw_item in enumerate(_list(root, key, "")):
         path = _join(key, index)
-        item = _object(item, path)
+        item = _object(raw_item, path)
         name = _text(item, "name", path)
         if name in names:
             raise _fail(path, f"type {name!r} is declared twice")
         names.add(name)
         attributes = []
-        for position, attribute in enumerate(_list(item, "attributes", path)):
+        for position, raw_attribute in enumerate(_list(item, "attributes", path)):
             attribute_path = _join(_join(path, "attributes"), position)
-            attribute = _object(attribute, attribute_path)
-            attributes.append((_text(attribute, "name", attribute_path), _text(attribute, "type", attribute_path, "string")))
+            attribute = _object(raw_attribute, attribute_path)
+            attributes.append((_text(attribute, "name", attribute_path),
+                _text(attribute, "type", attribute_path, "string")))
         declared.append(TypeDecl(name, tuple(attributes)))
     return tuple(declared)
 
 
 def _relationships(item: Mapping[str, Any], path: str) -> tuple[Relationship, ...]:
     found = []
-    for index, relationship in enumerate(_list(item, "relationships", path)):
+    for index, raw_relationship in enumerate(_list(item, "relationships", path)):
         relationship_path = _join(_join(path, "relationships"), index)
-        relationship = _object(relationship, relationship_path)
+        relationship = _object(raw_relationship, relationship_path)
         found.append(Relationship(
             _text(relationship, "objectId", relationship_path),
             _text(relationship, "qualifier", relationship_path, ""),
@@ -228,7 +230,7 @@ def _relationships(item: Mapping[str, Any], path: str) -> tuple[Relationship, ..
     return tuple(found)
 
 
-def _check_type(type_: str, declared: Optional[tuple[TypeDecl, ...]], path: str, key: str) -> None:
+def _check_type(type_: str, declared: tuple[TypeDecl, ...] | None, path: str, key: str) -> None:
     if declared is not None and type_ not in {decl.name for decl in declared}:
         raise _fail(_join(path, "type"), f"type {type_!r} is not declared in '{key}'")
 
@@ -254,12 +256,7 @@ def _derived_types(items: Iterable[tuple[str, Iterable[tuple[str, Scalar]]]]) ->
     return tuple(TypeDecl(name, tuple(attributes.items())) for name, attributes in found.items())
 
 
-def parse(data: bytes) -> OcelLog:
-    """
-    The OCEL 2.0 log in `data` (UTF-8 JSON).
-    :raises ValidationError: not JSON, or not a conforming OCEL 2.0 document
-    """
-
+def _document(data: bytes) -> Mapping[str, Any]:
     try:
         root = json.loads(data.decode("utf-8-sig"))
     except UnicodeDecodeError as error:
@@ -268,57 +265,87 @@ def parse(data: bytes) -> OcelLog:
         raise _fail("", f"not JSON (line {error.lineno}, column {error.colno}: {error.msg})") from None
     if not isinstance(root, dict):
         raise _fail("", f"the document must be a JSON object with 'events' and 'objects', got {_json_type(root)}")
+    return root
 
+
+def _unique_id(item: Mapping[str, Any], path: str, seen: set[str], what: str) -> str:
+    identifier = _text(item, "id", path)
+    if identifier in seen:
+        raise _fail(_join(path, "id"), f"{what} {identifier!r} appears twice")
+    seen.add(identifier)
+    return identifier
+
+
+def _object_attributes(item: Mapping[str, Any], path: str) -> tuple[tuple[str, str, Scalar], ...]:
+    attributes = []
+    for position, raw_attribute in enumerate(_list(item, "attributes", path)):
+        attribute_path = _join(_join(path, "attributes"), position)
+        attribute = _object(raw_attribute, attribute_path)
+        attributes.append((
+            _text(attribute, "name", attribute_path),
+            _time(attribute, "time", attribute_path, EPOCH),
+            _scalar(attribute, attribute_path),
+        ))
+    return tuple(attributes)
+
+
+def _event_attributes(item: Mapping[str, Any], path: str) -> tuple[tuple[str, Scalar], ...]:
+    attributes = []
+    for position, raw_attribute in enumerate(_list(item, "attributes", path)):
+        attribute_path = _join(_join(path, "attributes"), position)
+        attribute = _object(raw_attribute, attribute_path)
+        attributes.append((_text(attribute, "name", attribute_path), _scalar(attribute, attribute_path)))
+    return tuple(attributes)
+
+
+def _objects(root: Mapping[str, Any], declared: tuple[TypeDecl, ...] | None) -> tuple[list[OcelObject], set[str]]:
+    objects: list[OcelObject] = []
+    ids: set[str] = set()
+    for index, raw_item in enumerate(_list(root, OBJECTS, "", required=True)):
+        path = _join(OBJECTS, index)
+        item = _object(raw_item, path)
+        object_id = _unique_id(item, path, ids, "object")
+        type_ = _text(item, "type", path)
+        _check_type(type_, declared, path, "objectTypes")
+        objects.append(OcelObject(object_id, type_, _object_attributes(item, path), _relationships(item, path)))
+    return objects, ids
+
+
+def _events(root: Mapping[str, Any], declared: tuple[TypeDecl, ...] | None) -> list[Event]:
+    events: list[Event] = []
+    ids: set[str] = set()
+    for index, raw_item in enumerate(_list(root, EVENTS, "", required=True)):
+        path = _join(EVENTS, index)
+        item = _object(raw_item, path)
+        event_id = _unique_id(item, path, ids, "event")
+        type_ = _text(item, "type", path)
+        _check_type(type_, declared, path, "eventTypes")
+        events.append(Event(event_id, type_, _time(item, "time", path), _event_attributes(item, path),
+                            _relationships(item, path)))
+    return events
+
+
+def _check_references(kind: str, items: Sequence[Event | OcelObject], object_ids: set[str]) -> None:
+    for index, item in enumerate(items):
+        for position, relationship in enumerate(item.relationships):
+            if relationship.object_id not in object_ids:
+                path = _join(_join(_join(kind, index), "relationships"), position)
+                raise _fail(_join(path, "objectId"), f"object {relationship.object_id!r} is not among the objects")
+
+
+def parse(data: bytes) -> OcelLog:
+    """
+    The OCEL 2.0 log in `data` (UTF-8 JSON).
+    :raises ValidationError: not JSON, or not a conforming OCEL 2.0 document
+    """
+
+    root = _document(data)
     event_types = _types(root, "eventTypes")
     object_types = _types(root, "objectTypes")
-
-    objects: list[OcelObject] = []
-    object_ids: set[str] = set()
-    for index, item in enumerate(_list(root, OBJECTS, "", required=True)):
-        path = _join(OBJECTS, index)
-        item = _object(item, path)
-        object_id = _text(item, "id", path)
-        if object_id in object_ids:
-            raise _fail(_join(path, "id"), f"object {object_id!r} appears twice")
-        object_ids.add(object_id)
-        type_ = _text(item, "type", path)
-        _check_type(type_, object_types, path, "objectTypes")
-        attributes = []
-        for position, attribute in enumerate(_list(item, "attributes", path)):
-            attribute_path = _join(_join(path, "attributes"), position)
-            attribute = _object(attribute, attribute_path)
-            attributes.append((
-                _text(attribute, "name", attribute_path),
-                _time(attribute, "time", attribute_path, EPOCH),
-                _scalar(attribute, attribute_path),
-            ))
-        objects.append(OcelObject(object_id, type_, tuple(attributes), _relationships(item, path)))
-
-    events: list[Event] = []
-    event_ids: set[str] = set()
-    for index, item in enumerate(_list(root, EVENTS, "", required=True)):
-        path = _join(EVENTS, index)
-        item = _object(item, path)
-        event_id = _text(item, "id", path)
-        if event_id in event_ids:
-            raise _fail(_join(path, "id"), f"event {event_id!r} appears twice")
-        event_ids.add(event_id)
-        type_ = _text(item, "type", path)
-        _check_type(type_, event_types, path, "eventTypes")
-        attributes = []
-        for position, attribute in enumerate(_list(item, "attributes", path)):
-            attribute_path = _join(_join(path, "attributes"), position)
-            attribute = _object(attribute, attribute_path)
-            attributes.append((_text(attribute, "name", attribute_path), _scalar(attribute, attribute_path)))
-        events.append(Event(event_id, type_, _time(item, "time", path), tuple(attributes), _relationships(item, path)))
-
-    for kind, items in ((EVENTS, events), (OBJECTS, objects)):
-        for index, item in enumerate(items):
-            for position, relationship in enumerate(item.relationships):
-                if relationship.object_id not in object_ids:
-                    path = _join(_join(_join(kind, index), "relationships"), position)
-                    raise _fail(_join(path, "objectId"), f"object {relationship.object_id!r} is not among the objects")
-
+    objects, object_ids = _objects(root, object_types)
+    events = _events(root, event_types)
+    _check_references(EVENTS, events, object_ids)
+    _check_references(OBJECTS, objects, object_ids)
     if event_types is None:
         event_types = _derived_types((event.type, event.attributes) for event in events)
     if object_types is None:
@@ -358,7 +385,7 @@ class StoredTable:
         return json.dumps(document, ensure_ascii=False).encode("utf-8")
 
     @classmethod
-    def from_json(cls, data: bytes) -> "StoredTable":
+    def from_json(cls, data: bytes) -> StoredTable:
         document = json.loads(data.decode("utf-8"))
         return cls(
             tuple(document["columns"]),
@@ -407,7 +434,7 @@ def _comparable(time: str) -> datetime:
     return when if when.tzinfo else when.replace(tzinfo=timezone.utc)
 
 
-def events_table(log: OcelLog, limit: Optional[int] = None) -> StoredTable:
+def events_table(log: OcelLog, limit: int | None = None) -> StoredTable:
     """The events table (only the first `limit` rows, if given; the columns are those of every event)."""
 
     attributes = _attribute_names(log.event_types, (name for event in log.events for name, _value in event.attributes))
@@ -438,7 +465,8 @@ def to_tables(log: OcelLog) -> dict[str, StoredTable]:
     return {
         EVENTS: events_table(log),
         OBJECTS: StoredTable(
-            unique_columns(OBJECT_COLUMNS, object_attributes), tuple(object_rows), object_attributes, len(OBJECT_COLUMNS)
+            unique_columns(OBJECT_COLUMNS, object_attributes),
+                tuple(object_rows), object_attributes, len(OBJECT_COLUMNS)
         ),
         EVENT_OBJECTS: StoredTable(EVENT_OBJECT_COLUMNS, tuple(
             (event.id, event.type, link.object_id, type_of[link.object_id], link.qualifier)
@@ -493,7 +521,7 @@ def from_tables(tables: Mapping[str, StoredTable], types: Mapping[str, Any]) -> 
             str(row[0]), str(row[1]), str(row[2]),
             tuple(
                 (name, value)
-                for position, (name, value) in enumerate(zip(stored.attributes, row[stored.fixed:]))
+                for position, (name, value) in enumerate(zip(stored.attributes, row[stored.fixed:], strict=False))
                 if value is not None or (index, position) in nulls
             ),
             tuple(Relationship(str(link[2]), str(link[4])) for link in links.get(row[0], ())),

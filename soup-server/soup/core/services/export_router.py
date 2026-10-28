@@ -22,8 +22,9 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping, Optional
+from typing import Any
 
 from soup.core.contracts import DomainError, Exporter, Field, NotFoundError, ObjectRef
 from soup.core.field_validation import validate_values
@@ -32,6 +33,9 @@ from soup.core.services.core_tools import CoreTools, ObjectLike, kinds_of
 from soup.core.toolbox import ToolBox
 
 _LOGGER = logging.getLogger("soup.export")
+
+# What Exporter.file_type() returns.
+_FILE_TYPE = ("extension", "mime")
 
 # ".csv", ".tar.gz", ".jsonocel": a dot, then 1-15 letters, digits, ".", "-" or "_".
 _EXTENSION_RE = re.compile(r"\.[A-Za-z0-9._-]{1,15}")
@@ -60,7 +64,7 @@ class ExportRouter:
         entry, ref = self._resolve(exporter_id, obj)
         return self._fields(entry.item, ref, self._toolbox(exporter_id, entry.item))
 
-    def export(self, exporter_id: str, obj: ObjectLike, params: Optional[Mapping[str, Any]] = None) -> ExportedFile:
+    def export(self, exporter_id: str, obj: ObjectLike, params: Mapping[str, Any] | None = None) -> ExportedFile:
         """
         :raises DomainError: (500) file_type() gave an invalid extension or MIME type
         """
@@ -96,7 +100,7 @@ class ExportRouter:
     @staticmethod
     def _file_type(entry: Registered[Exporter], obj: ObjectRef, params: Mapping[str, Any]) -> tuple[str, str]:
         value = entry.item.file_type(obj, params)
-        if not isinstance(value, tuple) or len(value) != 2:
+        if not isinstance(value, tuple) or len(value) != len(_FILE_TYPE):
             problems = [f"{value!r} instead of (extension, mime)"]
         else:
             extension, mime = value

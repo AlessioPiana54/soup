@@ -1,6 +1,7 @@
-import { BlockElement, h } from '../dom';
+import { h } from '@soup/sdk';
+import { BlockElement } from '../dom';
 
-export interface ErrorData {
+interface ErrorData {
   message: string;
 }
 

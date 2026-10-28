@@ -20,17 +20,21 @@ Project : soup-packages/csv_ekg
 
 from __future__ import annotations
 
-from typing import Any, Optional, Sequence
+from collections.abc import Sequence
+from typing import Any
+
+from soup_pkg_ekg.api import Table
 
 from soup.core.contracts import report
-from soup_pkg_ekg.api import Table
 
 NONE = "0"
 ONE = "1"
 MANY = "N"
+# A multiplicity needs two columns.
+MIN_COLUMNS = 2
 
 
-def _values(cell: Optional[str]) -> list[str]:
+def _values(cell: str | None) -> list[str]:
     if cell is None:
         return []
     return [part.strip() for part in cell.split(",") if part.strip() and part.strip() != "null"]
@@ -77,11 +81,11 @@ def multiplicity(table: Table, first: str, second: str) -> tuple[str, str, str]:
     return left, right, overall
 
 
-def multiplicity_block(table: Table, columns: Sequence[str]) -> Optional[dict[str, Any]]:
+def multiplicity_block(table: Table, columns: Sequence[str]) -> dict[str, Any] | None:
     """The "graph" block of the multiplicities between `columns`, or None with fewer than two."""
 
     columns = list(dict.fromkeys(column for column in columns if column in table.columns))
-    if len(columns) < 2:
+    if len(columns) < MIN_COLUMNS:
         return None
     edges = []
     for index, first in enumerate(columns):

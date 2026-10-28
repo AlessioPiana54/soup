@@ -18,7 +18,8 @@ Project : soup-server
 
 from __future__ import annotations
 
-from typing import Any, Mapping, Optional
+from collections.abc import Mapping
+from typing import Any
 
 from soup.core.contracts import NotFoundError, ObjectRef, ValidationError, Visualizer
 from soup.core.registry import Registered, Registry
@@ -47,12 +48,12 @@ class VisualizerRouter:
             raise NotFoundError(f"Visualizer '{visualizer_id}' not found")
         return self._visualizers.owner_of(visualizer_id) or ""
 
-    def data(self, visualizer_id: str, obj: ObjectLike, params: Optional[Mapping[str, Any]] = None) -> Any:
+    def data(self, visualizer_id: str, obj: ObjectLike, params: Mapping[str, Any] | None = None) -> Any:
         visualizer, ref = self._resolve(visualizer_id, obj)
         return visualizer.data(ref, dict(params or {}), self._toolbox(visualizer_id, visualizer))
 
     def action(
-        self, visualizer_id: str, obj: ObjectLike, name: str, params: Optional[Mapping[str, Any]] = None
+        self, visualizer_id: str, obj: ObjectLike, name: str, params: Mapping[str, Any] | None = None
     ) -> Any:
         if not isinstance(name, str) or not name:
             raise ValidationError("Action name must be a non-empty string")

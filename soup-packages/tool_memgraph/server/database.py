@@ -22,7 +22,6 @@ from typing import Any
 from neo4j import GraphDatabase as Neo4jGraphDatabase
 
 from .port import GraphDatabase as GraphDatabasePort
-
 from .query import Query
 
 

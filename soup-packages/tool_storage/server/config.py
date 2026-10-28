@@ -12,8 +12,8 @@ Project : soup-packages/tool_storage
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Mapping
 
 from soup.core.contracts import FileStorage
 
@@ -33,7 +33,7 @@ class StorageConfig:
     root: str = DEFAULT_ROOT
 
     @classmethod
-    def from_env(cls, env: Mapping[str, str]) -> "StorageConfig":
+    def from_env(cls, env: Mapping[str, str]) -> StorageConfig:
         return cls(
             kind=env.get("SOUP_STORAGE_KIND", DEFAULT_KIND),
             container_name=env.get("SOUP_CONTAINER_NAME", DEFAULT_CONTAINER_NAME),
@@ -41,15 +41,28 @@ class StorageConfig:
         )
 
 
+# The backends import their library only when chosen (the docker SDK is not
+# needed by a local storage): hence the imports inside the factories.
+def _local(config: StorageConfig) -> FileStorage:
+    from .backends.local import LocalFileStorage  # noqa: PLC0415 - imported only when chosen
+
+    return LocalFileStorage(root=config.root)
+
+
+def _docker(config: StorageConfig) -> FileStorage:
+    from .backends.docker import DockerVolumeStorage  # noqa: PLC0415 - imported only when chosen
+
+    return DockerVolumeStorage(container_name=config.container_name, root=config.root)
+
+
+# One factory per SOUP_STORAGE_KIND: a new backend is one more entry.
+BACKENDS: dict[str, Callable[[StorageConfig], FileStorage]] = {KIND_DOCKER: _docker, KIND_LOCAL: _local}
+
+
 def build_backend(config: StorageConfig) -> FileStorage:
     """:raises ValueError: unknown kind"""
 
-    if config.kind == KIND_LOCAL:
-        from .backends.local import LocalFileStorage
-
-        return LocalFileStorage(root=config.root)
-    if config.kind == KIND_DOCKER:
-        from .backends.docker import DockerVolumeStorage
-
-        return DockerVolumeStorage(container_name=config.container_name, root=config.root)
-    raise ValueError(f"SOUP_STORAGE_KIND must be '{KIND_DOCKER}' or '{KIND_LOCAL}', got {config.kind!r}")
+    factory = BACKENDS.get(config.kind)
+    if factory is None:
+        raise ValueError(f"SOUP_STORAGE_KIND must be '{KIND_DOCKER}' or '{KIND_LOCAL}', got {config.kind!r}")
+    return factory(config)

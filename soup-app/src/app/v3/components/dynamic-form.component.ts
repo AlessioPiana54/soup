@@ -1,8 +1,25 @@
-import { KeyValuePipe } from '@angular/common';
-import { Component, DestroyRef, inject, input, OnChanges, output, signal, SimpleChanges } from '@angular/core';
-import { Field, FileValue, FormValues, ItemValue, PairValue, Variant } from '@soup/sdk';
+import { KeyValuePipe, NgTemplateOutlet } from '@angular/common';
+import {
+  Component,
+  DestroyRef,
+  inject,
+  input,
+  OnChanges,
+  OnInit,
+  output,
+  signal,
+  SimpleChanges,
+  TemplateRef,
+  ViewChild
+} from '@angular/core';
+import { Field, FieldType, FileValue, FormValues, ItemValue, PairValue, Variant } from '@soup/sdk';
 
 import { formatValue, initialValues, optionsFor, readFileValue, requiredErrors, summarize, withoutIndex } from './form-values';
+
+// What the renderer of a field receives
+interface FieldContext {
+  $implicit: Field;
+}
 
 // The element of an "items" field being added (index null) or edited
 interface ItemEditor {
@@ -19,16 +36,18 @@ interface ItemEditor {
  * the preview's `columns`, else free text. "items" elements are tiles with
  * a summary; deleting a tile removes the element from the value (C28),
  * editing or adding one opens the form of its variant (this same
- * component). Every change emits the whole value.
+ * component). Every change emits the whole value. Each Field type has its
+ * own renderer, an ng-template of the template, found in a map (open/closed:
+ * a new type is one more template, not one more branch).
  */
 @Component({
   selector: 'soup-dynamic-form',
   standalone: true,
-  imports: [KeyValuePipe],
+  imports: [KeyValuePipe, NgTemplateOutlet],
   templateUrl: './dynamic-form.component.html',
   styleUrl: './dynamic-form.component.scss'
 })
-export class DynamicFormComponent implements OnChanges {
+export class DynamicFormComponent implements OnChanges, OnInit {
   // The fields of the form
   public fields = input.required<readonly Field[]>();
 
@@ -53,11 +72,51 @@ export class DynamicFormComponent implements OnChanges {
 
   public readonly formatValue = formatValue;
 
+  // The renderers of the template, resolved before the first change detection (static queries)
+  @ViewChild('textareaField', { static: true }) private textareaField!: TemplateRef<FieldContext>;
+  @ViewChild('numberField', { static: true }) private numberField!: TemplateRef<FieldContext>;
+  @ViewChild('boolField', { static: true }) private boolField!: TemplateRef<FieldContext>;
+  @ViewChild('selectField', { static: true }) private selectField!: TemplateRef<FieldContext>;
+  @ViewChild('columnField', { static: true }) private columnField!: TemplateRef<FieldContext>;
+  @ViewChild('multiselectField', { static: true }) private multiselectField!: TemplateRef<FieldContext>;
+  @ViewChild('columnsField', { static: true }) private columnsField!: TemplateRef<FieldContext>;
+  @ViewChild('pairsField', { static: true }) private pairsField!: TemplateRef<FieldContext>;
+  @ViewChild('dateField', { static: true }) private dateField!: TemplateRef<FieldContext>;
+  @ViewChild('datetimeField', { static: true }) private datetimeField!: TemplateRef<FieldContext>;
+  @ViewChild('fileField', { static: true }) private fileField!: TemplateRef<FieldContext>;
+  @ViewChild('itemsField', { static: true }) private itemsField!: TemplateRef<FieldContext>;
+  @ViewChild('textField', { static: true }) private textField!: TemplateRef<FieldContext>;
+
+  private renderers: Partial<Record<FieldType, TemplateRef<FieldContext>>> = {};
+
   // The initial value is emitted after the change detection that set it, if still alive
   private destroyed = false;
 
   constructor() {
     inject(DestroyRef).onDestroy(() => (this.destroyed = true));
+  }
+
+  public ngOnInit(): void {
+    this.renderers = {
+      textarea: this.textareaField,
+      number: this.numberField,
+      bool: this.boolField,
+      select: this.selectField,
+      column: this.columnField,
+      multiselect: this.multiselectField,
+      columns: this.columnsField,
+      pairs: this.pairsField,
+      date: this.dateField,
+      datetime: this.datetimeField,
+      file: this.fileField,
+      items: this.itemsField,
+      text: this.textField
+    };
+  }
+
+  /** The renderer of a Field type; an unknown type is drawn as text. */
+  public renderer(type: string): TemplateRef<FieldContext> {
+    return this.renderers[type as FieldType] ?? this.textField;
   }
 
   public ngOnChanges(changes: SimpleChanges): void {

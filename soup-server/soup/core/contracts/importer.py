@@ -18,8 +18,9 @@ Project : soup-server
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Mapping, Optional, Sequence
+from typing import Any
 
 from soup.core.contracts.fields import Field
 from soup.core.contracts.objects import ObjectRef
@@ -56,7 +57,7 @@ class Importer(ABC):
     extensions: Sequence[str] = ()
     produces: str = ""
     requires_tools: Sequence[str] = ()
-    config_element: Optional[str] = None
+    config_element: str | None = None
 
     def accepts(self, filename: str) -> bool:
         """Default: match by file extension. Override for content sniffing."""

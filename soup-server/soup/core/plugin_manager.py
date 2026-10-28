@@ -4,10 +4,10 @@ File : plugin_manager.py
 Description: Orders, loads, unloads and shuts down plugins (the SoupPlugin
              of each package). Packages are found on disk by the
              PackageManager (soup/core/packages), which hands their
-             plugins to this class; discover() only resolves specs
-             passed in code (tests, "soup.plugins" entry points).
+             plugins to this class; discover() only resolves the
+             plugins passed in code (tests, the e2e server).
              Mirrors the six-phase lifecycle from the refactoring document:
-             1. Discovery   - explicit specs + "soup.plugins" entry points
+             1. Discovery   - SoupPlugin instances or classes given in code
              2. Ordering    - topological sort on `requires` and on tools
                                (a tool's provider loads before the
                                packages requiring it), cycle detection
@@ -32,25 +32,24 @@ Project : soup-server
 
 from __future__ import annotations
 
-import importlib
-import importlib.metadata as importlib_metadata
+from collections.abc import Iterable
+from contextlib import suppress
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Optional
+from typing import Any
 
 from soup.core.contracts import (
     CONTRACTS_API_VERSION,
-    is_api_compatible,
     PluginApiVersionError,
     PluginCycleError,
     PluginDependencyError,
     PluginError,
     PluginMissingToolsError,
     SoupPlugin,
+    is_api_compatible,
 )
 from soup.core.events import PACKAGE_LOADED, PACKAGE_UNLOADED
+from soup.core.ordering import topological_order
 from soup.core.plugin_context import DefaultPluginContext
-
-ENTRY_POINT_GROUP = "soup.plugins"
 
 
 @dataclass
@@ -90,15 +89,11 @@ class PackageReport:
     def add_warning(self, message: str) -> None:
         self.warnings.append(message)
 
-    def merge(self, other: "PackageReport") -> None:
+    def merge(self, other: PackageReport) -> None:
         self.loaded.extend(other.loaded)
         self.failed.extend(other.failed)
         self.disabled.extend(other.disabled)
         self.warnings.extend(other.warnings)
-
-    @property
-    def has_failures(self) -> bool:
-        return bool(self.failed)
 
 
 class PluginManager:
@@ -106,57 +101,30 @@ class PluginManager:
         self.contracts_api_version = contracts_api_version
         self.strict = strict
         self.report: PackageReport = PackageReport()
-        self._ctx: Optional[DefaultPluginContext] = None
+        self._ctx: DefaultPluginContext | None = None
         # Replaced, never mutated: readers (package_status, list) iterate a snapshot.
         self._loaded_plugins: tuple[SoupPlugin, ...] = ()
 
     # ------------------------------------------------------------------ #
     # Phase 1: discovery
     # ------------------------------------------------------------------ #
-    def discover(self, specs: Optional[Iterable[Any]] = None) -> list[SoupPlugin]:
+    def discover(self, specs: Iterable[Any] | None = None) -> list[SoupPlugin]:
         """
         Resolve `specs` into SoupPlugin instances, without registering
-        them. Each spec may be a SoupPlugin instance, a SoupPlugin
-        subclass, or a string: the name of a "soup.plugins" entry point,
-        or a dotted "module.path:Attribute" spec. Packages on disk are
-        not resolved here: the PackageManager loads them.
+        them: each spec is a SoupPlugin instance or a SoupPlugin
+        subclass. Packages on disk are not resolved here: the
+        PackageManager loads them.
         """
 
-        entry_points = self._entry_point_lookup()
-        return [self._resolve_spec(spec, entry_points) for spec in specs or ()]
+        return [self._resolve_spec(spec) for spec in specs or ()]
 
     @staticmethod
-    def _entry_point_lookup() -> dict[str, Any]:
-        eps = importlib_metadata.entry_points(group=ENTRY_POINT_GROUP)
-        return {ep.name: ep for ep in eps}
-
-    def _resolve_spec(self, spec: Any, entry_points: Optional[dict[str, Any]] = None) -> SoupPlugin:
-        entry_points = entry_points if entry_points is not None else self._entry_point_lookup()
-
+    def _resolve_spec(spec: Any) -> SoupPlugin:
         if isinstance(spec, SoupPlugin):
             return spec
         if isinstance(spec, type) and issubclass(spec, SoupPlugin):
             return spec()
-        if isinstance(spec, str):
-            if spec in entry_points:
-                return self._resolve_spec(entry_points[spec].load(), entry_points)
-            return self._load_dotted_path(spec, entry_points)
-
         raise TypeError(f"Unsupported plugin spec: {spec!r}")
-
-    def _load_dotted_path(self, dotted: str, entry_points: Optional[dict[str, Any]] = None) -> SoupPlugin:
-        module_path, _, attr = dotted.partition(":")
-        try:
-            module = importlib.import_module(module_path)
-        except ImportError as exc:
-            raise ImportError(f"Cannot resolve a SoupPlugin from spec '{dotted}'") from exc
-
-        obj = getattr(module, attr, None) if attr else (
-            getattr(module, "PLUGIN", None) or getattr(module, "plugin", None)
-        )
-        if obj is None:
-            raise ImportError(f"Cannot resolve a SoupPlugin from spec '{dotted}'")
-        return self._resolve_spec(obj, entry_points)
 
     # ------------------------------------------------------------------ #
     # Phases 2-5: ordering, verification, registration, isolation
@@ -165,10 +133,10 @@ class PluginManager:
     def loaded_names(self) -> list[str]:
         return [plugin.name for plugin in self._loaded_plugins]
 
-    def get(self, name: str) -> Optional[SoupPlugin]:
+    def get(self, name: str) -> SoupPlugin | None:
         return next((plugin for plugin in self._loaded_plugins if plugin.name == name), None)
 
-    def load(self, plugins: Iterable[SoupPlugin], ctx: Optional[DefaultPluginContext] = None) -> PackageReport:
+    def load(self, plugins: Iterable[SoupPlugin], ctx: DefaultPluginContext | None = None) -> PackageReport:
         """
         Load `plugins` into `ctx` (by default the context of the previous
         call, or a new one). Packages already loaded into the same
@@ -251,10 +219,8 @@ class PluginManager:
         plugin = self.get(name)
         if plugin is None or self._ctx is None:
             raise KeyError(name)
-        try:
+        with suppress(Exception):  # the package's own cleanup is best-effort
             plugin.on_shutdown(self._ctx)
-        except Exception:  # noqa: BLE001 - the package's own cleanup is best-effort
-            pass
         self._ctx.remove_owner(name)
         self._loaded_plugins = tuple(loaded for loaded in self._loaded_plugins if loaded is not plugin)
         self._ctx.publish(PACKAGE_UNLOADED, {"package": plugin.name, "version": plugin.version})
@@ -265,8 +231,8 @@ class PluginManager:
         plugins: list[SoupPlugin],
         by_name: dict[str, SoupPlugin],
         report: PackageReport,
-        host_tools: Optional[set[str]] = None,
-        already_loaded: Optional[set[str]] = None,
+        host_tools: set[str] | None = None,
+        already_loaded: set[str] | None = None,
     ) -> list[SoupPlugin]:
         """
         Phase 3: exclude (and record in `report`) plugins with an
@@ -325,43 +291,25 @@ class PluginManager:
 
     @staticmethod
     def _topological_order(plugins: list[SoupPlugin]) -> list[SoupPlugin]:
-        by_name = {plugin.name: plugin for plugin in plugins}
-        order_index = {plugin.name: i for i, plugin in enumerate(plugins)}
-        indegree = {plugin.name: 0 for plugin in plugins}
-        dependents: dict[str, list[str]] = {plugin.name: [] for plugin in plugins}
+        """Each plugin after the ones it requires and the providers of the tools it requires."""
 
+        by_name = {plugin.name: plugin for plugin in plugins}
         providers: dict[str, list[str]] = {}
         for plugin in plugins:
             for tool in plugin.provides_tools:
                 providers.setdefault(tool, []).append(plugin.name)
-
-        for plugin in plugins:
-            predecessors = [dep for dep in plugin.requires if dep in by_name]
-            for tool in plugin.requires_tools:
-                predecessors.extend(provider for provider in providers.get(tool, ()) if provider != plugin.name)
-            for dep in dict.fromkeys(predecessors):
-                dependents[dep].append(plugin.name)
-                indegree[plugin.name] += 1
-
-        queue = sorted((name for name, deg in indegree.items() if deg == 0), key=lambda n: order_index[n])
-        result: list[SoupPlugin] = []
-        visited: set[str] = set()
-
-        while queue:
-            queue.sort(key=lambda n: order_index[n])
-            name = queue.pop(0)
-            result.append(by_name[name])
-            visited.add(name)
-            for dependent in dependents[name]:
-                indegree[dependent] -= 1
-                if indegree[dependent] == 0:
-                    queue.append(dependent)
-
-        if len(result) != len(plugins):
-            remaining = [plugin.name for plugin in plugins if plugin.name not in visited]
-            raise PluginCycleError(remaining)
-
-        return result
+        predecessors = {
+            plugin.name: [
+                *plugin.requires,
+                *(provider for tool in plugin.requires_tools
+                    for provider in providers.get(tool, ()) if provider != plugin.name),
+            ]
+            for plugin in plugins
+        }
+        ordered, blocked = topological_order(list(by_name), predecessors)
+        if blocked:
+            raise PluginCycleError(blocked)
+        return [by_name[name] for name in ordered]
 
     # ------------------------------------------------------------------ #
     # Phase 6: shutdown
@@ -370,11 +318,7 @@ class PluginManager:
         if self._ctx is None:
             return
         for plugin in reversed(self._loaded_plugins):
-            try:
+            with suppress(Exception):  # shutdown is best-effort
                 plugin.on_shutdown(self._ctx)
-            except Exception:  # noqa: BLE001 - shutdown is best-effort
-                pass
-            try:
+            with suppress(Exception):
                 self._ctx.publish(PACKAGE_UNLOADED, {"package": plugin.name, "version": plugin.version})
-            except Exception:  # noqa: BLE001 - shutdown is best-effort
-                pass

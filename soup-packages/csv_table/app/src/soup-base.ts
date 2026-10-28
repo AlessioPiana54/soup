@@ -5,7 +5,7 @@
  * the manifest requires soup_base).
  */
 
-export type Cell = unknown;
+type Cell = unknown;
 export type Row = Cell[];
 
 export interface TableSort {

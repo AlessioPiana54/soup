@@ -16,8 +16,9 @@ Project : soup-server
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable, Iterable
 from datetime import datetime
-from typing import Any, Callable, Iterable, TypeVar, Union
+from typing import Any, TypeVar
 
 from soup.core.contracts import (
     CATALOG_TOOL,
@@ -31,11 +32,12 @@ from soup.core.contracts import (
     ValidationError,
 )
 from soup.core.registry import Registry
+from soup.core.services.catalog_ports import CatalogReader, CatalogWriter
 from soup.core.toolbox import ToolBox
 
 T = TypeVar("T", bound=Tool)
 
-ObjectLike = Union[ObjectRef, str]
+ObjectLike = ObjectRef | str
 
 # Core tools: (name, port) pairs that build_engine checks after loading
 # the packages, so a missing one is reported in the PackageReport.
@@ -78,6 +80,16 @@ class CoreTools:
     def catalog(self) -> Catalog:
         return self._port(CATALOG_TOOL, Catalog, "the object catalog")
 
+    def catalog_reader(self) -> CatalogReader:
+        """The catalog, for who only looks objects up."""
+
+        return self.catalog()
+
+    def catalog_writer(self) -> CatalogWriter:
+        """The catalog, for who only adds, changes or removes objects."""
+
+        return self.catalog()
+
     def preferences(self) -> Preferences:
         return self._port(PREFERENCES_TOOL, Preferences, "user preferences")
 
@@ -86,7 +98,7 @@ class CoreTools:
 
         if isinstance(obj, ObjectRef):
             return obj
-        ref = self.catalog().get(check_object_id(obj))
+        ref = self.catalog_reader().get(check_object_id(obj))
         if ref is None:
             raise NotFoundError(f"Object '{obj}' not found")
         return ref

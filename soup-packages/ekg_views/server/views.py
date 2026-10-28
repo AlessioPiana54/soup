@@ -42,10 +42,12 @@ Project : soup-packages/ekg_views
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Iterable, Mapping, Optional, Sequence
+from collections.abc import Iterable, Mapping, Sequence
+from typing import Any
+
+from soup_pkg_ekg.api import Query, ident
 
 from soup.core.contracts import ValidationError, report
-from soup_pkg_ekg.api import Query, ident
 
 from .kinds import DEFAULT_KINDS, STANDARD_KINDS
 from .values import as_list, clean
@@ -78,23 +80,24 @@ class GraphView(ABC):
 
     # Optional parts: None means "not supported by this view". `label`
     # narrows a node search to one of node_labels.
-    def search_query(self, text: str, kind: str, offset: int, limit: int, relations: Sequence[str],
-                     label: Optional[str] = None) -> Optional[Query]:
+    def search_query(self, text: str, kind: str, offset: int, limit: int, relations: Sequence[str],  # noqa: PLR0913, PLR0917 - GraphView contract (ekg.graph_views)
+                     label: str | None = None) -> Query | None:
         return None
 
-    def search_count_query(self, text: str, kind: str, relations: Sequence[str], label: Optional[str] = None) -> Optional[Query]:
+    def search_count_query(self, text: str, kind: str, relations: Sequence[str],
+        label: str | None = None) -> Query | None:
         return None
 
     def search_items(self, records: Iterable[Mapping[str, Any]], kind: str) -> list[dict[str, Any]]:
         return []
 
-    def node_query(self, node_id: int) -> Optional[Query]:
+    def node_query(self, node_id: int) -> Query | None:
         return None
 
-    def to_node(self, records: Iterable[Mapping[str, Any]]) -> Optional[dict[str, Any]]:
+    def to_node(self, records: Iterable[Mapping[str, Any]]) -> dict[str, Any] | None:
         return None
 
-    def max_data_query(self, relations: Sequence[str]) -> Optional[Query]:
+    def max_data_query(self, relations: Sequence[str]) -> Query | None:
         return None
 
 
@@ -123,12 +126,12 @@ class EdgeListGraphView(GraphView):
 
     relationships: Mapping[str, tuple[str, str]] = {}
 
-    @property  # type: ignore[override]
-    def relationship_types(self) -> tuple[str, ...]:
+    @property
+    def relationship_types(self) -> tuple[str, ...]:  # type: ignore[override]  # computed from `relationships` instead of declared
         return tuple(self.relationships)
 
-    @property  # type: ignore[override]
-    def node_labels(self) -> tuple[str, ...]:
+    @property
+    def node_labels(self) -> tuple[str, ...]:  # type: ignore[override]  # computed from `relationships` instead of declared
         labels: list[str] = []
         for source, target in self.relationships.values():
             for name in (source, target):
@@ -159,13 +162,14 @@ class EdgeListGraphView(GraphView):
             raise ValidationError(f"View '{self.key}': choose at least one of {list(self.relationship_types)}")
         return chosen
 
-    def chosen_labels(self, label: Optional[str]) -> list[str]:
+    def chosen_labels(self, label: str | None) -> list[str]:
         """[label] checked against node_labels, or all of them."""
 
         if label is None or label == "":
             return list(self.node_labels)
         if label not in self.node_labels:
-            raise ValidationError(f"View '{self.key}' has no node label {label!r}; expected one of {list(self.node_labels)}")
+            raise ValidationError(f"View '{self.key}' has no node label {label!r}; "
+                                  f"expected one of {list(self.node_labels)}")
         return [label]
 
     def edge_pattern(self, relations: Sequence[str]) -> str:
@@ -179,7 +183,7 @@ class EdgeListGraphView(GraphView):
         types = "|".join(ident(name) for name in chosen)
         return f"MATCH ({source})-[r:{types}]->({target})"
 
-    def node_pattern(self, label: Optional[str]) -> str:
+    def node_pattern(self, label: str | None) -> str:
         labels = self.chosen_labels(label)
         if len(labels) == 1:
             return f"MATCH (n:{ident(labels[0])})"
@@ -192,7 +196,7 @@ class EdgeListGraphView(GraphView):
             LIMIT $limit"""
         return Query(text, {"limit": int(limit)})
 
-    def _search_body(self, text: str, kind: str, relations: Sequence[str], label: Optional[str]) -> str:
+    def _search_body(self, text: str, kind: str, relations: Sequence[str], label: str | None) -> str:
         if kind == NODE:
             return f"""
             {self.node_pattern(label)}
@@ -203,8 +207,8 @@ class EdgeListGraphView(GraphView):
             WITH a, r, b, properties(r) AS p
             WHERE $text = '' OR toLower(type(r)) CONTAINS toLower($text) OR {_TEXT_MATCH}"""
 
-    def search_query(self, text: str, kind: str, offset: int, limit: int, relations: Sequence[str],
-                     label: Optional[str] = None) -> Query:
+    def search_query(self, text: str, kind: str, offset: int, limit: int, relations: Sequence[str],  # noqa: PLR0913, PLR0917 - GraphView contract (ekg.graph_views)
+                     label: str | None = None) -> Query:
         body = self._search_body(text, kind, relations, label)
         # A stable order: the next page continues the previous one.
         if kind == NODE:
@@ -219,7 +223,7 @@ class EdgeListGraphView(GraphView):
             LIMIT $limit"""
         return Query(body, {"text": text, "offset": int(offset), "limit": int(limit)})
 
-    def search_count_query(self, text: str, kind: str, relations: Sequence[str], label: Optional[str] = None) -> Query:
+    def search_count_query(self, text: str, kind: str, relations: Sequence[str], label: str | None = None) -> Query:
         body = self._search_body(text, kind, relations, label)
         body += """
             RETURN count(n) AS count""" if kind == NODE else """
@@ -246,7 +250,8 @@ class EdgeListGraphView(GraphView):
 
         names = [str(label) for label in (labels or ())]
         values = clean(dict(props or {}))
-        return {"id": str(node_id), "label": self.node_label(names, values), "group": self.node_group(names, values), "props": values}
+        return {"id": str(node_id), "label": self.node_label(names, values),
+            "group": self.node_group(names, values), "props": values}
 
     def edge_model(self, record: Mapping[str, Any]) -> dict[str, Any]:
         """An edge as <soup-graph-view> models it: {id, source, target, type, label, weight, props}."""
@@ -281,7 +286,7 @@ class EdgeListGraphView(GraphView):
             return [self.node_model(record["id"], record.get("labels"), record.get("props")) for record in records]
         return [self.edge_model(record) for record in records]
 
-    def to_node(self, records: Iterable[Mapping[str, Any]]) -> Optional[dict[str, Any]]:
+    def to_node(self, records: Iterable[Mapping[str, Any]]) -> dict[str, Any] | None:
         for record in records:
             return self.node_model(record["id"], record.get("labels"), record.get("props"))
         return None

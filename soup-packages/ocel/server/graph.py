@@ -26,19 +26,23 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Mapping
 from datetime import timezone
-from typing import Any, Mapping
+from typing import Any
 
-from soup.core.contracts import ObjectDraft, ObjectRef, Operation, OperationInput, Upload
 from soup_pkg_ekg.api import EKG_KIND, ColumnMapping, EventLogData, Table, build_ekg, dispose
 
+from soup.core.contracts import ObjectDraft, ObjectRef, Operation, OperationInput, ToolAccess, Upload
+
 from .model import OcelLog, Scalar, parse, parse_time
-from .store import FORMAT_ID, MEMGRAPH, STORAGE, TABLES_KIND, CachedTables, OcelImporterBase, extension_of
+from .store import FORMAT_ID, MEMGRAPH, STORAGE, TABLES_KIND, OcelImporterBase, extension_of
+from .tables_cache import CachedTables
 
 EVENT_ID, ACTIVITY, TIMESTAMP = "ocel:eid", "ocel:activity", "ocel:timestamp"
 # The columns of the canonical events CSV and the properties of the :Event
 # nodes written by the ekg package: an attribute cannot take these names.
-_RESERVED = {EVENT_ID, ACTIVITY, TIMESTAMP, "event_id", "timestamp", "activity_name", "Event_Id", "Timestamp", "ActivityName"}
+_RESERVED = {EVENT_ID, ACTIVITY, TIMESTAMP,
+    "event_id", "timestamp", "activity_name", "Event_Id", "Timestamp", "ActivityName"}
 _WHITESPACE = re.compile(r"\s+")
 
 NOT_IN_GRAPH = ("qualifiers", "object_objects")
@@ -121,7 +125,7 @@ def ocel_meta(log: OcelLog, extension: str) -> dict[str, Any]:
     }
 
 
-def build(obj: Any, log: OcelLog, extension: str, tools) -> dict[str, Any]:
+def build(obj: Any, log: OcelLog, extension: str, tools: ToolAccess) -> dict[str, Any]:
     data, mapping = event_log_data(log)
     meta = build_ekg(obj, data, mapping, tools, source_format=FORMAT_ID)
     return {**meta, **ocel_meta(log, extension)}
@@ -138,11 +142,11 @@ class OcelEkgImporter(OcelImporterBase):
     produces = EKG_KIND
     requires_tools = (MEMGRAPH, STORAGE)
 
-    def import_(self, upload: Upload, obj: ObjectRef, options: Mapping[str, Any], tools) -> dict[str, Any]:
+    def import_(self, upload: Upload, obj: ObjectRef, options: Mapping[str, Any], tools: ToolAccess) -> dict[str, Any]:
         log = parse(upload.read())
         return {**build(obj, log, extension_of(upload.filename), tools), "filename": upload.filename}
 
-    def dispose(self, obj: ObjectRef, tools) -> None:
+    def dispose(self, obj: ObjectRef, tools: ToolAccess) -> None:
         dispose(obj, tools)
 
 
@@ -158,7 +162,7 @@ class DecomposeToEkg(CachedTables, Operation):
     produces = (EKG_KIND,)
     requires_tools = (MEMGRAPH, STORAGE)
 
-    def run(self, inputs: Mapping[str, ObjectRef], params: Mapping[str, Any], tools) -> list[ObjectDraft]:
+    def run(self, inputs: Mapping[str, ObjectRef], params: Mapping[str, Any], tools: ToolAccess) -> list[ObjectDraft]:
         source = inputs["tables"]
         log = self._tables(source, tools).log()
         extension = extension_of(str(source.meta.get("filename") or ""))
@@ -166,5 +170,5 @@ class DecomposeToEkg(CachedTables, Operation):
         draft.meta = build(draft, log, extension, tools)
         return [draft]
 
-    def dispose(self, obj: ObjectRef, tools) -> None:
+    def dispose(self, obj: ObjectRef, tools: ToolAccess) -> None:
         dispose(obj, tools)

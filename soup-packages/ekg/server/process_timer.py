@@ -14,8 +14,8 @@ Project : soup-packages/ekg
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime
-from typing import Callable, Optional
 
 DATE_FORMAT = "%Y-%m-%dT%H:%M:%S.%f"
 
@@ -33,10 +33,10 @@ class ProcessTimer:
 
     def __init__(self, clock: Callable[[], datetime] = datetime.now):
         self._clock = clock
-        self.started_at: Optional[str] = None
-        self.finished_at: Optional[str] = None
+        self.started_at: str | None = None
+        self.finished_at: str | None = None
 
-    def __enter__(self) -> "ProcessTimer":
+    def __enter__(self) -> ProcessTimer:
         self.started_at = self._now()
         return self
 

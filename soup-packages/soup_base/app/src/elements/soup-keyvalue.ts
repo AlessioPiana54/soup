@@ -1,6 +1,7 @@
-import { BlockElement, display, h } from '../dom';
+import { h } from '@soup/sdk';
+import { BlockElement, display } from '../dom';
 
-export interface KeyValueData {
+interface KeyValueData {
   items: { key: string; value: unknown }[];
 }
 

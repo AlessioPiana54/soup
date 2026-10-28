@@ -14,9 +14,9 @@ Project : soup-server
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable
 
 from soup.core.contracts import ValidationError
 from soup.core.packages.manifest import MANIFEST_FILE, PackageManifest, load_manifest

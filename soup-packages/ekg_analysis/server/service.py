@@ -32,13 +32,15 @@ Project : soup-packages/ekg_analysis
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Mapping, Sequence
+from typing import Any
 
-from soup.core.contracts import ConflictError, ObjectRef, PluginContext
 import soup_pkg_ekg.api as ekg
 from soup_pkg_ekg.api import Query
 from soup_pkg_ekg_views.api import count_of
+
+from soup.core.contracts import ConflictError, ObjectRef, PluginContext, ToolAccess
 
 from .analysis import Analysis, analysis_file, is_analysis
 from .filters import AnalysisFilter, FilterContext, Run
@@ -105,7 +107,7 @@ class AnalysisService:
     def __init__(self, runtime: AnalysisRuntime):
         self._runtime = runtime
 
-    def apply(self, parent: ObjectRef, analysis: Analysis, tools) -> AppliedAnalysis:
+    def apply(self, parent: ObjectRef, analysis: Analysis, tools: ToolAccess) -> AppliedAnalysis:
         """
         :raises ConflictError: an analysis with this name already exists for the dataset
         :raises ServiceUnavailableError: a filter of the analysis is not active

@@ -20,7 +20,8 @@ Project : soup-packages/ekg_views
 from __future__ import annotations
 
 import math
-from typing import Any, Iterable, Mapping, Optional, Sequence
+from collections.abc import Iterable, Mapping, Sequence
+from typing import Any
 
 from soup.core.contracts import ValidationError
 
@@ -57,7 +58,7 @@ def clean(value: Any) -> Any:
     return value
 
 
-def as_int(value: Any, name: str, default: int, low: int, high: Optional[int] = None) -> int:
+def as_int(value: Any, name: str, default: int, low: int, high: int | None = None) -> int:
     """An integer in low..high (clamped); missing -> default."""
 
     if value is None or value == "":
@@ -90,7 +91,7 @@ def as_text(value: Any, name: str, default: str = "", required: bool = False) ->
     return value
 
 
-def as_choice(value: Any, name: str, choices: Sequence[str], default: Optional[str] = None) -> str:
+def as_choice(value: Any, name: str, choices: Sequence[str], default: str | None = None) -> str:
     if value is None or value == "":
         if default is None:
             raise ValidationError(f"'{name}' is required; expected one of {list(choices)}")

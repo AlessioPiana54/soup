@@ -21,9 +21,10 @@ from __future__ import annotations
 
 import logging
 import threading
+from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Any, Mapping, Optional
+from typing import Any
 
 from soup.core.contracts import EventHandler
 
@@ -39,7 +40,7 @@ class Subscription:
 
 
 class EventBus:
-    def __init__(self, logger: Optional[logging.Logger] = None):
+    def __init__(self, logger: logging.Logger | None = None):
         self._logger = logger or _LOGGER
         # Never mutated: replaced as a whole on every change.
         self._subscriptions: Mapping[str, tuple[Subscription, ...]] = MappingProxyType({})
@@ -66,7 +67,7 @@ class EventBus:
     def subscribers(self, event: str) -> list[Subscription]:
         return list(self._subscriptions.get(event, ()))
 
-    def publish(self, event: str, payload: Optional[Mapping[str, Any]] = None) -> None:
+    def publish(self, event: str, payload: Mapping[str, Any] | None = None) -> None:
         view = MappingProxyType(dict(payload or {}))
         for subscription in self.subscribers(event):
             try:

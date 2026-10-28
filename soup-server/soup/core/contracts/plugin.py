@@ -12,7 +12,8 @@ Project : soup-server
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Mapping, Protocol, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from typing import Any, Protocol
 
 from soup.core.contracts.version import CONTRACTS_API_VERSION
 

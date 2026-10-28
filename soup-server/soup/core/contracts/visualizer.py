@@ -14,7 +14,8 @@ Project : soup-server
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Mapping, Sequence
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 from soup.core.contracts.errors import NotFoundError
 from soup.core.contracts.objects import ObjectRef

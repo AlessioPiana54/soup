@@ -19,9 +19,10 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any, Mapping, Optional
+from typing import Any, cast
 
 from packaging.requirements import InvalidRequirement, Requirement
 from packaging.version import InvalidVersion, Version
@@ -54,7 +55,7 @@ class PackageManifest:
     python_dependencies: tuple[str, ...]
     server_module: str
     server_plugin: str
-    app_entry: Optional[str] = None
+    app_entry: str | None = None
 
     @property
     def parsed_version(self) -> Version:
@@ -96,7 +97,7 @@ def validate_package_name(name: Any) -> str:
         raise ValidationError(
             f"Package name must be lowercase letters, digits and '_', starting with a letter: {name!r}"
         )
-    return name
+    return cast(str, name)  # validate_name accepted it: a string
 
 
 def load_manifest(package_dir: Path) -> PackageManifest:
@@ -112,7 +113,89 @@ def load_manifest(package_dir: Path) -> PackageManifest:
     return parse_manifest(data, package_dir)
 
 
-def parse_manifest(data: Any, package_dir: Optional[Path] = None) -> PackageManifest:
+class _ManifestReader:
+    """Reads the fields of a manifest dict, collecting one message per invalid field (in field order)."""
+
+    def __init__(self, data: Mapping[str, Any]):
+        self.data = data
+        self.errors: dict[str, str] = {}
+
+    def text(self, key: str, required: bool = True) -> str:
+        value = self.data.get(key)
+        if value is None and not required:
+            return ""
+        if not isinstance(value, str) or (required and not value.strip()):
+            self.errors[key] = "must be a non-empty string" if required else "must be a string"
+            return ""
+        return value
+
+    def names(self, key: str) -> tuple[str, ...]:
+        value = self.data.get(key, [])
+        if not isinstance(value, list) or not all(isinstance(item, str) and item for item in value):
+            self.errors[key] = "must be a list of non-empty strings"
+            return ()
+        if len(set(value)) != len(value):
+            self.errors[key] = "must not contain duplicates"
+        return tuple(value)
+
+    def name(self) -> str:
+        name = self.text("name")
+        if name:
+            try:
+                validate_package_name(name)
+            except ValidationError as exc:
+                self.errors["name"] = str(exc)
+        return name
+
+    def version(self) -> str:
+        version = self.text("version")
+        if version:
+            try:
+                Version(version)
+            except InvalidVersion:
+                self.errors["version"] = f"is not a valid version: {version!r}"
+        return version
+
+    def api_version(self) -> str:
+        api_version = self.text("api_version")
+        if api_version and parse_api_version(api_version) is None:
+            self.errors["api_version"] = f'must be "MAJOR.MINOR", got {api_version!r}'
+        return api_version
+
+    def requires(self, name: str) -> tuple[str, ...]:
+        requires = self.names("requires")
+        for dep in requires:
+            if not _PACKAGE_NAME_RE.match(dep):
+                self.errors["requires"] = f"is not a package name: {dep!r}"
+        if name and name in requires:
+            self.errors["requires"] = "a package cannot require itself"
+        return requires
+
+    def python_dependencies(self) -> tuple[str, ...]:
+        python_dependencies = self.names("python_dependencies")
+        for spec in python_dependencies:
+            try:
+                Requirement(spec)
+            except InvalidRequirement as exc:
+                self.errors["python_dependencies"] = f"invalid requirement {spec!r}: {exc}"
+        return python_dependencies
+
+    def check_server_module(self, package_dir: Path | None, server_module: str) -> None:
+        if package_dir is None or not server_module or "server" in self.errors:
+            return
+        module_dir = Path(package_dir).joinpath(*server_module.split("."))
+        if not (module_dir / "__init__.py").is_file():
+            expected = server_module.replace(".", "/") + "/__init__.py"
+            self.errors["server"] = f"module '{server_module}' not found (expected {expected})"
+
+    def raise_errors(self, name: str) -> None:
+        if self.errors:
+            raise ValidationError(f"Invalid manifest for package '{name or '?'}': " + "; ".join(
+                f"{key} {message}" for key, message in self.errors.items()
+            ), details={"fields": self.errors})
+
+
+def parse_manifest(data: Any, package_dir: Path | None = None) -> PackageManifest:
     """
     Validate a manifest dict. With `package_dir`, also check that the
     server module exists inside it.
@@ -122,78 +205,22 @@ def parse_manifest(data: Any, package_dir: Optional[Path] = None) -> PackageMani
     if not isinstance(data, Mapping):
         raise ValidationError(f"{MANIFEST_FILE} must contain a JSON object")
 
-    errors: dict[str, str] = {}
-
-    def text(key: str, required: bool = True) -> str:
-        value = data.get(key)
-        if value is None and not required:
-            return ""
-        if not isinstance(value, str) or (required and not value.strip()):
-            errors[key] = "must be a non-empty string" if required else "must be a string"
-            return ""
-        return value
-
-    def names(key: str) -> tuple[str, ...]:
-        value = data.get(key, [])
-        if not isinstance(value, list) or not all(isinstance(item, str) and item for item in value):
-            errors[key] = "must be a list of non-empty strings"
-            return ()
-        if len(set(value)) != len(value):
-            errors[key] = "must not contain duplicates"
-        return tuple(value)
-
-    name = text("name")
-    if name:
-        try:
-            validate_package_name(name)
-        except ValidationError as exc:
-            errors["name"] = str(exc)
-
-    version = text("version")
-    if version:
-        try:
-            Version(version)
-        except InvalidVersion:
-            errors["version"] = f"is not a valid version: {version!r}"
-
-    api_version = text("api_version")
-    if api_version and parse_api_version(api_version) is None:
-        errors["api_version"] = f'must be "MAJOR.MINOR", got {api_version!r}'
-    label = text("label", required=False) or name
-    description = text("description", required=False)
-    author = text("author", required=False)
-
-    requires = names("requires")
-    for dep in requires:
-        if not _PACKAGE_NAME_RE.match(dep):
-            errors["requires"] = f"is not a package name: {dep!r}"
-    if name and name in requires:
-        errors["requires"] = "a package cannot require itself"
-    requires_tools = names("requires_tools")
-    provides_tools = names("provides_tools")
-    extension_points = names("extension_points")
-
-    python_dependencies = names("python_dependencies")
-    for spec in python_dependencies:
-        try:
-            Requirement(spec)
-        except InvalidRequirement as exc:
-            errors["python_dependencies"] = f"invalid requirement {spec!r}: {exc}"
-
-    server_module, server_plugin = _parse_server(data.get("server"), errors)
-    app_entry = _parse_app(data.get("app"), errors)
-
-    if package_dir is not None and server_module and "server" not in errors:
-        module_dir = Path(package_dir).joinpath(*server_module.split("."))
-        if not (module_dir / "__init__.py").is_file():
-            expected = server_module.replace(".", "/") + "/__init__.py"
-            errors["server"] = f"module '{server_module}' not found (expected {expected})"
-
-    if errors:
-        label_name = name or "?"
-        raise ValidationError(f"Invalid manifest for package '{label_name}': " + "; ".join(
-            f"{key} {message}" for key, message in errors.items()
-        ), details={"fields": errors})
+    reader = _ManifestReader(data)
+    name = reader.name()
+    version = reader.version()
+    api_version = reader.api_version()
+    label = reader.text("label", required=False) or name
+    description = reader.text("description", required=False)
+    author = reader.text("author", required=False)
+    requires = reader.requires(name)
+    requires_tools = reader.names("requires_tools")
+    provides_tools = reader.names("provides_tools")
+    extension_points = reader.names("extension_points")
+    python_dependencies = reader.python_dependencies()
+    server_module, server_plugin = _parse_server(data.get("server"), reader.errors)
+    app_entry = _parse_app(data.get("app"), reader.errors)
+    reader.check_server_module(package_dir, server_module)
+    reader.raise_errors(name)
 
     return PackageManifest(
         name=name,
@@ -226,10 +253,10 @@ def _parse_server(server: Any, errors: dict[str, str]) -> tuple[str, str]:
     if not sep or not _MODULE_RE.match(plugin_module) or not _ATTRIBUTE_RE.match(attribute):
         errors["server"] = f'plugin must be "module:Attribute", got {plugin!r}'
         return "", ""
-    return module, plugin
+    return module, cast(str, plugin)  # partition() above: a string
 
 
-def _parse_app(app: Any, errors: dict[str, str]) -> Optional[str]:
+def _parse_app(app: Any, errors: dict[str, str]) -> str | None:
     if app is None:
         return None
     entry = app.get("entry") if isinstance(app, Mapping) else None

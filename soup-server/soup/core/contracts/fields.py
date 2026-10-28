@@ -14,8 +14,9 @@ Project : soup-server
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Optional, Union
+from typing import Any
 
 TEXT = "text"
 TEXTAREA = "textarea"
@@ -58,7 +59,7 @@ class Choice:
         return {"value": self.value, "label": self.label}
 
 
-ChoiceLike = Union[Choice, str, dict]
+ChoiceLike = Choice | str | dict[str, Any]
 
 
 def _to_choice(raw: ChoiceLike) -> Choice:
@@ -100,7 +101,7 @@ class Field:
     default: Any = None
     choices: tuple[Choice, ...] = ()
     help: str = ""
-    variants: tuple["Variant", ...] = ()
+    variants: tuple[Variant, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.name, str) or not self.name:
@@ -129,7 +130,7 @@ class Field:
     def choice_values(self) -> tuple[str, ...]:
         return tuple(choice.value for choice in self.choices)
 
-    def variant(self, key: str) -> Optional["Variant"]:
+    def variant(self, key: str) -> Variant | None:
         return next((variant for variant in self.variants if variant.key == key), None)
 
     def to_dict(self) -> dict[str, Any]:

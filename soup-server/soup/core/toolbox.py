@@ -12,7 +12,8 @@ Project : soup-server
 
 from __future__ import annotations
 
-from typing import Iterable, TypeVar
+from collections.abc import Iterable
+from typing import TypeVar
 
 from soup.core.contracts import ServiceUnavailableError, Tool, ToolNotDeclaredError
 from soup.core.registry import Registry

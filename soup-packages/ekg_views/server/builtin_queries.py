@@ -27,13 +27,24 @@ Project : soup-packages/ekg_views
 
 from __future__ import annotations
 
-from typing import Any, Mapping, Optional, Sequence
+from collections.abc import Mapping, Sequence
+from typing import Any
 
-from soup.core.contracts import Field, report
 from soup_pkg_ekg.api import Query
 
+from soup.core.contracts import Field, report
+
 from .kinds import STANDARD_KINDS
-from .queries import Block, CountQuery, GraphQuery, NodeListQuery, RelationshipListQuery, count_of, display, limit_fields
+from .queries import (
+    Block,
+    CountQuery,
+    GraphQuery,
+    NodeListQuery,
+    RelationshipListQuery,
+    count_of,
+    display,
+    limit_fields,
+)
 from .values import clean
 from .views import CORR, DF, ENTITY, EVENT, StandardGraphView
 
@@ -155,7 +166,9 @@ class ActivityFrequency(GraphQuery):
         counts = [int(record.get("count") or 0) for record in records]
         return [
             report.chart("bar", labels, [{"label": "eventi", "data": counts}], title=self.label),
-            report.table(["attività", "eventi"], [[label, count] for label, count in zip(labels, counts)], title="Valori"),
+            report.table(["attività", "eventi"],
+                [[label, count] for label, count in zip(labels, counts, strict=False)],
+                title="Valori"),
         ]
 
 
@@ -199,7 +212,9 @@ class EntitiesPerType(GraphQuery):
         counts = [int(record.get("count") or 0) for record in records]
         return [
             report.chart("pie", labels, [{"label": "entità", "data": counts}], title=self.label),
-            report.table(["tipo di entità", "entità"], [[label, count] for label, count in zip(labels, counts)], title="Valori"),
+            report.table(["tipo di entità", "entità"],
+                [[label, count] for label, count in zip(labels, counts, strict=False)],
+                title="Valori"),
         ]
 
 
@@ -231,7 +246,7 @@ class NullEntities(GraphQuery):
 # ---------------------------------------------------------------------- #
 # Tempo
 # ---------------------------------------------------------------------- #
-def _iso_of_number(value: Any) -> Optional[str]:
+def _iso_of_number(value: Any) -> str | None:
     """yyyyMMddHHmmss (as get_min_max_timestamp_query computes it) -> "YYYY-MM-DDTHH:MM:SS"."""
 
     if not isinstance(value, (int, float)) or isinstance(value, bool):
@@ -259,9 +274,10 @@ class Timestamps(GraphQuery):
                  + n.Timestamp.hour * 10000 + n.Timestamp.minute * 100 + n.Timestamp.second AS stamp
             RETURN min(stamp) AS min_timestamp, max(stamp) AS max_timestamp""")
 
-    def rows(self, records: Sequence[Mapping[str, Any]]) -> dict[str, Optional[str]]:
+    def rows(self, records: Sequence[Mapping[str, Any]]) -> dict[str, str | None]:
         record = records[0] if records else {}
-        return {"min": _iso_of_number(clean(record.get("min_timestamp"))), "max": _iso_of_number(clean(record.get("max_timestamp")))}
+        return {"min": _iso_of_number(clean(record.get("min_timestamp"))),
+            "max": _iso_of_number(clean(record.get("max_timestamp")))}
 
     def transform(self, records: Sequence[Mapping[str, Any]], params: Mapping[str, Any]) -> list[Block]:
         values = self.rows(records)

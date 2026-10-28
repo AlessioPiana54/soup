@@ -26,7 +26,7 @@ Description: The operations of ekg_analysis on "ekg" objects:
                and the time range of the object.
              Deleting an analysis object (dispose) removes its graph if it
              is active and its file - otherwise the file would come back
-             as an object at the next start (adoption.py).
+             as an object at the next start (migration.py).
 Project : soup-packages/ekg_analysis
 ------------------------------------------------------------------------
 """
@@ -34,7 +34,10 @@ Project : soup-packages/ekg_analysis
 from __future__ import annotations
 
 import json
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
+
+import soup_pkg_ekg.api as ekg
 
 from soup.core.contracts import (
     REPORT,
@@ -43,11 +46,11 @@ from soup.core.contracts import (
     ObjectRef,
     Operation,
     OperationInput,
+    ToolAccess,
     ValidationError,
     Variant,
     report,
 )
-import soup_pkg_ekg.api as ekg
 
 from .analysis import ANALYSIS_PROVIDER, Analysis, analysis_file
 from .filters import MEMGRAPH, AnalysisFilter, activities, entity_types, time_range
@@ -57,6 +60,10 @@ GROUP = "Analisi"
 UNCHANGED = "unchanged"
 CHANGED = "changed"
 UNCHANGED_NOTICE = "L'analisi non ha modificato il grafo: è uguale a quello di partenza."
+
+
+# The values of a field listed in the example configuration.
+SHOWN_VALUES = 8
 
 
 def name_field() -> Field:
@@ -74,7 +81,7 @@ class _AnalysisOperation(Operation):
         self._runtime = runtime
         self._service = service
 
-    def _create(self, parent: ObjectRef, analysis: Analysis, tools) -> list[ObjectDraft]:
+    def _create(self, parent: ObjectRef, analysis: Analysis, tools: ToolAccess) -> list[ObjectDraft]:
         applied = self._service.apply(parent, analysis, tools)
         meta: dict[str, Any] = {
             "state": {"provider": ANALYSIS_PROVIDER, "spec": analysis.to_spec()},
@@ -88,7 +95,7 @@ class _AnalysisOperation(Operation):
             meta["notice"] = UNCHANGED_NOTICE
         return [ObjectDraft(analysis.name, ekg.EKG_KIND, meta, description=analysis.description)]
 
-    def dispose(self, obj: ObjectRef, tools) -> None:
+    def dispose(self, obj: ObjectRef, tools: ToolAccess) -> None:
         ekg.dispose(obj, tools)
         found = analysis_file(obj)
         if found is None:
@@ -104,7 +111,7 @@ class NewAnalysis(_AnalysisOperation):
     label = "Nuova analisi"
     description = "Filtra l'EKG con una lista di condizioni e ne fa un nuovo oggetto."
 
-    def fields(self, inputs: Mapping[str, ObjectRef], tools) -> list[Field]:
+    def fields(self, inputs: Mapping[str, ObjectRef], tools: ToolAccess) -> list[Field]:
         obj = inputs["ekg"]
         variants = tuple(
             Variant(item.key, item.label or item.key, item.description, tuple(item.fields(obj, tools)))
@@ -117,7 +124,7 @@ class NewAnalysis(_AnalysisOperation):
                   help="Si applicano nell'ordine dei filtri, non in quello della lista."),
         ]
 
-    def run(self, inputs: Mapping[str, ObjectRef], params: Mapping[str, Any], tools) -> list[ObjectDraft]:
+    def run(self, inputs: Mapping[str, ObjectRef], params: Mapping[str, Any], tools: ToolAccess) -> list[ObjectDraft]:
         analysis = Analysis.from_items(params["name"], params.get("filters") or [], self._runtime.filters(),
                                        params.get("description") or "")
         return self._create(inputs["ekg"], analysis, tools)
@@ -126,12 +133,15 @@ class NewAnalysis(_AnalysisOperation):
 class ImportAnalysis(_AnalysisOperation):
     id = "import"
     label = "Importa configurazione di analisi"
-    description = "Crea un'analisi da un file JSON nel formato delle analisi salvate (vedi \"Esempio di configurazione\")."
+    description = (
+        "Crea un'analisi da un file JSON nel formato delle analisi salvate "
+        "(vedi \"Esempio di configurazione\")."
+    )
 
-    def fields(self, inputs: Mapping[str, ObjectRef], tools) -> list[Field]:
+    def fields(self, inputs: Mapping[str, ObjectRef], tools: ToolAccess) -> list[Field]:
         return [name_field(), Field("file", "File di configurazione (.json)", type="file", required=True)]
 
-    def run(self, inputs: Mapping[str, ObjectRef], params: Mapping[str, Any], tools) -> list[ObjectDraft]:
+    def run(self, inputs: Mapping[str, ObjectRef], params: Mapping[str, Any], tools: ToolAccess) -> list[ObjectDraft]:
         upload = params["file"]
         try:
             content = json.loads(upload.read().decode("utf-8"))
@@ -171,11 +181,11 @@ def example_configuration(types: list[str], names: list[str], first: str | None,
 
 def _field_text(spec: Field) -> str:
     values = spec.choice_values()
-    shown = ", ".join(f"`{value}`" for value in values[:8]) + (", …" if len(values) > 8 else "")
+    shown = ", ".join(f"`{value}`" for value in values[:SHOWN_VALUES]) + (", …" if len(values) > SHOWN_VALUES else "")
     return f"| `{spec.name}` | {spec.label} | {spec.type} | {shown} |"
 
 
-def explanation(filters: list[AnalysisFilter], obj: ObjectRef, tools) -> str:
+def explanation(filters: list[AnalysisFilter], obj: ObjectRef, tools: ToolAccess) -> str:
     lines = [
         "Una configurazione è un file JSON con una chiave per filtro; ogni chiave ha una lista di condizioni.",
         "I filtri si applicano in quest'ordine, qualunque sia l'ordine delle chiavi nel file: "
@@ -196,7 +206,10 @@ def explanation(filters: list[AnalysisFilter], obj: ObjectRef, tools) -> str:
 class ExampleConfiguration(Operation):
     id = "example"
     label = "Esempio di configurazione"
-    description = "Un report con un file di configurazione di esempio, costruito su questo EKG, e la spiegazione delle chiavi."
+    description = (
+        "Un report con un file di configurazione di esempio, costruito su questo EKG, "
+        "e la spiegazione delle chiavi."
+    )
     group = GROUP
     inputs = (OperationInput("ekg", (ekg.EKG_KIND,)),)
     produces = (REPORT,)
@@ -205,7 +218,7 @@ class ExampleConfiguration(Operation):
     def __init__(self, runtime: AnalysisRuntime):
         self._runtime = runtime
 
-    def run(self, inputs: Mapping[str, ObjectRef], params: Mapping[str, Any], tools) -> list[ObjectDraft]:
+    def run(self, inputs: Mapping[str, ObjectRef], params: Mapping[str, Any], tools: ToolAccess) -> list[ObjectDraft]:
         obj = inputs["ekg"]
         filters = self._runtime.filters()
         first, last = time_range(obj, tools)

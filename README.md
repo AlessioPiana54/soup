@@ -160,11 +160,16 @@ The addresses of the old interface still work as redirects:
 ```sh
 # backend and the Python tests of the packages (FakeDatabase and in-memory storage: no Docker)
 cd soup-server && pip install -r requirements-dev.txt && python -m pytest
+# with the coverage, and the static analysis of the backend (pyproject.toml)
+python -m pytest --cov
+python scripts/lint.py               # ruff, vulture, mypy --strict (soup/ and every package's server/)
+python scripts/lint.py --counts      # the number of messages per area
+python scripts/metrics.py            # lines, files, ruff warnings, cyclomatic complexity (max, mean, > 10)
 
-# packages: lint, unit tests (vitest/jsdom), type check and bundles
+# packages: lint (eslint, knip, tsc), unit tests (vitest/jsdom), type check and bundles
 cd soup-packages && npm install && npm run lint && npm test && npm run build:packages
 
-# host frontend: lint, build (with type check), unit tests (Chrome headless), end to end (Playwright)
+# host frontend: lint (ng lint, knip, tsc), build (with type check), unit tests (Chrome headless), end to end (Playwright)
 cd soup-app && npm install && npm run lint && npm run build && npm run test:v3 && npm run e2e
 ```
 
@@ -176,7 +181,20 @@ cd soup-app && npm install && npm run lint && npm run build && npm run test:v3 &
 - packages use only the tools and libraries they declare;
 - `soup-app` imports from `soup-packages` only the SDK;
 - no package imports host code;
-- no frontend code calls `/api/v2`.
+- no frontend code calls `/api/v2`;
+- one `ParsedCache` (soup_base's) and one DOM helper `h()` (the SDK's) for every package.
+
+`tests/test_contributions_contract.py` checks that every contribution of the default packages
+honours the contract of its base class (Importer, Operation, Visualizer, Exporter, Tool): declared
+attributes, required methods implemented, overrides with the parameters of the base, unknown
+actions answered with `NotFoundError`, valid `file_type()` and `health()`.
+`tests/test_cypher_compatibility.py` checks that no query uses what the Memgraph of
+`docker-compose.yaml` does not implement.
+
+The limits of the code (ruff: complexity 10, PL rules; eslint: `complexity` 10 and
+`max-lines-per-function` 60, not for tests) are reported by the lint scripts; the exceptions are
+marked in the code with `noqa` and the reason (public signatures, the ekg runtime, the imports of
+the storage backends chosen at runtime).
 
 `tests/test_legacy_routes.py` compares the served routes with `tests/fixtures/api_v3_routes.json`.
 To regenerate the fixture: `python -m tests.tools.dump_v3_routes`.

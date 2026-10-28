@@ -12,7 +12,6 @@ Project : soup-packages/tool_memgraph
 from __future__ import annotations
 
 import os
-from typing import Optional
 
 from soup.core.contracts import PluginContext, SoupPlugin
 
@@ -23,7 +22,7 @@ from .tool import MemgraphTool
 
 class Plugin(SoupPlugin):
     def __init__(self) -> None:
-        self._tool: Optional[MemgraphTool] = None
+        self._tool: MemgraphTool | None = None
 
     def register(self, ctx: PluginContext) -> None:
         config = MemgraphConfig.from_env(os.environ)

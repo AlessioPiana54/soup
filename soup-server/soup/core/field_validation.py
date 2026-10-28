@@ -20,21 +20,23 @@ import base64
 import binascii
 import copy
 import math
+from collections.abc import Callable, Mapping, Sequence
 from datetime import date, datetime
-from typing import Any, Mapping, Optional, Sequence
+from typing import Any
 
 from soup.core.contracts import Field, Upload, ValidationError
 from soup.core.contracts import fields as field_types
 
 _TRUE_STRINGS = {"true", "1", "yes", "on"}
 _FALSE_STRINGS = {"false", "0", "no", "off"}
+_PAIR_LENGTH = 2  # a "pairs" element: [first, second]
 
 
 class _Invalid(Exception):
     """One field's value is unacceptable; message is user-facing."""
 
 
-def validate_values(fields: Sequence[Field], values: Optional[Mapping[str, Any]]) -> dict[str, Any]:
+def validate_values(fields: Sequence[Field], values: Mapping[str, Any] | None) -> dict[str, Any]:
     """
     :raises ValidationError: with `details` = {field path: message}
     """
@@ -74,34 +76,14 @@ def _is_empty(spec: Field, raw: Any) -> bool:
         return True
     if isinstance(raw, str) and raw.strip() == "" and spec.type != field_types.BOOL:
         return True
-    if spec.type in field_types.LIST_FIELD_TYPES and isinstance(raw, (list, tuple)) and len(raw) == 0:
-        return True
-    return False
+    return spec.type in field_types.LIST_FIELD_TYPES and isinstance(raw, (list, tuple)) and len(raw) == 0
 
 
 def _validate_value(spec: Field, raw: Any, path: str, errors: dict[str, str]) -> Any:
-    kind = spec.type
-    if kind in (field_types.TEXT, field_types.TEXTAREA):
-        return _string(raw)
-    if kind == field_types.NUMBER:
-        return _number(raw)
-    if kind == field_types.BOOL:
-        return _boolean(raw)
-    if kind in (field_types.SELECT, field_types.COLUMN):
-        return _one_of(spec, _string(raw))
-    if kind in (field_types.MULTISELECT, field_types.COLUMNS):
-        return _unique([_one_of(spec, _string(item)) for item in _list(raw)])
-    if kind == field_types.PAIRS:
-        return [_pair(spec, item) for item in _list(raw)]
-    if kind == field_types.DATE:
-        return _date(raw)
-    if kind == field_types.DATETIME:
-        return _datetime(raw)
-    if kind == field_types.FILE:
-        return _file(raw)
-    if kind == field_types.ITEMS:
-        return _items(spec, raw, path, errors)
-    raise _Invalid(f"unsupported field type {kind!r}")  # unreachable: Field rejects unknown types
+    validator = _VALIDATORS.get(spec.type)
+    if validator is None:  # unreachable: Field rejects unknown types
+        raise _Invalid(f"unsupported field type {spec.type!r}")
+    return validator(spec, raw, path, errors)
 
 
 def _string(raw: Any) -> str:
@@ -153,6 +135,10 @@ def _one_of(spec: Field, value: str) -> str:
     return value
 
 
+def _many_of(spec: Field, raw: Any) -> list[str]:
+    return _unique([_one_of(spec, _string(item)) for item in _list(raw)])
+
+
 def _list(raw: Any) -> list[Any]:
     if not isinstance(raw, (list, tuple)):
         raise _Invalid("must be a list")
@@ -164,7 +150,7 @@ def _unique(values: list[str]) -> list[str]:
 
 
 def _pair(spec: Field, raw: Any) -> list[str]:
-    if not isinstance(raw, (list, tuple)) or len(raw) != 2:
+    if not isinstance(raw, (list, tuple)) or len(raw) != _PAIR_LENGTH:
         raise _Invalid("every element must be a pair [first, second]")
     return [_one_of(spec, _string(raw[0])), _one_of(spec, _string(raw[1]))]
 
@@ -217,3 +203,23 @@ def _items(spec: Field, raw: Any, path: str, errors: dict[str, str]) -> list[dic
         values = _validate_fields(variant.fields, element_values, f"{element_path}.", errors)
         result.append({"variant": variant.key, "values": values})
     return result
+
+
+# One validator per Field type (fields.FIELD_TYPES): a new type is one more entry.
+Validator = Callable[[Field, Any, str, dict[str, str]], Any]
+
+_VALIDATORS: dict[str, Validator] = {
+    field_types.TEXT: lambda spec, raw, path, errors: _string(raw),
+    field_types.TEXTAREA: lambda spec, raw, path, errors: _string(raw),
+    field_types.NUMBER: lambda spec, raw, path, errors: _number(raw),
+    field_types.BOOL: lambda spec, raw, path, errors: _boolean(raw),
+    field_types.SELECT: lambda spec, raw, path, errors: _one_of(spec, _string(raw)),
+    field_types.COLUMN: lambda spec, raw, path, errors: _one_of(spec, _string(raw)),
+    field_types.MULTISELECT: lambda spec, raw, path, errors: _many_of(spec, raw),
+    field_types.COLUMNS: lambda spec, raw, path, errors: _many_of(spec, raw),
+    field_types.PAIRS: lambda spec, raw, path, errors: [_pair(spec, item) for item in _list(raw)],
+    field_types.DATE: lambda spec, raw, path, errors: _date(raw),
+    field_types.DATETIME: lambda spec, raw, path, errors: _datetime(raw),
+    field_types.FILE: lambda spec, raw, path, errors: _file(raw),
+    field_types.ITEMS: _items,
+}

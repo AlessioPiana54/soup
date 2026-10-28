@@ -17,7 +17,8 @@ Project : soup-packages/ekg_views
 
 from __future__ import annotations
 
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 from soup_pkg_ekg.api import EKG_KIND
 

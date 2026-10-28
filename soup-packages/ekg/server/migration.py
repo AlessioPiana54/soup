@@ -1,7 +1,11 @@
 """
 ------------------------------------------------------------------------
-File : adoption.py
-Description: adopt_legacy_datasets - the datasets already on the volume
+File : migration.py
+Description: The migration of the volumes of the old interface, in one
+             module: run_migration() is all the Plugin calls at startup.
+             It is idempotent and runs at every start (a dataset folder
+             copied onto the volume later is adopted too).
+             adopt_legacy_datasets - the datasets already on the volume
              (/soup/<name>/ with a <name>_config.json, built by the old
              pages or by /api/v2/graph before commit 8) become "ekg"
              objects of the catalog, created_by the csv_ekg importer (the
@@ -10,7 +14,6 @@ Description: adopt_legacy_datasets - the datasets already on the volume
              already has an "ekg" object (same meta.dataset) is skipped,
              so running it again adds nothing;
              a folder whose config cannot be read is logged and skipped.
-             The Plugin runs it at startup.
 Project : soup-packages/ekg
 ------------------------------------------------------------------------
 """
@@ -19,8 +22,9 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Callable
 from datetime import datetime
-from typing import Any, Callable
+from typing import Any
 
 from soup.core.contracts import CREATED_BY_IMPORTER, Catalog, CreatedBy, ObjectRef, validate_name
 
@@ -65,4 +69,20 @@ def adopt_legacy_datasets(tools: Any, clock: Callable[[], datetime] = datetime.n
             _LOGGER.exception("Dataset '%s' could not be added to the catalog", name)
             continue
         adopted.append(obj)
+    return adopted
+
+
+def run_migration(tools: Any) -> list[ObjectRef]:
+    """
+    Adopt the datasets already on the volume; a failure (e.g. storage
+    unreachable) is logged and does not stop the package.
+    """
+
+    try:
+        adopted = adopt_legacy_datasets(tools)
+    except Exception as exc:  # noqa: BLE001 - the package works without the old datasets
+        _LOGGER.warning("The datasets already on the volume were not added to the catalog: %s", exc)
+        return []
+    if adopted:
+        _LOGGER.info("Added %d dataset(s) already on the volume to the catalog", len(adopted))
     return adopted

@@ -1,9 +1,9 @@
-import { Block, ReportData, SoupVisualizerElement, VisualizerContext } from '@soup/sdk';
+import { Block, h, isValidElementName, ReportData, SoupVisualizerElement, VisualizerContext } from '@soup/sdk';
 
-import { BASE_CSS, h, json, style } from '../dom';
+import { BASE_CSS, json, style } from '../dom';
 
-/** The element drawing each block type; all are defined by soup_base. */
-export const BLOCK_ELEMENTS: Readonly<Record<string, string>> = {
+/** The element drawing each block type of report.py; all are defined by soup_base. */
+const BLOCK_ELEMENTS: Readonly<Record<string, string>> = {
   text: 'soup-text',
   markdown: 'soup-markdown',
   image: 'soup-image',
@@ -14,6 +14,9 @@ export const BLOCK_ELEMENTS: Readonly<Record<string, string>> = {
   file: 'soup-file-link',
   error: 'soup-error'
 };
+
+/** Block type -> tag: the ones above and those registered by other packages (registerBlock). */
+const blockElements = new Map<string, string>(Object.entries(BLOCK_ELEMENTS));
 
 const CSS = `
   .block { margin-bottom: 16px; }
@@ -34,9 +37,32 @@ interface BlockHost extends HTMLElement {
  * unknown type shows a warning with its data as JSON. The host also uses
  * it (through the visualizers of "report") for the blocks of an import
  * preview, with the same `data`.
+ *
+ * Other block types are drawn by the elements other packages register,
+ * without importing this code (packages share only the SDK): the class is
+ * found by tag, customElements.get('soup-report-view').registerBlock(type,
+ * tag). The element of tag receives the block's `data` and, if it has a
+ * `context` property, the report's context.
  */
 export class SoupReportView extends HTMLElement implements SoupVisualizerElement<ReportData> {
   public context!: VisualizerContext;
+
+  /**
+   * Draw the blocks of `type` with the element `tag` (defined by the
+   * registering package). A built-in type cannot be replaced.
+   * @throws Error for an empty type, an invalid tag or a built-in type
+   */
+  public static registerBlock(type: string, tag: string): void {
+    if (!type) throw new Error('A block type cannot be empty');
+    if (!isValidElementName(tag)) throw new Error(`Invalid custom element name '${tag}'`);
+    if (type in BLOCK_ELEMENTS) throw new Error(`Block type '${type}' is drawn by soup_base and cannot be replaced`);
+    blockElements.set(type, tag);
+  }
+
+  /** The tag drawing the blocks of `type`, if any. */
+  public static blockElement(type: string): string | undefined {
+    return blockElements.get(type);
+  }
 
   private readonly root = this.attachShadow({ mode: 'open' });
   private value: ReportData = { blocks: [] };
@@ -65,17 +91,24 @@ export class SoupReportView extends HTMLElement implements SoupVisualizerElement
   private block(block: Block): HTMLElement {
     const section = h('section', { className: 'block', attrs: { 'data-block': String(block?.type) } });
     if (block?.title) section.append(h('h4', { text: block.title }));
-    const tag = BLOCK_ELEMENTS[block?.type];
-    if (!tag) {
-      section.append(
-        h('div', { className: 'unknown', attrs: { role: 'note' } }, `Tipo di blocco sconosciuto: ${String(block?.type)}`, h('pre', { text: json(block?.data ?? block) }))
-      );
-      return section;
-    }
+    const tag = blockElements.get(block?.type);
+    section.append(tag ? this.blockElement(tag, block) : unknownBlock(block));
+    return section;
+  }
+
+  private blockElement(tag: string, block: Block): HTMLElement {
     const element = document.createElement(tag) as BlockHost;
     element.data = block.data;
     if (this.context && 'context' in element) element.context = this.context;
-    section.append(element);
-    return section;
+    return element;
   }
+}
+
+function unknownBlock(block: Block): HTMLElement {
+  return h(
+    'div',
+    { className: 'unknown', attrs: { role: 'note' } },
+    `Tipo di blocco sconosciuto: ${String(block?.type)}`,
+    h('pre', { text: json(block?.data ?? block) })
+  );
 }

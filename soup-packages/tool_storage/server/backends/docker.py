@@ -25,16 +25,17 @@ Project : soup-packages/tool_storage
 
 from __future__ import annotations
 
+import builtins
 import io
 import posixpath
 import tarfile
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import docker
 from docker.errors import DockerException, NotFound
 
 from soup.core.contracts import FileStorage, ServiceUnavailableError
-
 
 # The user of the commands run in the container, whatever the image's USER.
 EXEC_USER = "root"
@@ -127,13 +128,13 @@ class DockerVolumeStorage(FileStorage):
         if self._exec(["rm", "-rf", full_path], "deleting").exit_code != 0:
             raise self._unavailable(f"unable to delete '{full_path}'", DockerException("rm failed"))
 
-    def list(self, prefix: str = "") -> list[str]:
+    def list(self, prefix: str = "") -> builtins.list[str]:
         result = self._exec(["ls", "-1", self._full_path(prefix)], "listing")
         if result.exit_code != 0:
             return []
         return [line for line in result.output.decode("utf-8").splitlines() if line]
 
-    def _exec(self, argv: list[str], what: str):
+    def _exec(self, argv: builtins.list[str], what: str):
         container = self._container()
         try:
             return container.exec_run(argv, user=EXEC_USER)

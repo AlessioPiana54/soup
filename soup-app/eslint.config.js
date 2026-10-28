@@ -133,7 +133,6 @@ module.exports = tseslint.config(
       '@typescript-eslint/no-invalid-this': ['warn'],
       '@typescript-eslint/no-shadow': 'error',
       '@typescript-eslint/consistent-type-definitions': 'error',
-      "@typescript-eslint/comma-dangle'": 'off',
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-use-before-define': 'off',
       '@angular-eslint/no-host-metadata-property': 'off',
@@ -141,8 +140,16 @@ module.exports = tseslint.config(
       '@angular-eslint/no-outputs-metadata-property': 'off',
       '@angular-eslint/component-class-suffix': 'off',
       '@angular-eslint/directive-class-suffix': 'off',
-      '@typescript-eslint/prefer-for-of': 'off'
+      '@typescript-eslint/prefer-for-of': 'off',
+      // Reported, not blocking: the limits of the code-quality review (commit 13).
+      complexity: ['warn', 10],
+      'max-lines-per-function': ['warn', { max: 60, skipBlankLines: true, skipComments: true }]
     }
+  },
+  {
+    // A describe() holds many cases: the length limit is for the code under test.
+    files: ['**/*.spec.ts', 'e2e/**/*.ts'],
+    rules: { 'max-lines-per-function': 'off' }
   },
   {
     files: ['**/*.html'],

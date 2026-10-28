@@ -7,18 +7,17 @@
  * above the table filters column by column (all the filters together).
  */
 
-import { SoupVisualizerElement, VisualizerContext } from '@soup/sdk';
+import { h, SoupVisualizerElement, VisualizerContext } from '@soup/sdk';
 
-import { h } from './dom';
 import { SoupTableElement, TablePage, TableQuery } from './soup-base';
 
-export interface CsvTableData {
+interface CsvTableData {
   columns: string[];
   total: number;
   page_size: number;
 }
 
-export interface ColumnFilter {
+interface ColumnFilter {
   column: number;
   value: string;
 }

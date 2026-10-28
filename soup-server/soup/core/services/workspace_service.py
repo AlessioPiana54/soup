@@ -24,9 +24,11 @@ Project : soup-server
 
 from __future__ import annotations
 
+import builtins
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
-from typing import Any, Callable, Optional
+from typing import Any
 
 from soup.core.contracts import (
     CREATED_BY_IMPORTER,
@@ -60,7 +62,7 @@ def _always_active(package: str) -> str:
 @dataclass
 class WorkspaceNode:
     object: ObjectRef
-    children: list["WorkspaceNode"] = field(default_factory=list)
+    children: list[WorkspaceNode] = field(default_factory=list)
     package_status: str = "active"
 
     def to_dict(self) -> dict[str, Any]:
@@ -76,14 +78,14 @@ def _order(obj: ObjectRef) -> tuple[str, str, str]:
 
 
 class WorkspaceService:
-    def __init__(
+    def __init__(  # noqa: PLR0913, PLR0917 - the collaborators, injected by build_engine
         self,
         importers: Registry[Importer],
         operations: Registry[Operation],
         core_tools: CoreTools,
         event_bus: EventBus,
         package_status: PackageStatus = _always_active,
-        orphaned_data: Optional[OrphanedDataLog] = None,
+        orphaned_data: OrphanedDataLog | None = None,
     ):
         self._importers = importers
         self._operations = operations
@@ -92,16 +94,16 @@ class WorkspaceService:
         self._package_status = package_status
         self._orphaned_data = orphaned_data
 
-    def list(self) -> list[WorkspaceNode]:
+    def list(self) -> builtins.list[WorkspaceNode]:
         """
         Roots are objects with no parent in the catalog. An object with
         several parents (an operation with several inputs) appears under
         each of them.
         """
 
-        objects = sorted(self._core_tools.catalog().list(), key=_order)
+        objects = sorted(self._core_tools.catalog_reader().list(), key=_order)
         ids = {obj.id for obj in objects}
-        children: dict[str, list[ObjectRef]] = {}
+        children: dict[str, builtins.list[ObjectRef]] = {}
         roots = []
         for obj in objects:
             known_parents = [parent for parent in dict.fromkeys(obj.parents) if parent in ids]
@@ -127,9 +129,9 @@ class WorkspaceService:
 
         if not isinstance(name, str) or not name:
             raise ValidationError("Name must be a non-empty string")
-        return any(obj.name == name for obj in self._core_tools.catalog().list())
+        return any(obj.name == name for obj in self._core_tools.catalog_reader().list())
 
-    def update(self, object_id: str, name: Optional[str] = None, description: Optional[str] = None) -> ObjectRef:
+    def update(self, object_id: str, name: str | None = None, description: str | None = None) -> ObjectRef:
         """Change the name and/or the description; None leaves a value as it is."""
 
         ref = self.get(object_id)
@@ -151,9 +153,9 @@ class WorkspaceService:
             raise ValidationError("Description must be a string")
         return self._update(replace(self.get(object_id), description=description))
 
-    def get_thumbnail(self, object_id: str) -> Optional[str]:
+    def get_thumbnail(self, object_id: str) -> str | None:
         ref = self.get(object_id)
-        return self._core_tools.catalog().get_thumbnail(ref.id)
+        return self._core_tools.catalog_reader().get_thumbnail(ref.id)
 
     def thumbnail(self, object_id: str) -> str:
         """:raises NotFoundError: unknown object, or no thumbnail set"""
@@ -163,7 +165,7 @@ class WorkspaceService:
             raise NotFoundError(f"Object '{object_id}' has no thumbnail")
         return svg
 
-    def set_thumbnail(self, object_id: str, svg: Optional[str]) -> None:
+    def set_thumbnail(self, object_id: str, svg: str | None) -> None:
         """`svg` None (or empty) removes the thumbnail."""
 
         if svg is not None and not isinstance(svg, str):
@@ -176,9 +178,9 @@ class WorkspaceService:
             if "<svg" not in svg:
                 raise ValidationError("Thumbnail must be SVG markup")
         ref = self.get(object_id)
-        self._core_tools.catalog().set_thumbnail(ref.id, svg)
+        self._core_tools.catalog_writer().set_thumbnail(ref.id, svg)
 
-    def delete(self, object_id: str, cascade: bool = False, force: bool = False) -> list[str]:
+    def delete(self, object_id: str, cascade: bool = False, force: bool = False) -> builtins.list[str]:
         """
         Return the ids deleted, children before parents.
         :raises ConflictError: the object has children and cascade is
@@ -195,7 +197,7 @@ class WorkspaceService:
                 details={"children": [child.id for child in direct_children]},
             )
 
-        ordered: list[ObjectRef] = []
+        ordered: builtins.list[ObjectRef] = []
         seen: set[str] = set()
 
         def visit(obj: ObjectRef) -> None:
@@ -221,7 +223,7 @@ class WorkspaceService:
 
     # ------------------------------------------------------------------ #
     def _update(self, ref: ObjectRef) -> ObjectRef:
-        self._core_tools.catalog().update(ref)
+        self._core_tools.catalog_writer().update(ref)
         return ref
 
     def _contributor(self, obj: ObjectRef) -> Any:
@@ -249,4 +251,4 @@ class WorkspaceService:
         else:
             tools = self._core_tools.toolbox(f"{creator.type} '{creator.contributor_id}'", contributor.requires_tools)
             contributor.dispose(obj, tools)
-        self._core_tools.catalog().remove(obj.id)
+        self._core_tools.catalog_writer().remove(obj.id)

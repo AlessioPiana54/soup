@@ -34,10 +34,12 @@ from __future__ import annotations
 
 import json
 from abc import ABC, abstractmethod
-from typing import Any, Iterable, Mapping, Optional, Sequence
+from collections.abc import Iterable, Mapping, Sequence
+from typing import Any
+
+from soup_pkg_ekg.api import Query, ident
 
 from soup.core.contracts import Field, ValidationError, report
-from soup_pkg_ekg.api import Query, ident
 
 from .kinds import DEFAULT_KINDS
 from .values import as_choice, as_int, as_limit, as_text, clean
@@ -99,7 +101,7 @@ class GraphQuery(ABC):
     fields: Sequence[Field] = ()
     max_limit: int = MAX_ROWS
 
-    def values(self, raw: Optional[Mapping[str, Any]]) -> dict[str, Any]:
+    def values(self, raw: Mapping[str, Any] | None) -> dict[str, Any]:
         """`raw` checked against `fields`: numbers as integers, texts, choices; unknown keys dropped."""
 
         raw = raw or {}
@@ -145,7 +147,8 @@ class CountQuery(GraphQuery):
     node_label: str = ""
     relationship: str = ""
 
-    def __init__(self, key: str = "", label: str = "", group: str = "Conteggi", node_label: str = "", relationship: str = ""):
+    def __init__(self, key: str = "", label: str = "", group: str = "Conteggi",
+        node_label: str = "", relationship: str = ""):
         self.key = key or self.key
         self.label = label or self.label
         self.group = group
@@ -203,7 +206,8 @@ class NodeListQuery(GraphQuery):
     def transform(self, records: Sequence[Mapping[str, Any]], params: Mapping[str, Any]) -> list[Block]:
         props = [dict(record.get("props") or {}) for record in records]
         columns = ordered_columns(key for item in props for key in item)
-        rows = [[record.get("id"), *(display(item.get(column)) for column in columns)] for record, item in zip(records, props)]
+        rows = [[record.get("id"), *(display(item.get(column)) for column in columns)]
+            for record, item in zip(records, props, strict=False)]
         total = count_of(records, "total")
         return [report.table(["id", *columns], rows, total=total, title=self.label)]
 
@@ -216,7 +220,7 @@ class RelationshipListQuery(GraphQuery):
     target_label: str = ""
     where: str = ""
 
-    def __init__(self, key: str = "", label: str = "", group: str = "Relazioni",
+    def __init__(self, key: str = "", label: str = "", group: str = "Relazioni",  # noqa: PLR0913, PLR0917 - public API (soup_pkg_ekg_views.api)
                  source_label: str = "", relationship: str = "", target_label: str = ""):
         self.key = key or self.key
         self.label = label or self.label
@@ -259,7 +263,7 @@ class RelationshipListQuery(GraphQuery):
                 node_text(record.get("target") or {}),
                 *(display(item.get(column)) for column in columns),
             ]
-            for record, item in zip(records, props)
+            for record, item in zip(records, props, strict=False)
         ]
         header = ["id", "sorgente", "tipo", "destinazione", *columns]
         return [report.table(header, rows, total=count_of(records, "total"), title=self.label)]

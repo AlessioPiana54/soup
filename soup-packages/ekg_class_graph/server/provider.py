@@ -13,11 +13,13 @@ Project : soup-packages/ekg_class_graph
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
+
+import soup_pkg_ekg.api as ekg
+from soup_pkg_ekg.api import GraphDatabase
 
 from soup.core.contracts import ValidationError
-from soup_pkg_ekg.api import GraphDatabase
-import soup_pkg_ekg.api as ekg
 
 from .classes import build_classes
 

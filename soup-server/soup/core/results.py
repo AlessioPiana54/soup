@@ -20,7 +20,7 @@ class Result:
     message: str
     response_data: Any = None
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "http_status_code": self.http_status_code,
             "response_data": self.response_data,

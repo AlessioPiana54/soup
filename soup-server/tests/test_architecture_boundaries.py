@@ -439,3 +439,26 @@ def test_the_frontend_never_calls_api_v2():
     files += sorted((APP_ROOT / "src").rglob("*.html"))
     hits = [str(path.relative_to(APP_ROOT)) for path in files if "api/v2" in path.read_text(encoding="utf-8")]
     assert hits == []
+
+
+def test_there_is_one_parsed_cache_and_it_is_soup_base_s():
+    # DRY (commit 13): text, csv_table and ocel use the ParsedCache of
+    # soup_pkg_soup_base.api instead of a copy each.
+    definitions = []
+    for package_dir in _package_dirs():
+        for file_path in _package_files(package_dir):
+            tree = ast.parse(file_path.read_text(encoding="utf-8"), filename=str(file_path))
+            if any(isinstance(node, ast.ClassDef) and node.name == "ParsedCache" for node in ast.walk(tree)):
+                definitions.append(file_path.relative_to(PACKAGES_ROOT).as_posix())
+    assert definitions == ["soup_base/server/cache.py"]
+
+
+def test_the_dom_helper_of_the_package_bundles_lives_in_the_sdk():
+    # DRY (commit 13): h() and errorMessage() come from @soup/sdk, not from a copy per package.
+    copies = sorted(
+        path.relative_to(PACKAGES_ROOT).as_posix()
+        for path in PACKAGES_ROOT.glob("*/app/src/**/*.ts")
+        if re.search(r"^export function (h|errorMessage)\b", path.read_text(encoding="utf-8"), re.M)
+    )
+    assert copies == []
+    assert re.search(r"^export function h<", (PACKAGES_ROOT / "sdk" / "src" / "dom.ts").read_text(encoding="utf-8"), re.M)

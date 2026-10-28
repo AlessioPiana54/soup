@@ -187,3 +187,11 @@ def test_field_serializes_choices_and_variants_for_the_frontend():
     assert data["variants"][0]["key"] == "filter"
     assert data["variants"][0]["fields"][0]["choices"][0] == {"value": "Create", "label": "Create"}
     assert data["variants"][1]["label"] == "Aggregate"
+
+
+def test_every_field_type_has_its_own_validator():
+    # Open/closed: a new Field type is one more entry of the map, not one more branch.
+    from soup.core import field_validation
+    from soup.core.contracts import fields as field_types
+
+    assert set(field_validation._VALIDATORS) == set(field_types.FIELD_TYPES)

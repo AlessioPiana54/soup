@@ -15,18 +15,18 @@ Project : soup-packages/text
 from __future__ import annotations
 
 import os
-from typing import Optional
+
+from soup_pkg_soup_base.api import ParsedCache, limits_from_env
 
 from soup.core.contracts import PluginContext, SoupPlugin
 
-from .cache import ParsedCache, limits_from_env
 from .text import OriginalFileExporter, TextFile, TextImporter, TextVisualizer, new_cache
 
 ENV_PREFIX = "SOUP_TEXT"
 
 
 class Plugin(SoupPlugin):
-    cache: Optional[ParsedCache[TextFile]] = None
+    cache: ParsedCache[TextFile] | None = None
 
     def register(self, ctx: PluginContext) -> None:
         max_objects, max_bytes = limits_from_env(os.environ, ENV_PREFIX)

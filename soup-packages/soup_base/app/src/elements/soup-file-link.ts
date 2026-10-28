@@ -1,8 +1,8 @@
-import { download } from '@soup/sdk';
+import { download, h } from '@soup/sdk';
 
-import { BlockElement, decodeBase64, h } from '../dom';
+import { BlockElement, decodeBase64 } from '../dom';
 
-export interface FileData {
+interface FileData {
   filename: string;
   mime: string;
   base64: string;

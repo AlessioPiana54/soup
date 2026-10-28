@@ -11,7 +11,15 @@ export default tseslint.config(
       '@typescript-eslint/consistent-type-definitions': 'error',
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
-      'no-console': ['error', { allow: ['warn', 'error'] }]
+      'no-console': ['error', { allow: ['warn', 'error'] }],
+      // Reported, not blocking: the limits of the code-quality review (commit 13).
+      complexity: ['warn', 10],
+      'max-lines-per-function': ['warn', { max: 60, skipBlankLines: true, skipComments: true }]
     }
+  },
+  {
+    // A describe() holds many cases: the length limit is for the code under test.
+    files: ['*/app/test/**/*.ts', 'sdk/test/**/*.ts'],
+    rules: { 'max-lines-per-function': 'off' }
   }
 );

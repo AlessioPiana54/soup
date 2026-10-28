@@ -11,8 +11,9 @@ Project : soup-packages/causal_df
 
 from __future__ import annotations
 
-from soup.core.contracts import PluginContext, SoupPlugin
 from soup_pkg_ekg.api import BUILD_STEPS_POINT
+
+from soup.core.contracts import PluginContext, SoupPlugin
 
 from .step import CausalDirectlyFollowsStep
 

@@ -21,15 +21,15 @@ Project : soup-server
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
 from datetime import datetime
 from itertools import permutations
-from typing import Any, Callable, Mapping, Optional, Sequence, Union
+from typing import Any
 
 from soup.core.contracts import (
     CREATED_BY_OPERATION,
     REPORT,
-    Catalog,
     CreatedBy,
     Field,
     NotFoundError,
@@ -43,6 +43,7 @@ from soup.core.event_bus import EventBus
 from soup.core.events import OBJECT_CREATED
 from soup.core.field_validation import validate_values
 from soup.core.registry import Registered, Registry
+from soup.core.services.catalog_ports import CatalogWriter
 from soup.core.services.core_tools import CoreTools, ObjectLike, new_object_id, timestamp
 from soup.core.toolbox import ToolBox
 
@@ -51,10 +52,10 @@ _LOGGER = logging.getLogger("soup.operations")
 # Beyond this many inputs only the positional assignment is tried.
 _MAX_PERMUTED_INPUTS = 6
 
-InputIds = Union[Sequence[ObjectLike], Mapping[str, ObjectLike]]
+InputIds = Sequence[ObjectLike] | Mapping[str, ObjectLike]
 
 
-def assign_inputs(operation: Operation, objects: Sequence[ObjectRef]) -> Optional[dict[str, ObjectRef]]:
+def assign_inputs(operation: Operation, objects: Sequence[ObjectRef]) -> dict[str, ObjectRef] | None:
     """
     Map `objects` onto the operation's input slots, or None if they do not
     fit. The given order is preferred; otherwise any order whose kinds fit.
@@ -67,8 +68,8 @@ def assign_inputs(operation: Operation, objects: Sequence[ObjectRef]) -> Optiona
     if len(objects) <= _MAX_PERMUTED_INPUTS:
         orders.extend(order for order in permutations(objects) if order != tuple(objects))
     for order in orders:
-        if all(obj.kind in slot.kinds for slot, obj in zip(slots, order)):
-            return {slot.name: obj for slot, obj in zip(slots, order)}
+        if all(obj.kind in slot.kinds for slot, obj in zip(slots, order, strict=False)):
+            return {slot.name: obj for slot, obj in zip(slots, order, strict=False)}
     return None
 
 
@@ -101,7 +102,7 @@ class OperationRouter:
         return self._fields(operation, inputs, self._toolbox(operation_id, operation))
 
     def run(
-        self, operation_id: str, input_ids: InputIds, params: Optional[Mapping[str, Any]] = None
+        self, operation_id: str, input_ids: InputIds, params: Mapping[str, Any] | None = None
     ) -> list[ObjectRef]:
         """
         `input_ids` is a list of object ids (matched to the input slots as
@@ -133,10 +134,10 @@ class OperationRouter:
             for draft in drafts
         ]
 
-        catalog = self._core_tools.catalog()
+        catalog = self._core_tools.catalog_writer()
         registered: list[str] = []
         try:
-            outputs = [self._checked(operation, draft, output) for draft, output in zip(drafts, outputs)]
+            outputs = [self._checked(operation, draft, output) for draft, output in zip(drafts, outputs, strict=False)]
             for output in outputs:
                 catalog.add(output)
                 registered.append(output.id)
@@ -159,7 +160,7 @@ class OperationRouter:
             fits = set(inputs) == {slot.name for slot in operation.inputs} and all(
                 inputs[slot.name].kind in slot.kinds for slot in operation.inputs
             )
-            assigned: Optional[dict[str, ObjectRef]] = inputs if fits else None
+            assigned: dict[str, ObjectRef] | None = inputs if fits else None
         else:
             assigned = assign_inputs(operation, [self._core_tools.object(obj) for obj in input_ids])
 
@@ -185,7 +186,8 @@ class OperationRouter:
         validate_name(draft.name)
         if draft.kind not in tuple(operation.produces):
             raise ValueError(
-                f"Operation '{operation.id}' produced kind {draft.kind!r}, not among its produces {tuple(operation.produces)}"
+                f"Operation '{operation.id}' produced kind {draft.kind!r}, "
+                f"not among its produces {tuple(operation.produces)}"
             )
         if draft.kind == REPORT:
             blocks = validate_blocks(output.meta.get("blocks"))
@@ -194,7 +196,7 @@ class OperationRouter:
 
     @staticmethod
     def _compensate(
-        operation: Operation, outputs: list[ObjectRef], registered: list[str], catalog: Catalog, tools: ToolBox
+        operation: Operation, outputs: list[ObjectRef], registered: list[str], catalog: CatalogWriter, tools: ToolBox
     ) -> None:
         for object_id in reversed(registered):
             try:

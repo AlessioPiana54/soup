@@ -6,9 +6,9 @@
  * (soup_base).
  */
 
-import { Block, Field, SoupVisualizerElement, VisualizerContext } from '@soup/sdk';
+import { Block, errorMessage, Field, h, SoupVisualizerElement, VisualizerContext } from '@soup/sdk';
 
-import { errorMessage, h, NOTICE_CSS, noticeBox } from './dom';
+import { NOTICE_CSS, noticeBox } from './dom';
 import { SoupReportViewElement } from './soup-base';
 
 export interface QueryInfo {
@@ -24,7 +24,7 @@ export interface QueriesData {
   notice?: string | null;
 }
 
-export interface QueryResult {
+interface QueryResult {
   key: string;
   label: string;
   blocks: Block[];

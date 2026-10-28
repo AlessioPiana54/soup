@@ -14,8 +14,8 @@ Project : soup-packages/ekg
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Iterable, Iterator, Mapping, Optional, Sequence
 
 import pandas as pd
 
@@ -30,7 +30,7 @@ class Table:
     """
 
     columns: tuple[str, ...]
-    rows: tuple[tuple[Optional[str], ...], ...] = field(default_factory=tuple)
+    rows: tuple[tuple[str | None, ...], ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
         if not isinstance(self.columns, tuple):
@@ -56,8 +56,8 @@ class Table:
     # ------------------------------------------------------------------ #
     @classmethod
     def from_records(
-        cls, records: Iterable[Mapping[str, Optional[str]]], columns: Optional[Sequence[str]] = None
-    ) -> "Table":
+        cls, records: Iterable[Mapping[str, str | None]], columns: Sequence[str] | None = None
+    ) -> Table:
         """Build a Table from an iterable of {column: value} dicts."""
 
         records = list(records)
@@ -70,7 +70,7 @@ class Table:
         return cls(tuple(columns), rows)
 
     @classmethod
-    def from_rows(cls, columns: Sequence[str], rows: Iterable[Sequence[Optional[str]]]) -> "Table":
+    def from_rows(cls, columns: Sequence[str], rows: Iterable[Sequence[str | None]]) -> Table:
         """Build a Table from an explicit column list and row-tuples/lists."""
 
         return cls(tuple(columns), tuple(tuple(row) for row in rows))
@@ -83,12 +83,12 @@ class Table:
 
     def iter_records(self) -> Iterator[dict]:
         for row in self.rows:
-            yield dict(zip(self.columns, row))
+            yield dict(zip(self.columns, row, strict=False))
 
     def __len__(self) -> int:
         return len(self.rows)
 
-    def __iter__(self) -> Iterator[tuple[Optional[str], ...]]:
+    def __iter__(self) -> Iterator[tuple[str | None, ...]]:
         return iter(self.rows)
 
     def __contains__(self, column: object) -> bool:

@@ -23,11 +23,13 @@ Project : soup-packages/ekg_class_graph
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
-from soup.core.contracts import PluginContext, SoupPlugin
 import soup_pkg_ekg.api as ekg
 from soup_pkg_ekg_views.api import GRAPH_VIEWS_POINT, JSON_PARTS_POINT, QUERIES_POINT
+
+from soup.core.contracts import PluginContext, SoupPlugin
 
 from .classes import delete_classes
 from .operations import MEMGRAPH, BuildClassGraph

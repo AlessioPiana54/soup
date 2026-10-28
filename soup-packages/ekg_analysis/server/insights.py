@@ -32,13 +32,15 @@ Project : soup-packages/ekg_analysis
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from datetime import timedelta
-from typing import Any, Mapping, Optional, Sequence
+from typing import Any
 
-from soup.core.contracts import NotFoundError, ObjectRef, ValidationError, Visualizer
 import soup_pkg_ekg.api as ekg
 from soup_pkg_ekg.api import Query, ident
 from soup_pkg_ekg_views.api import notice_of
+
+from soup.core.contracts import NotFoundError, ObjectRef, ToolAccess, ValidationError, Visualizer
 
 from .filters import CORR, ENTITY, EVENT, MEMGRAPH, entity_types
 
@@ -85,7 +87,7 @@ def variants_query(entity: str) -> Query:
             ORDER BY occurrences DESC""", {"entity": entity})
 
 
-def duration_seconds(value: Any) -> Optional[float]:
+def duration_seconds(value: Any) -> float | None:
     """A Memgraph Duration (months, days, seconds, nanoseconds), a timedelta or a number, in seconds."""
 
     if value is None or isinstance(value, bool):
@@ -100,7 +102,7 @@ def duration_seconds(value: Any) -> Optional[float]:
     return None
 
 
-def average(values: Sequence[Any]) -> Optional[dict[str, Any]]:
+def average(values: Sequence[Any]) -> dict[str, Any] | None:
     """{average_seconds, formatted (H:MM:SS)} of the durations that can be read, None if none."""
 
     seconds = [item for item in (duration_seconds(value) for value in values) if item is not None]
@@ -129,7 +131,7 @@ class InsightsVisualizer(Visualizer):
     accepts = (ekg.EKG_KIND,)
     requires_tools = (MEMGRAPH,)
 
-    def data(self, obj: ObjectRef, params: Mapping[str, Any], tools) -> Any:
+    def data(self, obj: ObjectRef, params: Mapping[str, Any], tools: ToolAccess) -> Any:
         types = entity_types(obj, tools)
         run = tools.get(MEMGRAPH).run
         return {
@@ -139,7 +141,7 @@ class InsightsVisualizer(Visualizer):
             "notice": notice_of(obj),
         }
 
-    def action(self, obj: ObjectRef, name: str, params: Mapping[str, Any], tools) -> Any:
+    def action(self, obj: ObjectRef, name: str, params: Mapping[str, Any], tools: ToolAccess) -> Any:
         if name not in ("entity", "frequency"):
             raise NotFoundError(f"Visualizer '{self.id}' has no action '{name}'")
         if name == "frequency":

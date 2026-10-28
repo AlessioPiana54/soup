@@ -9,9 +9,9 @@
  * context.download.
  */
 
-import { SoupVisualizerElement, VisualizerContext } from '@soup/sdk';
+import { errorMessage, h, SoupVisualizerElement, VisualizerContext } from '@soup/sdk';
 
-import { errorMessage, h, NOTICE_CSS, noticeBox } from './dom';
+import { NOTICE_CSS, noticeBox } from './dom';
 import { GraphData, GraphEdgeModel, GraphNodeModel, NodeShape, SearchPage, SearchTarget, SoupGraphViewElement } from './soup-base';
 
 export interface ViewInfo {
@@ -22,7 +22,7 @@ export interface ViewInfo {
 }
 
 /** What the "graph" action answers. */
-export interface GraphResult {
+interface GraphResult {
   view: string;
   limit: number;
   relations: string[];

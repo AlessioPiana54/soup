@@ -13,6 +13,7 @@ Project : soup-server
 
 from __future__ import annotations
 
+import builtins
 from abc import ABC, abstractmethod
 
 
@@ -36,5 +37,5 @@ class FileStorage(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def list(self, prefix: str = "") -> list[str]:
+    def list(self, prefix: str = "") -> builtins.list[str]:
         raise NotImplementedError

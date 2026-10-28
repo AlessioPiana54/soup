@@ -20,9 +20,9 @@ from __future__ import annotations
 from typing import BinaryIO
 
 import pandas as pd
+from soup_pkg_ekg.api import EventLogData, from_dataframe
 
 from soup.core.contracts import ValidationError
-from soup_pkg_ekg.api import EventLogData, from_dataframe
 
 FORMAT_ID = "csv"
 

@@ -16,11 +16,11 @@ Project : soup-packages/csv_table
 from __future__ import annotations
 
 import os
-from typing import Optional
+
+from soup_pkg_soup_base.api import ParsedCache, limits_from_env
 
 from soup.core.contracts import PluginContext, SoupPlugin
 
-from .cache import ParsedCache, limits_from_env
 from .contributions import (
     ColumnDistribution,
     CsvExporter,
@@ -35,7 +35,7 @@ ENV_PREFIX = "SOUP_CSV_TABLE"
 
 
 class Plugin(SoupPlugin):
-    cache: Optional[ParsedCache[Parsed]] = None
+    cache: ParsedCache[Parsed] | None = None
 
     def register(self, ctx: PluginContext) -> None:
         max_objects, max_bytes = limits_from_env(os.environ, ENV_PREFIX)

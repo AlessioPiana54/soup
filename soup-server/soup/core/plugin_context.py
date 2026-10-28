@@ -10,12 +10,13 @@ Project : soup-server
 
 from __future__ import annotations
 
-from typing import Any, Iterable, Mapping, Optional
+from collections.abc import Iterable, Mapping
+from typing import Any
 
 from soup.core.contracts import (
     EventHandler,
-    ExtensionPointNotDeclaredError,
     Exporter,
+    ExtensionPointNotDeclaredError,
     Importer,
     Operation,
     OperationInput,
@@ -56,7 +57,7 @@ class DefaultPluginContext:
     name and must be declared by the package.
     """
 
-    def __init__(self, event_bus: Optional[EventBus] = None) -> None:
+    def __init__(self, event_bus: EventBus | None = None) -> None:
         self.importers: Registry[Importer] = Registry("importer")
         self.operations: Registry[Operation] = Registry("operation")
         self.visualizers: Registry[Visualizer] = Registry("visualizer")
@@ -65,7 +66,7 @@ class DefaultPluginContext:
         self.extension_points = ExtensionPoints()
         self.event_bus = event_bus if event_bus is not None else EventBus()
 
-        self._current_plugin: Optional[str] = None
+        self._current_plugin: str | None = None
         self._declared_tools: frozenset[str] = frozenset()
         self._provides_tools: frozenset[str] = frozenset()
         self._declared_points: frozenset[str] = frozenset()
@@ -74,7 +75,7 @@ class DefaultPluginContext:
         return (self.importers, self.operations, self.visualizers, self.exporters, self.tool_registry)
 
     # --- used internally by PluginManager; not part of the package-facing API ---
-    def _set_current_plugin(self, name: Optional[str]) -> None:
+    def _set_current_plugin(self, name: str | None) -> None:
         self._current_plugin = name
         self._declared_tools = frozenset()
         self._provides_tools = frozenset()

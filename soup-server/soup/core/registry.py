@@ -18,8 +18,9 @@ Project : soup-server
 from __future__ import annotations
 
 import threading
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
-from typing import Callable, Generic, Iterator, Mapping, Optional, TypeVar
+from typing import Generic, TypeVar
 
 from soup.core.contracts import PluginConflictError
 
@@ -99,10 +100,10 @@ class Registry(Generic[T]):
                 )
             return keys
 
-    def get(self, key: str) -> Optional[T]:
+    def get(self, key: str) -> T | None:
         return self._state.items.get(key)
 
-    def owner_of(self, key: str) -> Optional[str]:
+    def owner_of(self, key: str) -> str | None:
         return self._state.owners.get(key)
 
     def keys_of(self, owner: str) -> list[str]:

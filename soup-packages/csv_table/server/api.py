@@ -11,7 +11,8 @@ Project : soup-packages/csv_table
 ------------------------------------------------------------------------
 """
 
-from .cache import DEFAULT_MAX_BYTES, DEFAULT_MAX_OBJECTS, ParsedCache, limits_from_env
+from soup_pkg_soup_base.api import DEFAULT_MAX_BYTES, DEFAULT_MAX_OBJECTS, ParsedCache, limits_from_env
+
 from .contributions import (
     KIND,
     ColumnDistribution,

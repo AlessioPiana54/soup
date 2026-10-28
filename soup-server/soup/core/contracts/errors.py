@@ -13,7 +13,8 @@ Project : soup-server
 
 from __future__ import annotations
 
-from typing import Any, Mapping, Optional
+from collections.abc import Mapping
+from typing import Any
 
 
 class DomainError(Exception):
@@ -25,7 +26,7 @@ class DomainError(Exception):
 
     http_status_code: int = 500
 
-    def __init__(self, message: str = "", details: Optional[Mapping[str, Any]] = None):
+    def __init__(self, message: str = "", details: Mapping[str, Any] | None = None):
         super().__init__(message)
         self.details: dict[str, Any] = dict(details or {})
 

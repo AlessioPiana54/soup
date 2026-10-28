@@ -17,6 +17,7 @@ Project : soup-server
 from __future__ import annotations
 
 from flask import Blueprint
+from flask.typing import ResponseReturnValue
 
 from soup.api import request_args, serializers
 from soup.core.contracts import ValidationError
@@ -30,11 +31,11 @@ def build_system_blueprint(engine: Engine) -> Blueprint:
     system = engine.system
 
     @blueprint.route("/api/v3/preferences/<key>", methods=["GET"])
-    def get_preference(key: str):
+    def get_preference(key: str) -> ResponseReturnValue:
         return serializers.ok("Preference", {"key": key, "value": system.get_preference(key)})
 
     @blueprint.route("/api/v3/preferences/<key>", methods=["PUT"])
-    def set_preference(key: str):
+    def set_preference(key: str) -> ResponseReturnValue:
         body = request_args.json_body()
         if "value" not in body:
             raise ValidationError("The request body must be a JSON object {\"value\": ...}")
@@ -42,11 +43,11 @@ def build_system_blueprint(engine: Engine) -> Blueprint:
         return serializers.ok("Preference saved", {"key": key, "value": body["value"]})
 
     @blueprint.route("/api/v3/tools", methods=["GET"])
-    def list_tools():
+    def list_tools() -> ResponseReturnValue:
         return serializers.ok("Tools", [serializers.tool_status(tool) for tool in system.tools()])
 
     @blueprint.route("/api/v3/health", methods=["GET"])
-    def health():
+    def health() -> ResponseReturnValue:
         return serializers.ok("Health", serializers.health(system.health()))
 
     return blueprint

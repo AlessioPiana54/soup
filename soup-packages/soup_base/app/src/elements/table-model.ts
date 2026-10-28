@@ -45,7 +45,7 @@ export function compareCells(a: Cell, b: Cell): number {
   return left.localeCompare(right, undefined, { numeric: true, sensitivity: 'base' });
 }
 
-export function matchesSearch(row: Row, search: string): boolean {
+function matchesSearch(row: Row, search: string): boolean {
   const query = search.trim().toLowerCase();
   return !query || row.some((cell) => text(cell).toLowerCase().includes(query));
 }

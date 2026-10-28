@@ -15,7 +15,8 @@ Project : soup-packages/ekg_class_graph
 
 from __future__ import annotations
 
-from typing import Any, Mapping, Sequence
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 from soup_pkg_ekg_views.api import EdgeListGraphView
 
@@ -35,7 +36,8 @@ class ClassGraphView(EdgeListGraphView):
 
     def node_label(self, labels: Sequence[str], props: Mapping[str, Any]) -> str:
         if CLASS in labels:
-            values = [str(value) for key, value in sorted(props.items()) if key not in _CLASS_KEYS and value is not None]
+            values = [str(value) for key, value in sorted(props.items())
+                if key not in _CLASS_KEYS and value is not None]
             return " / ".join(values) or str(props.get("Event_Id", CLASS))
         return str(props.get("ActivityName", super().node_label(labels, props)))
 

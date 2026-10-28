@@ -9,9 +9,9 @@
  * no action.
  */
 
-import { SoupVisualizerElement, VisualizerContext } from '@soup/sdk';
+import { h, SoupVisualizerElement, VisualizerContext } from '@soup/sdk';
 
-import { h, NOTICE_CSS, noticeBox } from './dom';
+import { NOTICE_CSS, noticeBox } from './dom';
 import { ChartData, SoupChartElement, SoupKeyValueElement, SoupTableElement } from './soup-base';
 
 export interface EntityStat {
@@ -20,7 +20,7 @@ export interface EntityStat {
   warning: string | null;
 }
 
-export type ColumnRole = 'event_id' | 'timestamp' | 'activity' | 'entity' | 'value' | '';
+type ColumnRole = 'event_id' | 'timestamp' | 'activity' | 'entity' | 'value' | '';
 
 export interface DatasetColumn {
   name: string;

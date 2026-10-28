@@ -20,9 +20,10 @@ Project : soup-server
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable, Mapping
 from dataclasses import replace
 from datetime import datetime
-from typing import Any, Callable, Mapping, Optional
+from typing import Any
 
 from soup.core.contracts import (
     CREATED_BY_IMPORTER,
@@ -86,7 +87,7 @@ class ImportRouter:
         return inspection
 
     def preview(
-        self, importer_id: str, upload: Upload, options: Optional[Mapping[str, Any]] = None
+        self, importer_id: str, upload: Upload, options: Mapping[str, Any] | None = None
     ) -> list[dict[str, Any]]:
         importer = self._accepting(importer_id, upload)
         blocks = importer.preview(upload, dict(options or {}), self._toolbox(importer_id, importer)) or []
@@ -98,7 +99,7 @@ class ImportRouter:
         upload: Upload,
         name: str,
         description: str = "",
-        options: Optional[Mapping[str, Any]] = None,
+        options: Mapping[str, Any] | None = None,
     ) -> ObjectRef:
         """
         :raises ValidationError: invalid name/description, or the importer rejects the file
@@ -110,7 +111,7 @@ class ImportRouter:
         if not isinstance(description or "", str):
             raise ValidationError("Description must be a string")
         importer = self._accepting(importer_id, upload)
-        catalog = self._core_tools.catalog()
+        catalog = self._core_tools.catalog_writer()
 
         obj = ObjectRef(
             id=new_object_id(),
@@ -153,4 +154,5 @@ class ImportRouter:
         try:
             importer.dispose(obj, tools)
         except Exception:  # noqa: BLE001 - the original error is the one to report
-            _LOGGER.exception("Compensation failed: importer '%s' could not dispose of object '%s'", importer.id, obj.id)
+            _LOGGER.exception("Compensation failed: importer '%s' could not dispose of object '%s'",
+                importer.id, obj.id)

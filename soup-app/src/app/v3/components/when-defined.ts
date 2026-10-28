@@ -1,5 +1,5 @@
 // How long to wait for a loaded bundle to define a package's element
-export const ELEMENT_DEFINE_TIMEOUT_MS = 10000;
+const ELEMENT_DEFINE_TIMEOUT_MS = 10000;
 
 /**
  * Resolves when the custom element `tag` is defined; rejects after

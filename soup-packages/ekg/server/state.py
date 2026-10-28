@@ -38,10 +38,12 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Mapping
+from collections.abc import Callable, Mapping
+from typing import Any
+
+from soup_pkg_tool_memgraph.api import GraphDatabase
 
 from soup.core.contracts import Catalog, NotFoundError, ObjectRef, ValidationError
-from soup_pkg_tool_memgraph.api import GraphDatabase
 
 from .builder import (
     EKG_BEFORE_RESET,

@@ -32,7 +32,7 @@ Project : soup-packages/ekg
 
 from __future__ import annotations
 
-from typing import Sequence
+from collections.abc import Sequence
 
 from soup_pkg_tool_memgraph.api import Query, ident
 

@@ -44,7 +44,7 @@ da `marked` dopo averlo sanificato con DOMPurify (solo HTML: niente SVG, MathML 
 | `<soup-keyvalue>` | `{items: [{key, value}]}` | |
 | `<soup-file-link>` | `{filename, mime, base64}` | Bottone che salva il file. |
 | `<soup-error>` | `{message}` | |
-| `<soup-report-view>` | `{blocks, name?, description?}` | Disegna i blocchi uno sotto l'altro con gli elementi di questa tabella (il titolo del blocco sopra). Un tipo sconosciuto mostra un avviso con i dati in JSON. Riceve anche `context` (`VisualizerContext`), passato agli elementi che lo accettano. L'host lo usa anche per l'anteprima dell'import. |
+| `<soup-report-view>` | `{blocks, name?, description?}` | Disegna i blocchi uno sotto l'altro con gli elementi di questa tabella (il titolo del blocco sopra). Un tipo sconosciuto mostra un avviso con i dati in JSON. Riceve anche `context` (`VisualizerContext`), passato agli elementi che lo accettano. L'host lo usa anche per l'anteprima dell'import. Altri tipi di blocco si aggiungono senza toccare il suo codice: `customElements.get('soup-report-view').registerBlock(tipo, tag)` (vedi sotto). |
 | `<soup-graph-view>` | blocco `graph` o righe EKG | Vedi sotto. |
 
 ### `<soup-table>`
@@ -62,6 +62,23 @@ numeri per valore, celle vuote in fondo), ricerca e scelta delle colonne visibil
 Metodi: `refresh()`, `goTo(page)`, `sortBy(column)`, `setSearch(text)`,
 `setColumnVisible(column, visible)`. Evento `soup-table-page` `{page, total}` dopo ogni pagina.
 
+
+### Tipi di blocco di altri package
+
+Un package (che richiede `soup_base`) disegna un tipo di blocco nuovo con un proprio elemento,
+registrato nella vista dei report senza importarne il codice (i package condividono solo l'SDK):
+
+```ts
+defineSoupElement('my-pkg-sparkline', MySparkline);   // riceve data (e context, se ha la proprietà)
+const view = customElements.get('soup-report-view') as unknown as {
+  registerBlock(type: string, tag: string): void;
+};
+view.registerBlock('sparkline', 'my-pkg-sparkline');
+```
+
+I tipi di `report.py` (`text`, `markdown`, `image`, `table`, `graph`, `chart`, `keyvalue`, `file`,
+`error`) restano di soup_base e non si sostituiscono; un tag non valido o un tipo vuoto sollevano un
+errore. `blockElement(tipo)` dice quale tag disegna un tipo.
 ## `<soup-graph-view>`
 
 Il grafo dei package EKG, estratto dal vecchio `pages/graph-dataset` (che resta finché ci sono le

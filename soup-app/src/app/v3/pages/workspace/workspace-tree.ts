@@ -6,13 +6,13 @@ import { WorkspaceNode } from '../../../core/v3/v3.models';
  * the provenance shown on an object's page.
  */
 
-export interface WorkspaceFilter {
+interface WorkspaceFilter {
   search: string;
   kind: string;
   package: string;
 }
 
-export function matches(node: WorkspaceNode, filter: WorkspaceFilter): boolean {
+function matches(node: WorkspaceNode, filter: WorkspaceFilter): boolean {
   const search = filter.search.trim().toLowerCase();
   const object = node.object;
   return (

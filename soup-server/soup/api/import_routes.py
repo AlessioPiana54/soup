@@ -17,6 +17,7 @@ Project : soup-server
 from __future__ import annotations
 
 from flask import Blueprint, request
+from flask.typing import ResponseReturnValue
 
 from soup.api import request_args, serializers
 from soup.core.engine import Engine
@@ -30,7 +31,7 @@ def build_import_blueprint(engine: Engine) -> Blueprint:
     frontend = engine.frontend
 
     @blueprint.route("/api/v3/importers", methods=["GET"])
-    def list_importers():
+    def list_importers() -> ResponseReturnValue:
         entries = importers.importers_for(request_args.required_arg("filename"))
         return serializers.ok("Importers", [
             serializers.importer(entry, serializers.module_url(entry.package, frontend.entry(entry.package)))
@@ -38,19 +39,19 @@ def build_import_blueprint(engine: Engine) -> Blueprint:
         ])
 
     @blueprint.route("/api/v3/imports/inspect", methods=["POST"])
-    def inspect_file():
+    def inspect_file() -> ResponseReturnValue:
         inspection = importers.inspect(request_args.required_form("importer_id"), request_args.upload())
         return serializers.ok("Inspection", serializers.inspection(inspection))
 
     @blueprint.route("/api/v3/imports/preview", methods=["POST"])
-    def preview_file():
+    def preview_file() -> ResponseReturnValue:
         blocks = importers.preview(
             request_args.required_form("importer_id"), request_args.upload(), request_args.json_form("options")
         )
         return serializers.ok("Preview", {"blocks": serializers.blocks(blocks)})
 
     @blueprint.route("/api/v3/imports", methods=["POST"])
-    def import_file():
+    def import_file() -> ResponseReturnValue:
         obj = importers.import_(
             request_args.required_form("importer_id"),
             request_args.upload(),

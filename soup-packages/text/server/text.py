@@ -15,7 +15,7 @@ Description: The contributions of the text package, for objects of kind
                named with its original extension and MIME type
                (Exporter.file_type, contracts "4.1").
              The importer and the visualizer read the decoded lines
-             through the same ParsedCache (cache.py), created by the
+             through the same ParsedCache (soup_pkg_soup_base.api), created by the
              Plugin: "lines" and "search" do not read and decode the file
              again at every block; import_() and dispose() invalidate the
              object's entry. The export reads the stored bytes.
@@ -26,8 +26,11 @@ Project : soup-packages/text
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping, Optional
+from typing import Any
+
+from soup_pkg_soup_base.api import DEFAULT_MAX_BYTES, DEFAULT_MAX_OBJECTS, ParsedCache
 
 from soup.core.contracts import (
     Exporter,
@@ -35,13 +38,12 @@ from soup.core.contracts import (
     Inspection,
     NotFoundError,
     ObjectRef,
+    ToolAccess,
     Upload,
     ValidationError,
     Visualizer,
     report,
 )
-
-from .cache import DEFAULT_MAX_BYTES, DEFAULT_MAX_OBJECTS, ParsedCache
 
 KIND = "text"
 NAMESPACE = "text"
@@ -97,11 +99,11 @@ def stored_extension(obj: ObjectRef) -> str:
     return MARKDOWN_EXTENSIONS[0] if obj.meta.get("format") == "markdown" else DEFAULT_EXTENSION
 
 
-def _space(tools):
+def _space(tools: ToolAccess):
     return tools.get(STORAGE).space(NAMESPACE)
 
 
-def _content(obj: ObjectRef, tools) -> bytes:
+def _content(obj: ObjectRef, tools: ToolAccess) -> bytes:
     name = obj.meta.get("file")
     if not name:
         raise NotFoundError(f"Object '{obj.id}' has no stored file")
@@ -137,10 +139,10 @@ def new_cache(max_objects: int = DEFAULT_MAX_OBJECTS, max_bytes: int = DEFAULT_M
 class _Cached:
     """Base of the contributions that read the stored files through a ParsedCache."""
 
-    def __init__(self, cache: Optional[ParsedCache[TextFile]] = None):
+    def __init__(self, cache: ParsedCache[TextFile] | None = None):
         self.cache = cache if cache is not None else new_cache()
 
-    def _text(self, obj: ObjectRef, tools) -> TextFile:
+    def _text(self, obj: ObjectRef, tools: ToolAccess) -> TextFile:
         def read() -> TextFile:
             content = _content(obj, tools)
             text, encoding = decode(content)
@@ -170,12 +172,12 @@ class TextImporter(_Cached, Importer):
     produces = KIND
     requires_tools = (STORAGE,)
 
-    def inspect(self, upload: Upload, tools) -> Inspection:
+    def inspect(self, upload: Upload, tools: ToolAccess) -> Inspection:
         lines = decode(upload.read())[0].splitlines()
         title = f"Prime {PREVIEW_LINES} righe ({len(lines)} in totale)"
         return Inspection(preview=(report.text("\n".join(lines[:PREVIEW_LINES]), title=title),))
 
-    def import_(self, upload: Upload, obj: ObjectRef, options: Mapping[str, Any], tools) -> dict[str, Any]:
+    def import_(self, upload: Upload, obj: ObjectRef, options: Mapping[str, Any], tools: ToolAccess) -> dict[str, Any]:
         data = upload.read()
         text, encoding = decode(data)
         _space(tools).write(obj.id, data)
@@ -191,7 +193,7 @@ class TextImporter(_Cached, Importer):
             "extension": extension_of(upload.filename),
         }
 
-    def dispose(self, obj: ObjectRef, tools) -> None:
+    def dispose(self, obj: ObjectRef, tools: ToolAccess) -> None:
         # Also called after a failed import_(): the file may not exist.
         self.cache.invalidate(obj.id)
         space = _space(tools)
@@ -206,7 +208,7 @@ class TextVisualizer(_Cached, Visualizer):
     element = "soup-pkg-text-viewer"
     requires_tools = (STORAGE,)
 
-    def data(self, obj: ObjectRef, params: Mapping[str, Any], tools) -> Any:
+    def data(self, obj: ObjectRef, params: Mapping[str, Any], tools: ToolAccess) -> Any:
         text = self._text(obj, tools)
         data: dict[str, Any] = {
             "filename": obj.meta.get("filename", ""),
@@ -222,7 +224,7 @@ class TextVisualizer(_Cached, Visualizer):
             data["markdown"] = "\n".join(text.lines)
         return data
 
-    def action(self, obj: ObjectRef, name: str, params: Mapping[str, Any], tools) -> Any:
+    def action(self, obj: ObjectRef, name: str, params: Mapping[str, Any], tools: ToolAccess) -> Any:
         if name == "lines":
             lines = self._text(obj, tools).lines
             start = _int(params, "from", 0, 0, len(lines))
@@ -233,7 +235,8 @@ class TextVisualizer(_Cached, Visualizer):
             limit = _int(params, "limit", MAX_SEARCH_RESULTS, 1, MAX_SEARCH_RESULTS)
             if not query:
                 return {"matches": [], "total": 0}
-            found = [(number, line) for number, line in enumerate(self._text(obj, tools).lines, start=1) if query in line.lower()]
+            found = [(number, line) for number, line in enumerate(self._text(obj, tools).lines, start=1)
+                if query in line.lower()]
             return {"matches": [{"line": number, "text": line} for number, line in found[:limit]], "total": len(found)}
         raise NotFoundError(f"Visualizer '{self.id}' has no action '{name}'")
 
@@ -257,5 +260,5 @@ class OriginalFileExporter(Exporter):
         extension = stored_extension(obj)
         return extension, MIME_TYPES.get(extension, DEFAULT_MIME)
 
-    def export(self, obj: ObjectRef, params: Mapping[str, Any], tools) -> bytes:
+    def export(self, obj: ObjectRef, params: Mapping[str, Any], tools: ToolAccess) -> bytes:
         return _content(obj, tools)

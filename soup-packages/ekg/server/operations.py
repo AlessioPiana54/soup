@@ -11,9 +11,10 @@ Project : soup-packages/ekg
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
-from soup.core.contracts import Field, ObjectDraft, ObjectRef, Operation, OperationInput
+from soup.core.contracts import Field, ObjectDraft, ObjectRef, Operation, OperationInput, ToolAccess
 
 from .builder import EKG_KIND, MEMGRAPH, STORAGE
 from .state import ensure_loaded
@@ -28,10 +29,10 @@ class LoadEkg(Operation):
     produces = (EKG_KIND,)
     requires_tools = (MEMGRAPH, STORAGE)
 
-    def fields(self, inputs: Mapping[str, ObjectRef], tools) -> list[Field]:
+    def fields(self, inputs: Mapping[str, ObjectRef], tools: ToolAccess) -> list[Field]:
         return [Field("force", "Ricostruisci comunque", type="bool", default=False,
                       help="Ricostruisce il grafo anche se è già quello caricato.")]
 
-    def run(self, inputs: Mapping[str, ObjectRef], params: Mapping[str, Any], tools) -> list[ObjectDraft]:
+    def run(self, inputs: Mapping[str, ObjectRef], params: Mapping[str, Any], tools: ToolAccess) -> list[ObjectDraft]:
         ensure_loaded(inputs["ekg"], tools, force=bool(params.get("force")))
         return []

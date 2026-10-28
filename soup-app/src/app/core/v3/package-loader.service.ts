@@ -5,7 +5,7 @@ import { FrontendModule } from './v3.models';
 import { V3ApiService } from './v3-api.service';
 
 /** Imports an ES module by URL; replaced in the tests. */
-export type ModuleImporter = (url: string) => Promise<unknown>;
+type ModuleImporter = (url: string) => Promise<unknown>;
 
 export const MODULE_IMPORTER = new InjectionToken<ModuleImporter>('MODULE_IMPORTER', {
   providedIn: 'root',

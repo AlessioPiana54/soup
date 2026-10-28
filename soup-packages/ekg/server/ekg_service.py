@@ -16,7 +16,7 @@ Project : soup-packages/ekg
 
 from __future__ import annotations
 
-from typing import Callable, Iterable, Optional, Union
+from collections.abc import Callable, Iterable
 
 from soup_pkg_tool_memgraph.api import GraphDatabase
 
@@ -31,11 +31,11 @@ from .steps import core_steps
 # one interval: from the start of the first to the end of the last.
 PHASE_TIMES = ("event", "entity", "corr", "df")
 
-StepSource = Union[Iterable[EkgBuildStep], Callable[[], Iterable[EkgBuildStep]]]
+StepSource = Iterable[EkgBuildStep] | Callable[[], Iterable[EkgBuildStep]]
 
 
 class EkgService:
-    def __init__(self, db: GraphDatabase, plugin_build_steps: Optional[StepSource] = None):
+    def __init__(self, db: GraphDatabase, plugin_build_steps: StepSource | None = None):
         self._db = db
         self._plugin_build_steps = plugin_build_steps
 
@@ -50,7 +50,7 @@ class EkgService:
         plugin_steps = list((source() if callable(source) else source) or ()) if source is not None else []
         return sorted((*core_steps(), *plugin_steps), key=lambda step: step.order)
 
-    def build(self, ctx: BuildContext, times: Optional[dict] = None) -> None:
+    def build(self, ctx: BuildContext, times: dict | None = None) -> None:
         """Run the pipeline; with `times`, record each phase's start/end in it."""
 
         for step in self.build_pipeline():

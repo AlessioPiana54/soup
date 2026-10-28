@@ -15,10 +15,11 @@ Project : soup-server
 
 from __future__ import annotations
 
-from typing import Any, Iterable, Optional
+from collections.abc import Iterable
+from typing import Any
 from urllib.parse import quote
 
-from flask import jsonify
+from flask import Response, jsonify
 
 from soup.core.contracts import Exporter, Field, Importer, Inspection, ObjectRef, Operation, Visualizer
 from soup.core.packages import STATUS_ACTIVE, PackageInfo
@@ -31,11 +32,11 @@ from soup.core.services.workspace_service import WorkspaceNode
 APP_FILES_URL = "/api/v3/packages/{package}/app/{path}"
 
 
-def ok(message: str, data: Any = None, status: int = 200):
+def ok(message: str, data: Any = None, status: int = 200) -> tuple[Response, int]:
     return jsonify(Result(status, message, data).to_dict()), status
 
 
-def module_url(package: str, entry: Optional[str]) -> Optional[str]:
+def module_url(package: str, entry: str | None) -> str | None:
     """The URL of a package's bundle; None when the package has no (active) app part."""
 
     if not entry:
@@ -76,7 +77,7 @@ def inspection(value: Inspection) -> dict[str, Any]:
 
 
 # --- contributions --------------------------------------------------------- #
-def importer(entry: Registered[Importer], entry_url: Optional[str]) -> dict[str, Any]:
+def importer(entry: Registered[Importer], entry_url: str | None) -> dict[str, Any]:
     item = entry.item
     return {
         "id": entry.key,
@@ -104,7 +105,7 @@ def operation(entry: Registered[Operation]) -> dict[str, Any]:
     }
 
 
-def visualizer(entry: Registered[Visualizer], entry_url: Optional[str]) -> dict[str, Any]:
+def visualizer(entry: Registered[Visualizer], entry_url: str | None) -> dict[str, Any]:
     item = entry.item
     return {
         "id": entry.key,

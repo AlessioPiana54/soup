@@ -27,10 +27,12 @@ Project : soup-packages/ekg
 from __future__ import annotations
 
 import uuid
-from typing import Any, Iterable, Optional, Sequence
+from collections.abc import Iterable, Sequence
+from typing import Any
+
+from soup_pkg_tool_memgraph.api import GraphDatabase
 
 from soup.core.contracts import ConflictError, ValidationError, validate_name
-from soup_pkg_tool_memgraph.api import GraphDatabase
 
 from .build import BuildContext
 from .dataset_repository import DatasetRepository
@@ -90,7 +92,11 @@ class RunDatabase(GraphDatabase):
         return self._run(query)
 
 
-def empty_process_info() -> dict[str, Optional[str]]:
+# A trigger/target pair: [trigger, target].
+PAIR_LENGTH = 2
+
+
+def empty_process_info() -> dict[str, str | None]:
     return {key: None for key in PROCESS_INFO_KEYS}
 
 
@@ -103,10 +109,9 @@ def normalize_pairs(pairs: Iterable[Sequence[str]], entity_columns: Sequence[str
     """
 
     rows = []
-    for pair in pairs:
-        if isinstance(pair, dict):
-            pair = (pair.get("trigger"), pair.get("target"))
-        if not isinstance(pair, (list, tuple)) or len(pair) != 2 or not all(isinstance(v, str) for v in pair):
+    for raw in pairs:
+        pair = (raw.get("trigger"), raw.get("target")) if isinstance(raw, dict) else raw
+        if not isinstance(pair, (list, tuple)) or len(pair) != PAIR_LENGTH or not all(isinstance(v, str) for v in pair):
             raise ValidationError(f"A trigger/target pair must be two column names, got {pair!r}")
         trigger, target = (_normalize_text(value) for value in pair)
         missing = [name for name in (trigger, target) if name not in entity_columns]
@@ -139,7 +144,7 @@ def new_graph_key() -> str:
 
 
 def meta_from_config(
-    dataset: str, config: dict[str, Any], mapping: Optional[ColumnMapping] = None, graph_key: Optional[str] = None
+    dataset: str, config: dict[str, Any], mapping: ColumnMapping | None = None, graph_key: str | None = None
 ) -> dict[str, Any]:
     """
     The meta of the "ekg" object of a dataset. `mapping` is the one the
@@ -169,7 +174,7 @@ def meta_from_config(
     }
 
 
-def _dataset_name(repository: DatasetRepository, obj: Any, dataset: Optional[str]) -> str:
+def _dataset_name(repository: DatasetRepository, obj: Any, dataset: str | None) -> str:
     if dataset is not None:
         validate_name(dataset, label="Dataset")
         if repository.exists(dataset):
@@ -178,15 +183,15 @@ def _dataset_name(repository: DatasetRepository, obj: Any, dataset: Optional[str
     return repository.free_name(validate_name(obj.name))
 
 
-def build_ekg(
+def build_ekg(  # noqa: PLR0913 - public API (soup_pkg_ekg.api.build_ekg)
     obj: Any,
     data: EventLogData,
     mapping: ColumnMapping,
     tools: Any,
     *,
-    dataset: Optional[str] = None,
-    description: Optional[str] = None,
-    all_columns: Optional[Sequence[str]] = None,
+    dataset: str | None = None,
+    description: str | None = None,
+    all_columns: Sequence[str] | None = None,
     trigger_target: Iterable[Sequence[str]] = (),
     source_format: str = "",
     save_process_times: bool = False,

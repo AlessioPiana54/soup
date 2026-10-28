@@ -46,8 +46,8 @@ from __future__ import annotations
 import csv
 import io
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
-from typing import Optional, Sequence
 
 from soup.core.contracts import ValidationError
 
@@ -89,13 +89,17 @@ def _split_multi_value(raw: str) -> list[str]:
     return [part.strip() for part in raw.split(",") if part.strip() != ""]
 
 
-def _write_csv(columns: Sequence[str], rows: Sequence[Sequence[Optional[str]]]) -> bytes:
+def _write_csv(columns: Sequence[str], rows: Sequence[Sequence[str | None]]) -> bytes:
     buffer = io.StringIO(newline="")
     writer = csv.writer(buffer, lineterminator="\n")
     writer.writerow(columns)
     for row in rows:
         writer.writerow("" if value is None else value for value in row)
     return buffer.getvalue().encode("utf-8")
+
+
+# The three standard roles of ColumnMapping.from_payload's standardColumn, in order.
+STANDARD_ROLES = ("event_id", "timestamp", "activity")
 
 
 @dataclass(frozen=True)
@@ -123,21 +127,23 @@ class EventLogData:
     """
 
     events: Table
-    objects: Optional[Table] = None
-    event_objects: Optional[Table] = None
+    objects: Table | None = None
+    event_objects: Table | None = None
 
     def __post_init__(self) -> None:
-        if self.objects is not None:
-            if "object_id" not in self.objects.columns or "object_type" not in self.objects.columns:
-                raise ValueError(
-                    "EventLogData.objects must have an 'object_id' and an 'object_type' column"
-                )
-        if self.event_objects is not None:
-            if "event_id" not in self.event_objects.columns or "object_id" not in self.event_objects.columns:
-                raise ValueError(
-                    "EventLogData.event_objects must have an 'event_id' and an 'object_id' column "
-                    "('qualifier' is optional)"
-                )
+        if self.objects is not None and (
+            "object_id" not in self.objects.columns or "object_type" not in self.objects.columns
+        ):
+            raise ValueError(
+                "EventLogData.objects must have an 'object_id' and an 'object_type' column"
+            )
+        if self.event_objects is not None and (
+            "event_id" not in self.event_objects.columns or "object_id" not in self.event_objects.columns
+        ):
+            raise ValueError(
+                "EventLogData.event_objects must have an 'event_id' and an 'object_id' column "
+                "('qualifier' is optional)"
+            )
 
 
 @dataclass(frozen=True)
@@ -172,8 +178,8 @@ class ColumnMapping:
         standard_columns: Sequence[str],
         filtered_columns: Sequence[str] = (),
         values_columns: Sequence[str] = (),
-    ) -> "ColumnMapping":
-        if len(standard_columns) != 3:
+    ) -> ColumnMapping:
+        if len(standard_columns) != len(STANDARD_ROLES):
             raise ValidationError(
                 "'standardColumn' must have exactly 3 entries: [event_id, timestamp, activity]"
             )
@@ -186,7 +192,7 @@ class ColumnMapping:
             value_columns=tuple(values_columns),
         )
 
-    def _normalized(self) -> "ColumnMapping":
+    def _normalized(self) -> ColumnMapping:
         event_id = _normalize_text(self.event_id)
         timestamp = _normalize_text(self.timestamp)
         activity = _normalize_text(self.activity)
@@ -220,20 +226,20 @@ class EventLog:
 
     mapping: ColumnMapping
     events: Table
-    objects: Optional[Table] = None  # raw `objects` table (separated form only); feeds entity_table()
+    objects: Table | None = None  # raw `objects` table (separated form only); feeds entity_table()
 
     # ------------------------------------------------------------------ #
     # Construction
     # ------------------------------------------------------------------ #
     @classmethod
-    def from_data(cls, data: EventLogData, mapping: ColumnMapping) -> "EventLog":
+    def from_data(cls, data: EventLogData, mapping: ColumnMapping) -> EventLog:
         """
         Build an EventLog from whatever shape `data` is in (flat, or
         separated events/objects/event_objects), applying the same
         normalization/validation regardless of the source format.
         """
 
-        objects_table: Optional[Table] = None
+        objects_table: Table | None = None
 
         if data.objects is not None and data.event_objects is not None:
             events_table, mapping = cls._merge_separated_into_flat(data, mapping)
@@ -266,14 +272,10 @@ class EventLog:
 
         object_types = sorted(set(object_type_by_id.values()))
 
-        # NOTE: event_objects may carry an optional `qualifier` column
-        # (e.g. "placed by" vs "shipped by"). It is intentionally ignored
-        # here.
-        # TODO(pilastro-1-followup): once the EkgBuildStep pipeline
-        # (build.py) supports typed object-event relationships, use
-        # event_objects' qualifier to distinguish them instead of folding
-        # every link for a given object_type into a single :CORR edge. Not
-        # implemented here by design (out of this session's scope).
+        # event_objects may carry an optional `qualifier` column (e.g.
+        # "placed by" vs "shipped by"). It is ignored: every link of an
+        # object type becomes the same :CORR edge, since the build steps
+        # (build.py) have no typed object-event relationships.
         eo_event_idx = event_objects.column_index(_EVENT_ID)
         eo_object_idx = event_objects.column_index(_OBJECT_ID)
 
@@ -343,7 +345,7 @@ class EventLog:
         """
 
         attribute_columns: tuple[str, ...] = ()
-        attributes_by_key: dict[tuple[str, str], dict[str, Optional[str]]] = {}
+        attributes_by_key: dict[tuple[str, str], dict[str, str | None]] = {}
 
         if self.objects is not None:
             reserved = {_OBJECT_ID, _OBJECT_TYPE}
@@ -354,11 +356,11 @@ class EventLog:
             for row in self.objects.rows:
                 value, type_ = row[obj_id_idx], row[obj_type_idx]
                 attributes_by_key[(type_, value)] = {
-                    column: row[idx] for column, idx in zip(attribute_columns, attr_indexes)
+                    column: row[idx] for column, idx in zip(attribute_columns, attr_indexes, strict=False)
                 }
 
         order: list[tuple[str, str]] = []
-        seen: dict[tuple[str, str], dict[str, Optional[str]]] = {}
+        seen: dict[tuple[str, str], dict[str, str | None]] = {}
 
         # Objects first, so isolated objects (referenced by no event) are
         # still included in the entity table.

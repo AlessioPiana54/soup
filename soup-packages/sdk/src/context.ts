@@ -12,20 +12,48 @@ import { Block, Field, FormValues, Json, NotifyLevel, ObjectRef, Theme } from '.
 
 export type DownloadData = string | Blob | ArrayBuffer | Uint8Array;
 
-export interface VisualizerContext {
+/*
+ * The parts of a VisualizerContext, one capability each (interface
+ * segregation): a helper or an element that only notifies, or only
+ * downloads, declares the part it uses. VisualizerContext is all of them.
+ */
+export interface ObjectContext {
   /** The object being shown. */
   readonly object: ObjectRef;
   readonly theme: Theme;
+}
+
+export interface ActionContext {
   /** Call an action of this element's own visualizer (POST .../actions/<name>). */
   action<T = Json>(name: string, params?: Record<string, unknown>): Promise<T>;
+}
+
+export interface NavigationContext {
   /** Open another object of the workspace. */
   openObject(id: string): void;
+}
+
+export interface NotifyContext {
   notify(message: string, level?: NotifyLevel): void;
+}
+
+export interface ThumbnailContext {
   /** Set the SVG preview of the object (shown in the workspace as an image). */
   setThumbnail(svg: string): void;
+}
+
+export interface DownloadContext {
   /** Save a file built in the browser. */
   download(filename: string, mime: string, data: DownloadData): void;
 }
+
+export interface VisualizerContext
+  extends ObjectContext,
+    ActionContext,
+    NavigationContext,
+    NotifyContext,
+    ThumbnailContext,
+    DownloadContext {}
 
 export interface ConfigContext {
   /** The full key of the importer, "<package>.<id>". */

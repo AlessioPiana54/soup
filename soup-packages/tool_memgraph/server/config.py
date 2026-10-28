@@ -10,8 +10,8 @@ Project : soup-packages/tool_memgraph
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Mapping
 
 DEFAULT_HOST = "memgraph"
 DEFAULT_PORT = 7687
@@ -27,7 +27,7 @@ class MemgraphConfig:
         return f"bolt://{self.host}:{self.port}"
 
     @classmethod
-    def from_env(cls, env: Mapping[str, str]) -> "MemgraphConfig":
+    def from_env(cls, env: Mapping[str, str]) -> MemgraphConfig:
         return cls(
             host=env.get("MEMGRAPH_HOST", DEFAULT_HOST),
             port=int(env.get("MEMGRAPH_PORT", DEFAULT_PORT)),

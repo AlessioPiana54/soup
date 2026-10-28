@@ -18,7 +18,7 @@ Description: The contributions of csv_table, for objects of kind "table"
              - CsvExporter ("csv"): the table with the chosen separator,
                with or without the header.
              Every contribution reads the tables through the same
-             ParsedCache (cache.py), created by the Plugin: the actions do
+             ParsedCache (soup_base's, soup_pkg_soup_base.api), created by the Plugin: the actions do
              not read and parse the file again at every page; import_()
              and dispose() invalidate the object's entry.
              Standard library and the "storage" tool only.
@@ -29,7 +29,10 @@ Project : soup-packages/csv_table
 from __future__ import annotations
 
 import re
-from typing import Any, Mapping, Optional, Sequence
+from collections.abc import Mapping, Sequence
+from typing import Any
+
+from soup_pkg_soup_base.api import DEFAULT_MAX_BYTES, DEFAULT_MAX_OBJECTS, ParsedCache
 
 from soup.core.contracts import (
     Choice,
@@ -42,6 +45,7 @@ from soup.core.contracts import (
     ObjectRef,
     Operation,
     OperationInput,
+    ToolAccess,
     Upload,
     ValidationError,
     Visualizer,
@@ -49,7 +53,6 @@ from soup.core.contracts import (
 )
 
 from . import table
-from .cache import DEFAULT_MAX_BYTES, DEFAULT_MAX_OBJECTS, ParsedCache
 
 KIND = "table"
 NAMESPACE = "csv_table"
@@ -72,7 +75,7 @@ SEPARATOR_CHOICES = (
 )
 
 
-def read_table(obj: ObjectRef, tools) -> tuple[list[str], list[table.Row]]:
+def read_table(obj: ObjectRef, tools: ToolAccess) -> tuple[list[str], list[table.Row]]:
     """
     The columns and rows of a "table" object imported by csv_table, read
     from the storage (not from a plugin's cache). `tools` must give the
@@ -105,7 +108,7 @@ def _separator_field(default: str) -> Field:
     return Field("separator", "Separatore", type="select", default=default, choices=SEPARATOR_CHOICES)
 
 
-def _space(tools):
+def _space(tools: ToolAccess):
     return tools.get(STORAGE).space(NAMESPACE)
 
 
@@ -129,10 +132,10 @@ def new_cache(max_objects: int = DEFAULT_MAX_OBJECTS, max_bytes: int = DEFAULT_M
 class _Cached:
     """Base of the contributions that read the stored tables through a ParsedCache."""
 
-    def __init__(self, cache: Optional[ParsedCache[Parsed]] = None):
+    def __init__(self, cache: ParsedCache[Parsed] | None = None):
         self.cache = cache if cache is not None else new_cache()
 
-    def _load(self, obj: ObjectRef, tools) -> tuple[list[str], Sequence[Sequence[str]]]:
+    def _load(self, obj: ObjectRef, tools: ToolAccess) -> tuple[list[str], Sequence[Sequence[str]]]:
         def read() -> Parsed:
             columns, rows = table.read_canonical(_space(tools).read(_file_of(obj)))
             return tuple(columns), tuple(tuple(row) for row in rows)
@@ -185,7 +188,7 @@ def _column(value: Any, columns: list[str], name: str = "column") -> int:
     return value
 
 
-def _sort(value: Any, columns: list[str]) -> Optional[tuple[int, str]]:
+def _sort(value: Any, columns: list[str]) -> tuple[int, str] | None:
     if value is None:
         return None
     if not isinstance(value, Mapping):
@@ -219,12 +222,15 @@ def _object_name(text: str) -> str:
 class CsvTableImporter(_Cached, Importer):
     id = "csv"
     label = "CSV come tabella"
-    description = "Reads the file with Python's csv module and keeps it as a table (separator and header of your choice)."
+    description = (
+        "Reads the file with Python's csv module and keeps it as a table "
+        "(separator and header of your choice)."
+    )
     extensions = (".csv", ".tsv")
     produces = KIND
     requires_tools = (STORAGE,)
 
-    def inspect(self, upload: Upload, tools) -> Inspection:
+    def inspect(self, upload: Upload, tools: ToolAccess) -> Inspection:
         columns, rows, separator, header, _ = _parsed(upload, {})
         return Inspection(
             preview=(_preview(columns, rows),),
@@ -235,11 +241,11 @@ class CsvTableImporter(_Cached, Importer):
             ),
         )
 
-    def preview(self, upload: Upload, options: Mapping[str, Any], tools) -> list[dict[str, Any]]:
+    def preview(self, upload: Upload, options: Mapping[str, Any], tools: ToolAccess) -> list[dict[str, Any]]:
         columns, rows, *_ = _parsed(upload, options)
         return [_preview(columns, rows)]
 
-    def import_(self, upload: Upload, obj: ObjectRef, options: Mapping[str, Any], tools) -> dict[str, Any]:
+    def import_(self, upload: Upload, obj: ObjectRef, options: Mapping[str, Any], tools: ToolAccess) -> dict[str, Any]:
         columns, rows, separator, header, encoding = _parsed(upload, options)
         _space(tools).write(_file_of(obj), table.write_csv(columns, rows))
         # Every write of the file invalidates what was read before.
@@ -254,7 +260,7 @@ class CsvTableImporter(_Cached, Importer):
             "encoding": encoding,
         }
 
-    def dispose(self, obj: ObjectRef, tools) -> None:
+    def dispose(self, obj: ObjectRef, tools: ToolAccess) -> None:
         # Also called after a failed import_(): the file may not exist.
         self.cache.invalidate(obj.id)
         space = _space(tools)
@@ -269,11 +275,11 @@ class CsvTableVisualizer(_Cached, Visualizer):
     element = "soup-pkg-csv-table-viewer"
     requires_tools = (STORAGE,)
 
-    def data(self, obj: ObjectRef, params: Mapping[str, Any], tools) -> Any:
+    def data(self, obj: ObjectRef, params: Mapping[str, Any], tools: ToolAccess) -> Any:
         columns, rows = self._load(obj, tools)
         return {"columns": columns, "total": len(rows), "page_size": PAGE_SIZE}
 
-    def action(self, obj: ObjectRef, name: str, params: Mapping[str, Any], tools) -> Any:
+    def action(self, obj: ObjectRef, name: str, params: Mapping[str, Any], tools: ToolAccess) -> Any:
         if name != "page":
             raise NotFoundError(f"Visualizer '{self.id}' has no action '{name}'")
         columns, rows = self._load(obj, tools)
@@ -297,11 +303,11 @@ class CsvProfileVisualizer(_Cached, Visualizer):
     element = "soup-pkg-csv-profile"
     requires_tools = (STORAGE,)
 
-    def data(self, obj: ObjectRef, params: Mapping[str, Any], tools) -> Any:
+    def data(self, obj: ObjectRef, params: Mapping[str, Any], tools: ToolAccess) -> Any:
         columns, rows = self._load(obj, tools)
         return {"rows": len(rows), "columns": table.profile(columns, rows)}
 
-    def action(self, obj: ObjectRef, name: str, params: Mapping[str, Any], tools) -> Any:
+    def action(self, obj: ObjectRef, name: str, params: Mapping[str, Any], tools: ToolAccess) -> Any:
         if name != "distribution":
             raise NotFoundError(f"Visualizer '{self.id}' has no action '{name}'")
         columns, rows = self._load(obj, tools)
@@ -319,7 +325,7 @@ class ColumnDistribution(_Cached, Operation):
     produces = (report.REPORT,)
     requires_tools = (STORAGE,)
 
-    def fields(self, inputs: Mapping[str, ObjectRef], tools) -> list[Field]:
+    def fields(self, inputs: Mapping[str, ObjectRef], tools: ToolAccess) -> list[Field]:
         columns = [str(name) for name in inputs["table"].meta.get("columns") or []]
         return [
             Field("column", "Colonna", type="column", required=True, choices=columns),
@@ -327,7 +333,7 @@ class ColumnDistribution(_Cached, Operation):
                   help=f"I valori più frequenti (al massimo {MAX_TOP}); gli altri sono sommati."),
         ]
 
-    def run(self, inputs: Mapping[str, ObjectRef], params: Mapping[str, Any], tools) -> list[ObjectDraft]:
+    def run(self, inputs: Mapping[str, ObjectRef], params: Mapping[str, Any], tools: ToolAccess) -> list[ObjectDraft]:
         source = inputs["table"]
         columns, rows = self._load(source, tools)
         name = params.get("column")
@@ -344,7 +350,7 @@ class ColumnDistribution(_Cached, Operation):
             report.chart("bar", labels, [{"label": name, "data": counts}], title=f"Distribuzione di {name}"),
             report.table(
                 ["valore", "conteggio", "%"],
-                [[label, count, round(100 * count / total, 2)] for label, count in zip(labels, counts)],
+                [[label, count, round(100 * count / total, 2)] for label, count in zip(labels, counts, strict=False)],
                 title="Valori",
             ),
         ]
@@ -359,14 +365,15 @@ class CsvExporter(_Cached, Exporter):
     mime = "text/csv"
     requires_tools = (STORAGE,)
 
-    def fields(self, obj: ObjectRef, tools) -> list[Field]:
+    def fields(self, obj: ObjectRef, tools: ToolAccess) -> list[Field]:
         separator = obj.meta.get("separator")
         return [
             _separator_field(separator if separator in SEPARATOR_NAMES else "comma"),
-            Field("header", "Intestazione", type="bool", default=True, help="Scrive i nomi delle colonne nella prima riga."),
+            Field("header", "Intestazione", type="bool", default=True,
+                help="Scrive i nomi delle colonne nella prima riga."),
         ]
 
-    def export(self, obj: ObjectRef, params: Mapping[str, Any], tools) -> bytes:
+    def export(self, obj: ObjectRef, params: Mapping[str, Any], tools: ToolAccess) -> bytes:
         columns, rows = self._load(obj, tools)
         separator = separator_char(params.get("separator") or "comma")
         header = params.get("header")

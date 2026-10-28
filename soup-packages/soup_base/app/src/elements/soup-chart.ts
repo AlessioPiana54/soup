@@ -1,10 +1,11 @@
+import { h } from '@soup/sdk';
 import { Chart, ChartType, registerables } from 'chart.js';
 
-import { BlockElement, h } from '../dom';
+import { BlockElement } from '../dom';
 
 Chart.register(...registerables);
 
-export interface ChartData {
+interface ChartData {
   chart: 'pie' | 'bar' | 'line';
   labels: string[];
   datasets: { label: string; data: number[] }[];

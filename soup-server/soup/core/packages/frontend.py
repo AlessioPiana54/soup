@@ -21,7 +21,6 @@ from __future__ import annotations
 import mimetypes
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 from soup.core.contracts import NotFoundError, ValidationError
 from soup.core.packages.manager import STATUS_ACTIVE, PackageManager
@@ -79,7 +78,7 @@ class PackageFrontend:
     def __init__(self, packages: PackageManager):
         self._packages = packages
 
-    def entry(self, package: str) -> Optional[str]:
+    def entry(self, package: str) -> str | None:
         """The bundle of an active package, relative to app/dist; None without an app part."""
 
         if not package or self._packages.package_status(package) != STATUS_ACTIVE:

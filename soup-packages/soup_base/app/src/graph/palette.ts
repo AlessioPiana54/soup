@@ -19,7 +19,7 @@ export const PREDEFINED_COLORS: readonly string[] = [
   '#673ab7'
 ];
 
-export interface PaletteEntry {
+interface PaletteEntry {
   name: string;
   color: string;
   visible: boolean;

@@ -33,12 +33,14 @@ Project : soup-packages/ekg_class_graph
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from datetime import datetime
-from typing import Any, Callable, Sequence
+from typing import Any
 
-from soup.core.contracts import DomainError, ValidationError
 from soup_pkg_ekg.api import Query, ident
 from soup_pkg_ekg_views.api import count_of
+
+from soup.core.contracts import DomainError, ValidationError
 
 EVENT = "Event"
 ENTITY = "Entity"
@@ -58,7 +60,8 @@ def _now() -> str:
 
 
 def entity_types_query() -> Query:
-    return Query(f"MATCH (n:{ident(ENTITY)}) WHERE n.Type IS NOT NULL RETURN DISTINCT n.Type AS entity_type ORDER BY entity_type")
+    return Query(f"MATCH (n:{ident(ENTITY)}) WHERE n.Type IS NOT NULL "
+                 "RETURN DISTINCT n.Type AS entity_type ORDER BY entity_type")
 
 
 def nan_properties_query() -> Query:
@@ -84,7 +87,7 @@ def class_query(entity_types: Sequence[str]) -> Query:
     if not entity_types:
         raise ValidationError("Choose at least one entity type")
     variables = [f"v{index}" for index in range(len(entity_types))]
-    pairs = list(zip(entity_types, variables))
+    pairs = list(zip(entity_types, variables, strict=False))
     distinct = ", ".join(f"e.{ident(name)} AS {var}" for name, var in pairs)
     properties = ", ".join(f"{ident(name)}: {var}" for name, var in pairs)
     event_id = ' + "_" + '.join(f"toString({var})" for var in variables)
@@ -108,8 +111,12 @@ def class_weight_query() -> Query:
 
 def class_df_query() -> Query:
     # class_df_aggregation(rel_type='DF', class_rel_type='DF_C').
+    pattern = (
+        f"(c1:{ident(CLASS)})<-[:{ident(OBSERVED)}]-(e1:{ident(EVENT)})"
+        f"-[r:{ident(DF)}]->(e2:{ident(EVENT)})-[:{ident(OBSERVED)}]->(c2:{ident(CLASS)})"
+    )
     return Query(f"""
-            MATCH (c1:{ident(CLASS)})<-[:{ident(OBSERVED)}]-(e1:{ident(EVENT)})-[r:{ident(DF)}]->(e2:{ident(EVENT)})-[:{ident(OBSERVED)}]->(c2:{ident(CLASS)})
+            MATCH {pattern}
             WHERE c1.Type = c2.Type
             WITH r.Type AS c_type, c1, count(r) AS df_freq, c2
             MERGE (c1)-[:{ident(DF_C)} {{Type: c_type, edge_weight: df_freq}}]->(c2)""")

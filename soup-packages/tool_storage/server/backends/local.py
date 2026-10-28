@@ -12,6 +12,7 @@ Project : soup-packages/tool_storage
 
 from __future__ import annotations
 
+import builtins
 import shutil
 from pathlib import Path
 
@@ -47,7 +48,7 @@ class LocalFileStorage(FileStorage):
         elif target.exists():
             target.unlink()
 
-    def list(self, prefix: str = "") -> list[str]:
+    def list(self, prefix: str = "") -> builtins.list[str]:
         base = self._resolve(prefix)
         if not base.is_dir():
             return []

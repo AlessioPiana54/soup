@@ -1,6 +1,7 @@
-import { base64Utf8, BlockElement, h } from '../dom';
+import { h } from '@soup/sdk';
+import { base64Utf8, BlockElement } from '../dom';
 
-export type ImageData = { mime: string; base64: string; alt?: string } | { svg: string; alt?: string };
+type ImageData = { mime: string; base64: string; alt?: string } | { svg: string; alt?: string };
 
 const CSS = `img { max-width: 100%; height: auto; } .error { color: #b02a37; }`;
 
@@ -11,7 +12,7 @@ const CSS = `img { max-width: 100%; height: auto; } .error { color: #b02a37; }`;
  * inserted in the page.
  * @throws Error if the mime type is not an image type
  */
-export function imageUrl(data: ImageData): string {
+function imageUrl(data: ImageData): string {
   if ('svg' in data) {
     return `data:image/svg+xml;base64,${base64Utf8(String(data.svg))}`;
   }

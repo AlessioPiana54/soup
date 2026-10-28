@@ -49,11 +49,24 @@ Project : soup-packages/ekg_views
 from __future__ import annotations
 
 import json
+from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime
-from typing import Any, Callable, Mapping, Optional, Sequence
+from typing import Any, Protocol, cast
 
-from soup.core.contracts import Choice, Exporter, Field, NotFoundError, ObjectRef, ValidationError, Visualizer, report
 import soup_pkg_ekg.api as ekg
+from soup_pkg_ekg.api import Query
+
+from soup.core.contracts import (
+    Choice,
+    Exporter,
+    Field,
+    NotFoundError,
+    ObjectRef,
+    ToolAccess,
+    ValidationError,
+    Visualizer,
+    report,
+)
 
 from . import builtin_queries as builtin
 from .json_parts import JsonPart
@@ -78,8 +91,15 @@ SEARCH_PAGE = 50
 Contributions = Callable[[str], list[Any]]
 
 
-def _run(tools, query) -> list[dict[str, Any]]:
-    return tools.get(MEMGRAPH).run(query)
+class GraphQueries(Protocol):
+    """The part of the memgraph tool the views use: they only read the graph."""
+
+    def run(self, query: Query) -> list[dict[str, Any]]: ...
+
+
+def _run(tools: ToolAccess, query: Query) -> list[dict[str, Any]]:
+    graph = cast(GraphQueries, tools.get(MEMGRAPH))
+    return graph.run(query)
 
 
 def _keyed(items: Sequence[Any], what: str, kind: str) -> dict[str, Any]:
@@ -95,7 +115,7 @@ def _keyed(items: Sequence[Any], what: str, kind: str) -> dict[str, Any]:
     return found
 
 
-def notice_of(obj: ObjectRef) -> Optional[str]:
+def notice_of(obj: ObjectRef) -> str | None:
     """meta.notice: a message the elements show above the data (e.g. an analysis that changed nothing)."""
 
     notice = obj.meta.get("notice")
@@ -109,7 +129,7 @@ class _EkgContribution:
     def __init__(self, contributions: Contributions):
         self._contributions = contributions
 
-    def _loaded(self, obj: ObjectRef, tools) -> None:
+    def _loaded(self, obj: ObjectRef, tools: ToolAccess) -> None:
         ekg.ensure_loaded(obj, tools)
 
 
@@ -135,9 +155,10 @@ class GraphVisualizer(_EkgContribution, Visualizer):
 
     @staticmethod
     def _relations(view: GraphView, params: Mapping[str, Any]) -> list[str]:
-        return as_list(params.get("relations"), "relations", view.relationship_types, view.default_relations or view.relationship_types)
+        return as_list(params.get("relations"), "relations", view.relationship_types,
+            view.default_relations or view.relationship_types)
 
-    def _graph(self, view: GraphView, params: Mapping[str, Any], tools) -> dict[str, Any]:
+    def _graph(self, view: GraphView, params: Mapping[str, Any], tools: ToolAccess) -> dict[str, Any]:
         limit = as_limit(params.get("limit"), DEFAULT_LIMIT, self.max_limit)
         relations = self._relations(view, params)
         if not relations:
@@ -152,7 +173,7 @@ class GraphVisualizer(_EkgContribution, Visualizer):
             max_data = count_of(rows, "total_nodes") + count_of(rows, "total_rels")
         return {"view": view.key, "limit": limit, "relations": relations, "max_data": max_data, "graph": graph}
 
-    def data(self, obj: ObjectRef, params: Mapping[str, Any], tools) -> Any:
+    def data(self, obj: ObjectRef, params: Mapping[str, Any], tools: ToolAccess) -> Any:
         self._loaded(obj, tools)
         views = [
             {"key": view.key, "label": view.label or view.key,
@@ -163,7 +184,7 @@ class GraphVisualizer(_EkgContribution, Visualizer):
         return {"views": views, "max_limit": self.max_limit, "notice": notice_of(obj),
                 **self._graph(self._view(params, obj.kind), params, tools)}
 
-    def action(self, obj: ObjectRef, name: str, params: Mapping[str, Any], tools) -> Any:
+    def action(self, obj: ObjectRef, name: str, params: Mapping[str, Any], tools: ToolAccess) -> Any:
         if name not in ("graph", "search", "node"):
             raise NotFoundError(f"Visualizer '{self.id}' has no action '{name}'")
         self._loaded(obj, tools)
@@ -178,7 +199,7 @@ class GraphVisualizer(_EkgContribution, Visualizer):
             raise NotFoundError(f"Node {params.get('id')!r} not found in the view '{view.key}'")
         return node
 
-    def _search(self, view: GraphView, params: Mapping[str, Any], tools) -> dict[str, Any]:
+    def _search(self, view: GraphView, params: Mapping[str, Any], tools: ToolAccess) -> dict[str, Any]:
         text = as_text(params.get("text"), "text").strip()
         kind = as_choice(params.get("kind"), "kind", SEARCH_KINDS, "node")
         offset = as_int(params.get("offset"), "offset", 0, 0)
@@ -201,7 +222,7 @@ class GraphVisualizer(_EkgContribution, Visualizer):
 PHASES = (("Event", "event"), ("Entity", "entity"), ("CORR", "corr"), ("DF", "df"))
 
 
-def _seconds(start: Any, finish: Any) -> Optional[float]:
+def _seconds(start: Any, finish: Any) -> float | None:
     """Like support.service's calculateDuration: finish - start, in seconds."""
 
     if not start or not finish:
@@ -213,7 +234,7 @@ def _seconds(start: Any, finish: Any) -> Optional[float]:
     return delta.total_seconds()
 
 
-def phase_times(process_info: Any) -> Optional[dict[str, Any]]:
+def phase_times(process_info: Any) -> dict[str, Any] | None:
     """The "pie" chart of the build phases, or None if no phase has both times."""
 
     info = process_info if isinstance(process_info, Mapping) else {}
@@ -260,7 +281,7 @@ class StatsVisualizer(_EkgContribution, Visualizer):
     label = "Statistiche"
     element = "soup-pkg-ekg-stats"
 
-    def data(self, obj: ObjectRef, params: Mapping[str, Any], tools) -> Any:
+    def data(self, obj: ObjectRef, params: Mapping[str, Any], tools: ToolAccess) -> Any:
         self._loaded(obj, tools)
 
         def rows(query: GraphQuery) -> list[dict[str, Any]]:
@@ -278,7 +299,8 @@ class StatsVisualizer(_EkgContribution, Visualizer):
         entities = []
         for name in keys.rows(rows(keys)):
             nan_nodes = null_counts.get(name, 0)
-            entities.append({"name": name, "nan_nodes": nan_nodes, "warning": warning_label(nan_nodes) if nan_nodes else None})
+            entities.append({"name": name, "nan_nodes": nan_nodes,
+                "warning": warning_label(nan_nodes) if nan_nodes else None})
         # A derived object (an analysis) has the columns of its dataset.
         source = obj if obj.meta.get("columns") else ekg.root_of(obj)
         composition = {"chart": "pie", "labels": ["Event", "Entity", "CORR", "DF"],
@@ -302,21 +324,21 @@ class QueriesVisualizer(_EkgContribution, Visualizer):
     label = "Interrogazioni"
     element = "soup-pkg-ekg-queries"
 
-    @property  # type: ignore[override]
-    def accepts(self) -> tuple[str, ...]:
+    @property
+    def accepts(self) -> tuple[str, ...]:  # type: ignore[override]  # computed from the active contributions instead of declared
         return accepted_kinds(self._contributions(QUERIES_POINT))
 
     def queries(self, kind: str = ekg.EKG_KIND) -> dict[str, GraphQuery]:
         return _keyed(self._contributions(QUERIES_POINT), "queries", kind)
 
-    def data(self, obj: ObjectRef, params: Mapping[str, Any], tools) -> Any:
+    def data(self, obj: ObjectRef, params: Mapping[str, Any], tools: ToolAccess) -> Any:
         groups: dict[str, list[dict[str, Any]]] = {}
         for query in self.queries(obj.kind).values():
             groups.setdefault(query.group or "Altro", []).append(query.describe())
         return {"groups": [{"group": group, "queries": items} for group, items in groups.items()],
                 "notice": notice_of(obj)}
 
-    def action(self, obj: ObjectRef, name: str, params: Mapping[str, Any], tools) -> Any:
+    def action(self, obj: ObjectRef, name: str, params: Mapping[str, Any], tools: ToolAccess) -> Any:
         if name != "query":
             raise NotFoundError(f"Visualizer '{self.id}' has no action '{name}'")
         queries = self.queries(obj.kind)
@@ -339,20 +361,20 @@ class GraphJsonExporter(_EkgContribution, Exporter):
     extension = ".json"
     mime = "application/json"
 
-    @property  # type: ignore[override]
-    def accepts(self) -> tuple[str, ...]:
+    @property
+    def accepts(self) -> tuple[str, ...]:  # type: ignore[override]  # computed from the active contributions instead of declared
         return accepted_kinds(self._contributions(JSON_PARTS_POINT))
 
     def parts(self, kind: str = ekg.EKG_KIND) -> dict[str, JsonPart]:
         return _keyed(self._contributions(JSON_PARTS_POINT), "JSON parts", kind)
 
-    def fields(self, obj: ObjectRef, tools) -> list[Field]:
+    def fields(self, obj: ObjectRef, tools: ToolAccess) -> list[Field]:
         parts = self.parts(obj.kind)
         return [Field("parts", "Contenuto", type="multiselect", required=True,
                       choices=tuple(Choice(key, part.label or key) for key, part in parts.items()),
                       default=list(parts), help="Le parti del grafo da esportare, ognuna sotto la propria chiave.")]
 
-    def export(self, obj: ObjectRef, params: Mapping[str, Any], tools) -> bytes:
+    def export(self, obj: ObjectRef, params: Mapping[str, Any], tools: ToolAccess) -> bytes:
         parts = self.parts(obj.kind)
         chosen = as_list(params.get("parts"), "parts", parts, list(parts))
         if not chosen:

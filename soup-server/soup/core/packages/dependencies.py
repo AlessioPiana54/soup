@@ -13,16 +13,16 @@ Project : soup-server
 from __future__ import annotations
 
 import importlib.metadata as importlib_metadata
-from typing import Callable, Optional
+from collections.abc import Callable
 
 from packaging.requirements import Requirement
 
 from soup.core.packages.manifest import PackageManifest
 
-VersionLookup = Callable[[str], Optional[str]]
+VersionLookup = Callable[[str], str | None]
 
 
-def installed_version(distribution: str) -> Optional[str]:
+def installed_version(distribution: str) -> str | None:
     try:
         return importlib_metadata.version(distribution)
     except importlib_metadata.PackageNotFoundError:
