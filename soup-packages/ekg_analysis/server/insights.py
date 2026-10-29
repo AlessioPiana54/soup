@@ -34,7 +34,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from datetime import timedelta
-from typing import Any
+from typing import Any, cast
 
 import soup_pkg_ekg.api as ekg
 from soup_pkg_ekg.api import Query, ident
@@ -42,7 +42,7 @@ from soup_pkg_ekg_views.api import notice_of
 
 from soup.core.contracts import NotFoundError, ObjectRef, ToolAccess, ValidationError, Visualizer
 
-from .filters import CORR, ENTITY, EVENT, MEMGRAPH, entity_types
+from .filters import CORR, ENTITY, EVENT, MEMGRAPH, Run, _run, entity_types
 
 
 def activity_frequency_query(minimum: int) -> Query:
@@ -97,8 +97,8 @@ def duration_seconds(value: Any) -> float | None:
     if isinstance(value, timedelta):
         return value.total_seconds()
     if all(hasattr(value, part) for part in ("months", "days", "seconds")):
-        return (value.months * 30 * 24 * 3600 + value.days * 24 * 3600 + value.seconds
-                + getattr(value, "nanoseconds", 0) / 1_000_000_000)
+        return cast(float, value.months * 30 * 24 * 3600 + value.days * 24 * 3600 + value.seconds
+                    + getattr(value, "nanoseconds", 0) / 1_000_000_000)
     return None
 
 
@@ -133,7 +133,7 @@ class InsightsVisualizer(Visualizer):
 
     def data(self, obj: ObjectRef, params: Mapping[str, Any], tools: ToolAccess) -> Any:
         types = entity_types(obj, tools)
-        run = tools.get(MEMGRAPH).run
+        run = _run(tools)
         return {
             "entity_types": types,
             "frequency": self._frequency(run, 1),
@@ -147,20 +147,20 @@ class InsightsVisualizer(Visualizer):
         if name == "frequency":
             minimum = _as_int(params.get("min"), "min", 1, 1)
             ekg.ensure_loaded(obj, tools)
-            return {"min": minimum, "frequency": self._frequency(tools.get(MEMGRAPH).run, minimum)}
+            return {"min": minimum, "frequency": self._frequency(_run(tools), minimum)}
         types = entity_types(obj, tools)
         entity = params.get("entity")
         if entity not in types:
             raise ValidationError(f"'entity' must be one of the entity types of the graph {types}, got {entity!r}")
-        return self._indicators(tools.get(MEMGRAPH).run, entity)
+        return self._indicators(_run(tools), entity)
 
     @staticmethod
-    def _frequency(run, minimum: int) -> list[dict[str, Any]]:
+    def _frequency(run: Run, minimum: int) -> list[dict[str, Any]]:
         return [{"activity": row.get("activity"), "frequency": row.get("frequency")}
                 for row in run(activity_frequency_query(minimum)) if row.get("activity") is not None]
 
     @staticmethod
-    def _indicators(run, entity: str) -> dict[str, Any]:
+    def _indicators(run: Run, entity: str) -> dict[str, Any]:
         durations = [row.get("iso_duration") for row in run(trace_durations_query(entity))]
         activities = [{"activity": row["activity"], "occurrences": row["occurrences"]}
                       for row in run(activity_occurrences_query(entity))

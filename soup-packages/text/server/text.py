@@ -28,9 +28,10 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from soup_pkg_soup_base.api import DEFAULT_MAX_BYTES, DEFAULT_MAX_OBJECTS, ParsedCache
+from soup_pkg_tool_storage.api import StorageSpace, StorageTool
 
 from soup.core.contracts import (
     Exporter,
@@ -99,8 +100,8 @@ def stored_extension(obj: ObjectRef) -> str:
     return MARKDOWN_EXTENSIONS[0] if obj.meta.get("format") == "markdown" else DEFAULT_EXTENSION
 
 
-def _space(tools: ToolAccess):
-    return tools.get(STORAGE).space(NAMESPACE)
+def _space(tools: ToolAccess) -> StorageSpace:
+    return cast(StorageTool, tools.get(STORAGE)).space(NAMESPACE)
 
 
 def _content(obj: ObjectRef, tools: ToolAccess) -> bytes:

@@ -44,9 +44,9 @@ from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping
-from typing import Any
+from typing import Any, cast
 
-from soup_pkg_tool_memgraph.api import GraphDatabase
+from soup_pkg_tool_memgraph.api import GraphDatabase, Run
 
 from soup.core.contracts import Catalog, NotFoundError, ObjectRef, ValidationError
 
@@ -60,7 +60,7 @@ from .builder import (
     build_context,
     new_graph_key,
 )
-from .dataset_repository import DatasetRepository
+from .dataset_repository import DatasetRepository, StorageSpaceTool
 from .ekg_service import EkgService
 from .event_log import config_mapping_problem, mapping_problem
 from .process_timer import ProcessTimer
@@ -170,7 +170,7 @@ def ensure_loaded(obj: ObjectRef, tools: Any, force: bool = False) -> bool:
 
     root = chain[0]
     dataset = root.meta["dataset"]
-    repository = DatasetRepository(runtime.tools.get(STORAGE))
+    repository = DatasetRepository(cast(StorageSpaceTool, runtime.tools.get(STORAGE)))
     providers =[(runtime.state_provider(item.meta["state"].get("provider", "")), item) for item in chain[1:]]
     config = repository.load_config(dataset)
     problem = config_mapping_problem(config)
@@ -180,7 +180,7 @@ def ensure_loaded(obj: ObjectRef, tools: Any, force: bool = False) -> bool:
     counts: dict[str, int] = {}
     times: dict[str, str] = {}
 
-    def loader(run) -> None:
+    def loader(run: Run) -> None:
         db = RunDatabase(run)
         service = EkgService(db, runtime.build_steps)
         service.build(ctx, times)
@@ -228,7 +228,7 @@ def derive_state(parent: ObjectRef, mutate: Callable[[Any], None], tools: Any) -
     graph_key = new_graph_key()
     mutated = False
 
-    def tracked(run) -> None:
+    def tracked(run: Run) -> None:
         nonlocal mutated
         mutated = True
         mutate(run)
@@ -266,4 +266,4 @@ def dispose(obj: ObjectRef, tools: Any) -> None:
         memgraph.clear()
     dataset = obj.meta.get("dataset")
     if dataset and not is_derived(obj):
-        DatasetRepository(runtime.tools.get(STORAGE)).delete(dataset)
+        DatasetRepository(cast(StorageSpaceTool, runtime.tools.get(STORAGE))).delete(dataset)

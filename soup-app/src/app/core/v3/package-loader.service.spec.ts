@@ -55,8 +55,11 @@ describe('PackageLoaderService', () => {
       ]
     });
     loader = TestBed.inject(PackageLoaderService);
-    spyOn(console, 'error');
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
   });
+
+  // Like Jasmine's spies, the console spies of a test end with it.
+  afterEach(() => vi.restoreAllMocks());
 
   const names = () => imported.map((url) => new URL(url).pathname.split('/')[4]);
 
@@ -84,7 +87,7 @@ describe('PackageLoaderService', () => {
     expect(statuses.get('graphs')?.error).toContain('base');
     expect(statuses.get('other')?.state).toBe('loaded');
     expect(loader.errorOf('graphs')).toContain('required package base');
-    await expectAsync(loader.ensureLoaded('base')).toBeRejectedWithError(/SyntaxError/);
+    await expect(loader.ensureLoaded('base')).rejects.toThrow(/SyntaxError/);
   });
 
   it('does not import or register a bundle twice across reloads', async () => {
@@ -97,9 +100,9 @@ describe('PackageLoaderService', () => {
     expect(names()).toEqual(['base', 'other']);
     expect(customElements.get('soup-loader-test-base')).toBe(elementOf('base'));
     // A bundle evaluated again (another URL, a second copy) does not throw.
-    expect(defineSoupElement('soup-loader-test-base', elementOf('base'))).toBeFalse();
-    spyOn(console, 'warn');
-    expect(defineSoupElement('soup-loader-test-base', class extends HTMLElement {})).toBeFalse();
+    expect(defineSoupElement('soup-loader-test-base', elementOf('base'))).toBe(false);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    expect(defineSoupElement('soup-loader-test-base', class extends HTMLElement {})).toBe(false);
   });
 
   it('retries a failed bundle at the next reload', async () => {
@@ -137,7 +140,7 @@ describe('PackageLoaderService', () => {
 
     expect(names()).toEqual(['base']);
     expect(loader.statuses().get('base')?.state).toBe('reload-required');
-    await expectAsync(loader.ensureLoaded('base')).toBeResolved();
+    await expect(loader.ensureLoaded('base')).resolves.toBeUndefined();
   });
 
   it('reads the manifest again for a package missing from it, and imports it once with its version', async () => {
@@ -157,7 +160,7 @@ describe('PackageLoaderService', () => {
     manifest = () => of([module('base')]);
     await loader.reload();
 
-    await expectAsync(loader.ensureLoaded('nothing')).toBeRejectedWithError(/no active frontend bundle/);
+    await expect(loader.ensureLoaded('nothing')).rejects.toThrow(/no active frontend bundle/);
     expect(names()).toEqual(['base']);
   });
 

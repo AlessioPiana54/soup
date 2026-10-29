@@ -14,6 +14,10 @@ Description: DatasetRepository - the only place that knows the dataset
                  /soup/<name>/<name>_entity.csv      entities CSV
                  /soup/<name>/<name>_config.json     config
                  /soup/<name>/<name>_config.svg      svg (not written here)
+                 /soup/<name>/<name>_<file>          the extra files of the
+                                                     importer (build_ekg's
+                                                     extra_files, e.g. ocel's
+                                                     relationships)
                  /soup/<name>/Analyses/              the saved analyses
 
              The files go through the "storage" tool (tool_storage
@@ -28,18 +32,42 @@ Project : soup-packages/ekg
 
 from __future__ import annotations
 
+import builtins
 import json
-from typing import Any, Protocol
+from collections.abc import Mapping
+from typing import Any, Protocol, cast
 
-from soup.core.contracts import FileStorage, ValidationError, validate_name
+from soup.core.contracts import ValidationError, validate_name
 
 ANALYSES_FOLDER = "Analyses"
+
+
+class StorageSpace(Protocol):
+    """What the repository uses of a namespace of the "storage" tool (tool_storage's StorageSpace)."""
+
+    def read(self, path: str) -> bytes:
+        ...
+
+    def write(self, path: str, data: bytes) -> None:
+        ...
+
+    def exists(self, path: str) -> bool:
+        ...
+
+    def delete(self, path: str) -> None:
+        ...
+
+    def list(self, prefix: str = "") -> builtins.list[str]:
+        ...
+
+    def subspace(self, name: str) -> StorageSpace:
+        ...
 
 
 class StorageSpaceTool(Protocol):
     """What the repository uses of the "storage" tool (tool_storage's StorageTool)."""
 
-    def space(self, namespace: str) -> Any:
+    def space(self, namespace: str) -> StorageSpace:
         ...
 
     def path_for(self, namespace: str, name: str) -> str:
@@ -66,7 +94,7 @@ class DatasetRepository:
     def __init__(self, storage: StorageSpaceTool):
         self._storage = storage
 
-    def _space(self, name: str) -> FileStorage:
+    def _space(self, name: str) -> StorageSpace:
         return self._storage.space(_validate_name(name))
 
     # ------------------------------------------------------------------ #
@@ -83,6 +111,10 @@ class DatasetRepository:
     @staticmethod
     def _config(name: str) -> str:
         return f"{name}_config.json"
+
+    @staticmethod
+    def _extra_file(name: str, file: str) -> str:
+        return f"{name}_{validate_name(file, label='File')}"
 
     def events_csv_load_path(self, name: str) -> str:
         """Absolute in-container path for the events CSV, as used by LOAD CSV."""
@@ -102,7 +134,22 @@ class DatasetRepository:
         space.write(self._events_csv(name), events_csv)
         space.write(self._entities_csv(name), entities_csv)
 
-    def save_config(self, name: str, config: dict) -> None:
+    def save_extra_files(self, name: str, files: Mapping[str, bytes]) -> None:
+        """Files of the importer next to the canonical CSVs, for its own build steps."""
+
+        space = self._space(name)
+        for file, data in files.items():
+            space.write(self._extra_file(name, file), data)
+
+    def has_extra_file(self, name: str, file: str) -> bool:
+        return self._space(name).exists(self._extra_file(name, file))
+
+    def extra_file_load_path(self, name: str, file: str) -> str:
+        """Absolute in-container path of an extra file, as used by LOAD CSV."""
+
+        return self._storage.path_for(_validate_name(name), self._extra_file(name, file))
+
+    def save_config(self, name: str, config: dict[str, Any]) -> None:
         """
         Persist `config` as-is (plus the schema's `source_format` field,
         already present in `config` by the time build_ekg builds it)
@@ -162,7 +209,7 @@ class DatasetRepository:
     # ------------------------------------------------------------------ #
     # Analyses (/soup/<name>/Analyses/<analysis>.json)
     # ------------------------------------------------------------------ #
-    def _analyses(self, name: str) -> FileStorage:
+    def _analyses(self, name: str) -> StorageSpace:
         return self._space(name).subspace(ANALYSES_FOLDER)
 
     def analyses(self, name: str) -> list[str]:
@@ -170,13 +217,13 @@ class DatasetRepository:
 
         return [file[:-len(".json")] for file in self._analyses(name).list() if file.endswith(".json")]
 
-    def save_analysis(self, name: str, analysis: str, data: dict) -> None:
+    def save_analysis(self, name: str, analysis: str, data: dict[str, Any]) -> None:
         payload = json.dumps(data, indent=4, ensure_ascii=False).encode("utf-8")
         self._analyses(name).write(f"{validate_name(analysis, label='Analysis')}.json", payload)
 
     def load_analysis(self, name: str, analysis: str) -> dict[str, Any]:
         raw = self._analyses(name).read(f"{validate_name(analysis, label='Analysis')}.json")
-        return json.loads(raw.decode("utf-8"))
+        return cast("dict[str, Any]", json.loads(raw.decode("utf-8")))
 
     def delete_analysis(self, name: str, analysis: str) -> None:
         self._analyses(name).delete(f"{validate_name(analysis, label='Analysis')}.json")

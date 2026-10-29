@@ -1,5 +1,5 @@
+import dagre, { type Edge, type Graph, type GraphLabel } from '@dagrejs/dagre';
 import * as d3 from 'd3';
-import * as dagreD3 from 'dagre-d3';
 
 import { GraphModel } from './model';
 import { RelationshipPalette } from './palette';
@@ -15,6 +15,220 @@ type Selection = d3.Selection<any, unknown, null, undefined>;
 
 // The margin, in pixels, left around the graph by the first centering.
 const FIT_MARGIN = 20;
+
+// The space between a node's label and its border (dagre-d3's default padding).
+const NODE_PADDING = 10;
+let arrowheads = 0;
+
+interface Point {
+  x: number;
+  y: number;
+}
+
+/** A node for dagre: its label, shape and style (dagre adds its size and position). */
+interface LayoutNode {
+  label: string;
+  shape: NodeShape;
+  style: string;
+  rx: number;
+  ry: number;
+  width: number;
+  height: number;
+  x?: number;
+  y?: number;
+  // The border, for the edges ending on it.
+  intersect?: (point: Point) => Point;
+}
+
+/** An edge for dagre: its id, label and style, then the label size, the points and the label position. */
+interface LayoutEdge {
+  id: string;
+  label: string;
+  style: string;
+  arrowheadStyle: string;
+  labelpos?: 'l' | 'c' | 'r';
+  labeloffset?: number;
+  width?: number;
+  height?: number;
+  points?: Point[];
+  x?: number;
+  y?: number;
+}
+
+type LayoutGraph = Graph<GraphLabel, LayoutNode, LayoutEdge>;
+// A node after dagre.layout(), which sets x and y.
+type PlacedNode = LayoutNode & { x: number; y: number };
+
+/** The data of an edge of the graph (dagre types it loosely). */
+const edgeOf = (graph: LayoutGraph, e: Edge): LayoutEdge => graph.edge(e) as LayoutEdge;
+
+/** A \-escaped label as dagre-d3 drew it: "\n" (backslash, n) is a new line, "\x" is x. */
+function unescapeLabel(text: string): string {
+  let result = '';
+  let escaped = false;
+  for (const ch of text) {
+    if (escaped) {
+      result += ch === 'n' ? '\n' : ch;
+      escaped = false;
+    } else if (ch === '\\') escaped = true;
+    else result += ch;
+  }
+  return result;
+}
+
+/** A text label centered on (0, 0): one <tspan> per line, in a <g> moved by half its size. */
+function addLabel(parent: Selection, text: string, style: string): Selection {
+  const group = parent.append('g');
+  const element = group.append('text').attr('style', style);
+  for (const line of unescapeLabel(text).split('\n')) {
+    element.append('tspan').attr('xml:space', 'preserve').attr('dy', '1em').attr('x', '1').text(line);
+  }
+  const box = (group.node() as SVGGElement).getBBox();
+  return group.attr('transform', `translate(${-box.width / 2},${-box.height / 2})`);
+}
+
+/** Where the line from the center of a rectangle node towards `point` crosses its border. */
+function intersectRect(node: PlacedNode, point: Point): Point {
+  const { x, y } = node;
+  const dx = point.x - x;
+  const dy = point.y - y;
+  let w = node.width / 2;
+  let h = node.height / 2;
+  if (Math.abs(dy) * w > Math.abs(dx) * h) {
+    if (dy < 0) h = -h;
+    return { x: x + (dy === 0 ? 0 : (h * dx) / dy), y: y + h };
+  }
+  if (dx < 0) w = -w;
+  return { x: x + w, y: y + (dx === 0 ? 0 : (w * dy) / dx) };
+}
+
+/** Where the line from the center of a circle node of radius r towards `point` crosses it. */
+function intersectCircle(node: PlacedNode, r: number, point: Point): Point {
+  const { x: cx, y: cy } = node;
+  const px = cx - point.x;
+  const py = cy - point.y;
+  const det = Math.sqrt(r * r * py * py + r * r * px * px);
+  const dx = Math.abs((r * r * px) / det);
+  const dy = Math.abs((r * r * py) / det);
+  return { x: point.x < cx ? cx - dx : cx + dx, y: point.y < cy ? cy - dy : cy + dy };
+}
+
+/** The node's shape, behind its label, sized on the label plus the padding. */
+function addShape(group: Selection, node: PlacedNode, width: number, height: number): Selection {
+  if (node.shape === 'circle') {
+    const r = Math.max(width, height) / 2;
+    node.intersect = (point) => intersectCircle(node, r, point);
+    return group.insert('circle', ':first-child').attr('x', -width / 2).attr('y', -height / 2).attr('r', r);
+  }
+  node.intersect = (point) => intersectRect(node, point);
+  return group
+    .insert('rect', ':first-child')
+    .attr('rx', node.rx)
+    .attr('ry', node.ry)
+    .attr('x', -width / 2)
+    .attr('y', -height / 2)
+    .attr('width', width)
+    .attr('height', height);
+}
+
+/** The arrowhead of an edge, in its color ("normal" in dagre-d3). */
+function addArrowhead(defs: Selection, id: string, style: string): void {
+  defs
+    .append('marker')
+    .attr('id', id)
+    .attr('viewBox', '0 0 10 10')
+    .attr('refX', 9)
+    .attr('refY', 5)
+    .attr('markerUnits', 'strokeWidth')
+    .attr('markerWidth', 8)
+    .attr('markerHeight', 6)
+    .attr('orient', 'auto')
+    .append('path')
+    .attr('d', 'M 0 0 L 10 5 L 0 10 z')
+    .attr('style', style);
+}
+
+const edgeLine = d3
+  .line<Point>()
+  .x((point) => point.x)
+  .y((point) => point.y)
+  .curve(d3.curveBasis);
+
+/** The key of an edge's elements across redraws (as dagre-d3's: source, target, name = the edge id). */
+const edgeKey = (e: Edge): string => `${e.v}:${e.w}:${e.name ?? ''}`;
+
+/** The <g class="name"> child of `parent`, created the first time. */
+function child(parent: Selection, name: string): Selection {
+  const found = parent.select(`g.${name}`);
+  return found.empty() ? parent.append('g').attr('class', name) : found;
+}
+
+/** One g.node per node (kept across redraws by id), with its label and shape; sets the sizes dagre lays out. */
+function drawNodes(parent: Selection, graph: LayoutGraph): d3.Selection<SVGGElement, string, SVGGElement, unknown> {
+  const nodes = (parent as d3.Selection<SVGGElement, unknown, null, undefined>)
+    .selectAll<SVGGElement, string>('g.node')
+    .data(graph.nodes(), (id) => id)
+    .join((enter) => enter.append('g').attr('class', 'node').style('opacity', 0));
+  nodes.each(function (id) {
+    const node = graph.node(id) as PlacedNode;
+    const group = d3.select(this) as Selection;
+    group.select('g.label').remove();
+    group.select('.label-container').remove();
+    const label = group.append('g').attr('class', 'label').attr('transform', 'translate(0,0)');
+    const box = (addLabel(label, node.label, LABEL_STYLE).node() as SVGGElement).getBBox();
+    const shape = addShape(group, node, box.width + 2 * NODE_PADDING, box.height + 2 * NODE_PADDING)
+      .classed('label-container', true)
+      .attr('style', node.style);
+    const shapeBox = (shape.node() as SVGGraphicsElement).getBBox();
+    node.width = shapeBox.width;
+    node.height = shapeBox.height;
+  });
+  return nodes;
+}
+
+/** One g.edgeLabel per edge (kept across redraws by id), with its label; sets the label sizes dagre lays out. */
+function drawEdgeLabels(parent: Selection, graph: LayoutGraph): d3.Selection<SVGGElement, Edge, SVGGElement, unknown> {
+  const labels = (parent as d3.Selection<SVGGElement, unknown, null, undefined>)
+    .selectAll<SVGGElement, Edge>('g.edgeLabel')
+    .data(graph.edges(), edgeKey)
+    .join((enter) => enter.append('g').classed('edgeLabel', true).style('opacity', 0));
+  labels.each(function (e) {
+    const edge = edgeOf(graph, e);
+    const group = d3.select(this) as Selection;
+    group.select('.label').remove();
+    const box = (addLabel(group, edge.label, LABEL_STYLE).classed('label', true).node() as SVGGElement).getBBox();
+    edge.width = box.width;
+    edge.height = box.height;
+  });
+  return labels;
+}
+
+/** One g.edgePath per edge (kept across redraws by id): the curve from border to border and its arrowhead. */
+function drawEdgePaths(parent: Selection, graph: LayoutGraph): void {
+  const base = location.href.split('#')[0];
+  const paths = (parent as d3.Selection<SVGGElement, unknown, null, undefined>)
+    .selectAll<SVGGElement, Edge>('g.edgePath')
+    .data(graph.edges(), edgeKey)
+    .join((enter) => {
+      const group = enter.append('g').attr('class', 'edgePath');
+      group.append('path').attr('class', 'path');
+      group.append('defs');
+      return group;
+    })
+    .style('opacity', 1);
+  paths.each(function (e) {
+    const edge = edgeOf(graph, e);
+    const id = `arrowhead${++arrowheads}`;
+    const group = d3.select(this) as Selection;
+    const points = (edge.points ?? []).slice(1, -1);
+    points.unshift(graph.node(e.v).intersect!(points[0]));
+    points.push(graph.node(e.w).intersect!(points[points.length - 1]));
+    group.select('path.path').attr('marker-end', `url(${base}#${id})`).attr('d', edgeLine(points)).attr('style', edge.style);
+    const defs = group.select('defs');
+    defs.selectAll('*').remove();
+    addArrowhead(defs, id, edge.arrowheadStyle);
+  });
+}
 
 /**
  * The zoom that fits a laid out graph of graphWidth x graphHeight in a box
@@ -48,6 +262,10 @@ export function fitTransform(graphWidth: number, graphHeight: number, boxWidth: 
  *  - a hidden relationship type shown again kept no weight (thinner,
  *    label without weight): edges are always rebuilt from the model;
  *  - the weight scale had an empty domain with a single weight.
+ * The layout is @dagrejs/dagre's; the drawing is d3, with the SVG
+ * dagre-d3 made (g.output > g.edgePaths > g.edgePath, g.edgeLabels >
+ * g.edgeLabel, g.nodes > g.node with its shape and g.label; the same
+ * styles, arrowheads, curves and borders), which it replaces.
  */
 export class DagreGraphRenderer implements GraphRenderer {
   public onNodeClick: ((id: string) => void) | null = null;
@@ -61,7 +279,7 @@ export class DagreGraphRenderer implements GraphRenderer {
   private readonly highlighted = new Set<string>();
   private centered = false;
   // The last graph laid out, centered when the container gets a size.
-  private laidOut: dagreD3.graphlib.Graph | null = null;
+  private laidOut: LayoutGraph | null = null;
   private resizes: ResizeObserver | null = null;
 
   public mount(container: HTMLElement): void {
@@ -133,13 +351,11 @@ export class DagreGraphRenderer implements GraphRenderer {
   }
 
   // ------------------------------------------------------------------ //
-  private graph(model: GraphModel): dagreD3.graphlib.Graph {
+  private graph(model: GraphModel): LayoutGraph {
     const { palette, shape, direction } = this.options;
-    const graph = new dagreD3.graphlib.Graph({ multigraph: true, compound: true }).setGraph({
-      rankdir: direction ?? 'LR',
-      nodesep: 25,
-      multiedgesep: 10
-    });
+    const graph: LayoutGraph = new dagre.graphlib.Graph({ multigraph: true, compound: true });
+    // dagre-d3 also passed multiedgesep: 10, which dagre ignores.
+    graph.setGraph({ rankdir: direction ?? 'LR', nodesep: 25 });
 
     const nodes = model.nodes.filter((node) => palette.isGroupVisible(node.group));
     const shown = new Set(nodes.map((node) => node.id));
@@ -151,7 +367,8 @@ export class DagreGraphRenderer implements GraphRenderer {
         rx: 5,
         ry: 5,
         style: this.highlighted.has(node.id) ? HIGHLIGHT_STYLE : NODE_STYLE + stroke,
-        labelStyle: LABEL_STYLE
+        width: 0,
+        height: 0
       });
     }
 
@@ -166,13 +383,12 @@ export class DagreGraphRenderer implements GraphRenderer {
         edge.source,
         edge.target,
         {
+          id: edge.id,
           label: edge.label,
           style: `stroke: ${color}; stroke-width: ${width(edge.weight)}px; fill: none;`,
           arrowheadStyle: `fill: ${color};`,
-          curve: d3.curveBasis,
           labelpos: 'c',
-          labeloffset: 5,
-          labelStyle: LABEL_STYLE
+          labeloffset: 5
         },
         edge.id
       );
@@ -183,11 +399,24 @@ export class DagreGraphRenderer implements GraphRenderer {
   private draw(): void {
     if (!this.group || !this.svg || !this.model) return;
     const graph = this.graph(this.model);
-    const render = new dagreD3.render();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    render(this.group as any, graph as any);
+    const output = child(this.group, 'output');
+    child(output, 'clusters');
+    const paths = child(output, 'edgePaths');
+    const labels = drawEdgeLabels(child(output, 'edgeLabels'), graph);
+    const nodes = drawNodes(child(output, 'nodes'), graph);
 
-    this.group.selectAll<SVGGElement, string>('g.node').on('click', (event: MouseEvent, id: string) => {
+    dagre.layout(graph);
+
+    nodes.attr('transform', (id) => `translate(${graph.node(id).x},${graph.node(id).y})`).style('opacity', 1);
+    labels
+      .attr('transform', (e) => {
+        const edge = edgeOf(graph, e);
+        return edge.x === undefined ? '' : `translate(${edge.x},${edge.y})`;
+      })
+      .style('opacity', 1);
+    drawEdgePaths(paths, graph);
+
+    nodes.on('click', (event: MouseEvent, id: string) => {
       event.stopPropagation();
       this.onNodeClick?.(id);
     });
@@ -203,9 +432,9 @@ export class DagreGraphRenderer implements GraphRenderer {
    * Fit the graph in the container, as a zoom transform (pan and zoom
    * continue from it). False, and nothing applied, without valid sizes.
    */
-  private center(graph: dagreD3.graphlib.Graph): boolean {
+  private center(graph: LayoutGraph): boolean {
     if (!this.svg || !this.zoom || !this.container) return false;
-    const { width = 0, height = 0 } = graph.graph() as { width?: number; height?: number };
+    const { width = 0, height = 0 } = graph.graph();
     const box = this.container.getBoundingClientRect();
     const transform = fitTransform(width, height, box.width, box.height);
     if (!transform) return false;

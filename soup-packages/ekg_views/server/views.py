@@ -31,7 +31,12 @@ Description: The views of the "Grafo" visualizer, contributed to the
                "ekg_class"): Event-[:DF]->Event and Event-[:CORR]->Entity
                (only :DF by default, like the old graph page), from
                get_complete_standard_graph_query and
-               SupportService.extract_graph_data.
+               SupportService.extract_graph_data;
+             - ObjectGraphView ("object", same kinds): the objects,
+               Entity-[:REL]->Entity (the object-object relationships of
+               an OCEL log, by qualifier; the default) and
+               Event-[:CORR]->Entity (labelled with their qualifier, if
+               any). A graph without :REL (e.g. from a CSV) shows none.
              The "max data" query counts the distinct nodes in pure Cypher
              (the legacy get_max_standard_graph_data needed APOC's
              apoc.coll.toSet).
@@ -43,7 +48,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Mapping, Sequence
-from typing import Any
+from typing import Any, cast
 
 from soup_pkg_ekg.api import Query, ident
 
@@ -279,7 +284,7 @@ class EdgeListGraphView(GraphView):
                 nodes.setdefault(node["id"], node)
             edge = self.edge_model(record)
             edges.append({**edge, "group": edge["type"]})
-        return report.graph(nodes.values(), edges, directed=True)["data"]
+        return cast("dict[str, Any]", report.graph(nodes.values(), edges, directed=True)["data"])
 
     def search_items(self, records: Iterable[Mapping[str, Any]], kind: str) -> list[dict[str, Any]]:
         if kind == NODE:
@@ -296,6 +301,7 @@ EVENT = "Event"
 ENTITY = "Entity"
 CORR = "CORR"
 DF = "DF"
+REL = "REL"
 
 
 class StandardGraphView(EdgeListGraphView):
@@ -325,3 +331,19 @@ class StandardGraphView(EdgeListGraphView):
 
     def edge_label(self, rel_type: str, props: Mapping[str, Any]) -> str:
         return self.edge_type(rel_type, props)
+
+
+class ObjectGraphView(StandardGraphView):
+    key = "object"
+    label = "Grafo degli oggetti"
+    relationships = {REL: (ENTITY, ENTITY), CORR: (EVENT, ENTITY)}
+    default_relations = (REL,)
+
+    def edge_type(self, rel_type: str, props: Mapping[str, Any]) -> str:
+        # :REL by qualifier (a color and a checkbox each); all :CORR alike.
+        if rel_type == REL and props.get("qualifier"):
+            return str(props["qualifier"])
+        return rel_type
+
+    def edge_label(self, rel_type: str, props: Mapping[str, Any]) -> str:
+        return str(props.get("qualifier") or rel_type)

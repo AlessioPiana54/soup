@@ -17,8 +17,9 @@ Project : soup-packages/tool_memgraph
 from __future__ import annotations
 
 import threading
-from typing import Any
+from typing import Any, cast
 
+from neo4j import Driver
 from neo4j import GraphDatabase as Neo4jGraphDatabase
 
 from .port import GraphDatabase as GraphDatabasePort
@@ -26,13 +27,13 @@ from .query import Query
 
 
 class MemgraphDatabase(GraphDatabasePort):
-    def __init__(self, uri: str, auth: tuple = ("", "")):
+    def __init__(self, uri: str, auth: tuple[str, str] = ("", "")):
         self._uri = uri
         self._auth = auth
-        self._driver = None
+        self._driver: Driver | None = None
         self._lock = threading.Lock()
 
-    def _get_driver(self):
+    def _get_driver(self) -> Driver:
         if self._driver is None:
             with self._lock:
                 if self._driver is None:
@@ -42,7 +43,7 @@ class MemgraphDatabase(GraphDatabasePort):
     def run(self, query: Query) -> list[dict[str, Any]]:
         driver = self._get_driver()
         with driver.session() as session:
-            result = session.run(query.text, query.params, database="memgraph", metrics=True)
+            result = session.run(query.text, cast("dict[str, Any]", query.params), database="memgraph", metrics=True)
             return [record.data() for record in result]
 
     def close(self) -> None:

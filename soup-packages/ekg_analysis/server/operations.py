@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, cast
 
 import soup_pkg_ekg.api as ekg
 
@@ -100,7 +100,7 @@ class _AnalysisOperation(Operation):
         found = analysis_file(obj)
         if found is None:
             return
-        repository = ekg.DatasetRepository(tools.get(STORAGE))
+        repository = ekg.DatasetRepository(cast(ekg.StorageSpaceTool, tools.get(STORAGE)))
         dataset, name = found
         if name in repository.analyses(dataset):
             remove_file(repository, dataset, name)
@@ -164,7 +164,7 @@ LEGACY_EXAMPLE = {
 
 
 def example_configuration(types: list[str], names: list[str], first: str | None, last: str | None) -> dict[str, Any]:
-    example = json.loads(json.dumps(LEGACY_EXAMPLE))
+    example = cast("dict[str, Any]", json.loads(json.dumps(LEGACY_EXAMPLE)))
     if first and last:
         example["timestamp"] = [{"startDate": first, "endDate": last}]
     if types:

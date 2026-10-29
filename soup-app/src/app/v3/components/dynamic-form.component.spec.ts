@@ -172,9 +172,8 @@ describe('DynamicFormComponent', () => {
   it('reads a chosen file as base64', async () => {
     await render([field('f', 'file')]);
     const input = inside('f').querySelector('input') as HTMLInputElement;
-    const transfer = new DataTransfer();
-    transfer.items.add(new File(['hi!'], 'notes.txt', { type: 'text/plain' }));
-    input.files = transfer.files;
+    // jsdom has no DataTransfer to build a FileList: the chosen file as the input's `files`.
+    Object.defineProperty(input, 'files', { configurable: true, value: [new File(['hi!'], 'notes.txt', { type: 'text/plain' })] });
 
     input.dispatchEvent(new Event('change'));
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -238,7 +237,7 @@ describe('DynamicFormComponent', () => {
   it('validate() shows the errors of the required fields', async () => {
     await render([field('name', 'text', { required: true }), field('steps', 'items', { required: true, variants: [FILTER] })]);
 
-    expect(fixture.componentInstance.validate()).toBeFalse();
+    expect(fixture.componentInstance.validate()).toBe(false);
     fixture.detectChanges();
     expect(host().querySelectorAll('.soup-field-error').length).toBe(2);
 

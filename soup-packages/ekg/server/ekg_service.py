@@ -17,8 +17,9 @@ Project : soup-packages/ekg
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
+from typing import cast
 
-from soup_pkg_tool_memgraph.api import GraphDatabase
+from soup_pkg_tool_memgraph.api import GraphDatabase, Query
 
 from . import schema
 from .build import BuildContext, EkgBuildStep
@@ -50,7 +51,7 @@ class EkgService:
         plugin_steps = list((source() if callable(source) else source) or ()) if source is not None else []
         return sorted((*core_steps(), *plugin_steps), key=lambda step: step.order)
 
-    def build(self, ctx: BuildContext, times: dict | None = None) -> None:
+    def build(self, ctx: BuildContext, times: dict[str, str] | None = None) -> None:
         """Run the pipeline; with `times`, record each phase's start/end in it."""
 
         for step in self.build_pipeline():
@@ -59,8 +60,8 @@ class EkgService:
             with ProcessTimer() as timer:
                 step.execute(ctx, self._db)
             if times is not None and step.phase in PHASE_TIMES:
-                times.setdefault(f"init_{step.phase}_time", timer.started_at)
-                times[f"finish_{step.phase}_time"] = timer.finished_at
+                times.setdefault(f"init_{step.phase}_time", cast(str, timer.started_at))
+                times[f"finish_{step.phase}_time"] = cast(str, timer.finished_at)
 
     def reset(self) -> None:
         """
@@ -91,8 +92,8 @@ class EkgService:
             "df_rel": self._scalar_count(schema.count_df_relationships_query()),
         }
 
-    def _scalar_count(self, query) -> int:
+    def _scalar_count(self, query: Query) -> int:
         rows = self._db.run(query)
         if not rows:
             return 0
-        return next(iter(rows[0].values()))
+        return cast(int, next(iter(rows[0].values())))

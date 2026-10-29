@@ -38,7 +38,8 @@ Description: The visualizers and the exporter of ekg_views, for objects of
              object, only the contributions whose `kinds` contain its
              kind. data() of Grafo, Statistiche and Interrogazioni carries
              meta.notice of the object (e.g. an analysis that changed
-             nothing), shown by the elements.
+             nothing), shown by the elements; Statistiche adds the
+             notices contributed to "ekg.stats_notices" (StatsNotice).
              The contributions to the extension points are read again at
              every request (`contributions`, the PluginContext's), so a
              package enabled or disabled at runtime takes effect at once.
@@ -49,6 +50,7 @@ Project : soup-packages/ekg_views
 from __future__ import annotations
 
 import json
+from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime
 from typing import Any, Protocol, cast
@@ -78,6 +80,7 @@ from .views import SEARCH_KINDS, GraphView
 GRAPH_VIEWS_POINT = "ekg.graph_views"
 QUERIES_POINT = "ekg.queries"
 JSON_PARTS_POINT = "ekg.json_parts"
+STATS_NOTICES_POINT = "ekg.stats_notices"
 
 MEMGRAPH = "memgraph"
 STORAGE = "storage"
@@ -115,6 +118,20 @@ def _keyed(items: Sequence[Any], what: str, kind: str) -> dict[str, Any]:
     return found
 
 
+class StatsNotice(ABC):
+    """
+    A notice the Statistiche of an object show above its data, contributed
+    to "ekg.stats_notices" by the package that knows about it (e.g. ocel:
+    an EKG built before its relationships entered the graph).
+    """
+
+    key: str = ""
+
+    @abstractmethod
+    def notice(self, obj: ObjectRef, tools: ToolAccess) -> str | None:
+        raise NotImplementedError
+
+
 def notice_of(obj: ObjectRef) -> str | None:
     """meta.notice: a message the elements show above the data (e.g. an analysis that changed nothing)."""
 
@@ -124,7 +141,7 @@ def notice_of(obj: ObjectRef) -> str | None:
 
 class _EkgContribution:
     accepts: Any = (ekg.EKG_KIND,)
-    requires_tools = TOOLS
+    requires_tools: Sequence[str] = TOOLS
 
     def __init__(self, contributions: Contributions):
         self._contributions = contributions
@@ -257,7 +274,7 @@ def dataset_columns(meta: Mapping[str, Any]) -> list[dict[str, str]]:
     panel of the datasets page.
     """
 
-    mapping = meta.get("mapping") if isinstance(meta.get("mapping"), Mapping) else {}
+    mapping = cast("Mapping[str, Any]", meta.get("mapping")) if isinstance(meta.get("mapping"), Mapping) else {}
     roles: dict[str, str] = {}
     for column in mapping.get("values") or ():
         roles[str(column)] = "value"
@@ -315,8 +332,15 @@ class StatsVisualizer(_EkgContribution, Visualizer):
             "entities": entities,
             "columns": dataset_columns(source.meta),
             "charts": {"data": composition, "process": phase_times(obj.meta.get("process_info"))},
-            "notice": notice_of(obj),
+            "notice": self._notice(obj, tools),
         }
+
+    def _notice(self, obj: ObjectRef, tools: ToolAccess) -> str | None:
+        """meta.notice, then the notices contributed to ekg.stats_notices, in one text."""
+
+        notices = [notice_of(obj)]
+        notices += [item.notice(obj, tools) for item in self._contributions(STATS_NOTICES_POINT)]
+        return " ".join(notice for notice in notices if notice) or None
 
     @staticmethod
     def _metadata_only(obj: ObjectRef, problem: str) -> dict[str, Any]:

@@ -4,7 +4,10 @@ File : plugin.py
 Description: Plugin - registers the two importers of OCEL 2.0 JSON files
              (as tables, as an EKG), the two visualizers and the exporter
              of "ocel_tables" objects and the "Scomponi in EKG"
-             operation. The contributions that read the tables share one
+             operation; contributes the build step of the relationships
+             (step.py) to "ekg.build_steps" and the notice of the EKGs
+             imported before them to "ekg.stats_notices". The
+             contributions that read the tables share one
              cache, created here for this plugin instance (a
              disable/enable builds a new instance with an empty cache)
              with the limits of SOUP_OCEL_CACHE_OBJECTS and
@@ -18,11 +21,14 @@ from __future__ import annotations
 
 import os
 
+from soup_pkg_ekg.api import BUILD_STEPS_POINT
+from soup_pkg_ekg_views.api import STATS_NOTICES_POINT
 from soup_pkg_soup_base.api import ParsedCache, limits_from_env
 
 from soup.core.contracts import PluginContext, SoupPlugin
 
-from .graph import DecomposeToEkg, OcelEkgImporter
+from .graph import DecomposeToEkg, OcelEkgImporter, OcelRelationshipsNotice
+from .step import OcelRelationshipsStep
 from .store import OcelTables
 from .tables import OcelJsonExporter, OcelSummaryVisualizer, OcelTablesImporter, OcelTablesVisualizer
 from .tables_cache import new_cache
@@ -42,6 +48,10 @@ class Plugin(SoupPlugin):
         ctx.add_visualizer(OcelSummaryVisualizer())
         ctx.add_operation(DecomposeToEkg(cache))
         ctx.add_exporter(OcelJsonExporter(cache))
+        step = OcelRelationshipsStep()
+        ctx.contribute(BUILD_STEPS_POINT, step, key=step.key, order=step.order)
+        notice = OcelRelationshipsNotice()
+        ctx.contribute(STATS_NOTICES_POINT, notice, key=notice.key)
 
     def on_shutdown(self, ctx: PluginContext) -> None:
         if self.cache is not None:

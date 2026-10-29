@@ -27,9 +27,34 @@ services:
       # code with the privileges of the server and of the browser.
       - SOUP_ALLOW_PACKAGE_INSTALL=true
       - SOUP_INSTALLED_PACKAGES_DIR=/data/soup-packages
+      # The datasets are files in soup-volume, mounted here and in memgraph
+      # on the same path: the backend writes them, Memgraph reads them with
+      # LOAD CSV. No Docker socket: the backend cannot reach the Docker
+      # daemon (SOUP_STORAGE_KIND=docker, which needs it, is opt-in).
+      - SOUP_STORAGE_KIND=local
+      - SOUP_LOCAL_STORAGE_ROOT=/soup
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      - soup-volume:/soup
       - soup-installed-packages:/data/soup-packages # Packages installed at runtime
+    depends_on:
+      volume-init:
+        condition: service_completed_successfully
+
+  # One-off: gives the files of the two volumes to the "memgraph" user of
+  # the Memgraph image, the user the backend image also runs as (same
+  # UID/GID, soup-server/Dockerfile). Volumes written before, when the
+  # backend wrote through the Docker socket as root, have root's files.
+  # Only the files with another owner are changed; nothing is removed or
+  # moved. It exits at once when there is nothing to change.
+  volume-init:
+    image: memgraph/memgraph-mage:3.13.2
+    user: root
+    entrypoint: ["sh", "-c", "find /soup /data/soup-packages \\( ! -user memgraph -o ! -group memgraph \\) -exec chown -h memgraph:memgraph {} +"]
+    volumes:
+      - soup-volume:/soup
+      - soup-installed-packages:/data/soup-packages
+    networks:
+      - app-network
 
   # Memgraph and its web interface as two images with the same pinned
   # version (memgraph/memgraph-platform, which bundled them, is deprecated:
@@ -37,7 +62,7 @@ services:
   # with "SHOW VERSION;" (README.md, "Memgraph"). Update both tags together.
   memgraph:
     image: memgraph/memgraph-mage:3.13.2
-    container_name: soup-database # tool_storage writes the datasets into /soup through this container
+    container_name: soup-database
     ports:
       - "7687:7687" # Expose Memgraph Bolt protocol port
       - "7444:7444" # Expose Memgraph HTTP protocol port
@@ -62,7 +87,7 @@ services:
       - app-network
 
 volumes:
-  soup-volume: # Define persistent volume to /soup memgraph folder
+  soup-volume: # The datasets and the catalog: /soup in flask (writes) and memgraph (LOAD CSV)
     driver: local
   soup-installed-packages: # Packages installed at runtime, and their enabled/disabled state
     driver: local

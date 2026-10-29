@@ -59,7 +59,7 @@ def test_causal_step_is_in_the_pipeline_by_default():
 
     steps = engine.ctx.contributions("ekg.build_steps")
 
-    assert [(step.key, step.order) for step in steps] == [("causal_directly_follows", 450)]
+    assert [(step.key, step.order) for step in steps] == [("ocel_relationships", 420), ("causal_directly_follows", 450)]
 
 
 def test_explicit_empty_soup_packages_disables_everything():

@@ -1,10 +1,11 @@
 """
 ------------------------------------------------------------------------
 File : plugin.py
-Description: Plugin - opens the "ekg.graph_views", "ekg.queries" and
-             "ekg.json_parts" extension points, contributes to them the
-             standard view, the queries of builtin_queries.py and the four
-             JSON parts, and registers the three visualizers (Grafo,
+Description: Plugin - opens the "ekg.graph_views", "ekg.queries",
+             "ekg.json_parts" and "ekg.stats_notices" extension points,
+             contributes to them the standard and the object views, the
+             queries of builtin_queries.py and the five JSON parts, and
+             registers the three visualizers (Grafo,
              Statistiche, Interrogazioni) and the "JSON del grafo"
              exporter, which read the contributions of every package at
              each request. The maximum LIMIT of the graph comes from
@@ -28,13 +29,14 @@ from .contributions import (
     GRAPH_VIEWS_POINT,
     JSON_PARTS_POINT,
     QUERIES_POINT,
+    STATS_NOTICES_POINT,
     GraphJsonExporter,
     GraphVisualizer,
     QueriesVisualizer,
     StatsVisualizer,
 )
 from .json_parts import builtin_parts
-from .views import StandardGraphView
+from .views import ObjectGraphView, StandardGraphView
 
 MAX_LIMIT_ENV = "SOUP_EKG_VIEWS_MAX_LIMIT"
 
@@ -57,11 +59,11 @@ def max_limit_from_env(env: Mapping[str, str]) -> int:
 class Plugin(SoupPlugin):
     def register(self, ctx: PluginContext) -> None:
         max_limit = max_limit_from_env(os.environ)
-        for point in (GRAPH_VIEWS_POINT, QUERIES_POINT, JSON_PARTS_POINT):
+        for point in (GRAPH_VIEWS_POINT, QUERIES_POINT, JSON_PARTS_POINT, STATS_NOTICES_POINT):
             ctx.add_extension_point(point)
 
-        view = StandardGraphView()
-        ctx.contribute(GRAPH_VIEWS_POINT, view, key=view.key)
+        for view in (StandardGraphView(), ObjectGraphView()):
+            ctx.contribute(GRAPH_VIEWS_POINT, view, key=view.key)
         # Order 0 for all: they keep this order, and the contributions of
         # other packages with the default order come after them.
         for query in builtin_queries():

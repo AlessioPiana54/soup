@@ -101,6 +101,26 @@ def test_the_standard_view_builds_the_graph_block():
     assert (corr["group"], corr["label"]) == ("CORR", "CORR")
 
 
+def test_the_object_view_draws_the_rel_by_qualifier_and_the_corr_with_theirs():
+    item = {"Value": "i1", "Type": "item"}
+    rel = _edge(3, ORDER, 20, "REL", {"qualifier": "contains"}, 4, item, source_labels=("Entity",), target_labels=("Entity",))
+    bare = _edge(3, ORDER, 21, "REL", {}, 4, item, source_labels=("Entity",), target_labels=("Entity",))
+    corr = _edge(1, CREATE, 11, "CORR", {"Type": "order", "qualifier": "placed"}, 3, ORDER, target_labels=("Entity",))
+    view = views.ObjectGraphView()
+
+    graph = view.to_graph([rel, bare, corr, CORR_ROW])
+
+    assert (view.key, view.relationship_types, view.default_relations) == ("object", ("REL", "CORR"), ("REL",))
+    assert [(node["id"], node["label"], node["group"]) for node in graph["nodes"]] == [
+        ("3", "o1", "order"), ("4", "i1", "item"), ("1", "Create", "Event"),
+    ]
+    assert [(edge["group"], edge["label"]) for edge in graph["edges"]] == [
+        ("contains", "contains"), ("REL", "REL"), ("CORR", "placed"), ("CORR", "CORR"),
+    ]
+    assert "MATCH (a:`Entity`)-[r:`REL`]->(b:`Entity`)" in view.edges_query(10, ["REL"]).text
+    assert "MATCH (a)-[r:`REL`|`CORR`]->(b:`Entity`)" in view.edges_query(10, ["REL", "CORR"]).text
+
+
 @pytest.mark.parametrize("relations, pattern", [
     (["DF"], "MATCH (a:`Event`)-[r:`DF`]->(b:`Event`)"),
     (["CORR"], "MATCH (a:`Event`)-[r:`CORR`]->(b:`Entity`)"),
@@ -176,7 +196,9 @@ def test_graph_data_draws_the_default_view_with_the_max_data(setup):
     data = engine.visualizer_router.data("ekg_views.graph", obj.id, {})
 
     assert data["views"] == [{"key": "standard", "label": "Grafo standard", "relationship_types": ["DF", "CORR"],
-                              "default_relations": ["DF"], "node_labels": ["Event", "Entity"]}]
+                              "default_relations": ["DF"], "node_labels": ["Event", "Entity"]},
+                             {"key": "object", "label": "Grafo degli oggetti", "relationship_types": ["REL", "CORR"],
+                              "default_relations": ["REL"], "node_labels": ["Entity", "Event"]}]
     assert (data["view"], data["limit"], data["relations"], data["max_data"], data["max_limit"]) == ("standard", 200, ["DF"], 3, 2000)
     assert [node["label"] for node in data["graph"]["nodes"]] == ["Create", "Ship"]
 

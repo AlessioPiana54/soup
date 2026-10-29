@@ -14,7 +14,11 @@ Description: The parts of the "JSON del grafo" export, contributed to the
                the nodes (Timestamp as text, NaN as null);
              - "CORR relationships": {corr_data: [{event, relation_type,
                related_event, relation_id}], corr_count};
-             - "DF relationships": {df_data: [...], df_count}.
+             - "DF relationships": {df_data: [...], df_count};
+             and "REL relationships", the object-object relationships
+             (Entity-[:REL]->Entity, from an OCEL log): {rel_data: [{source,
+             relation_type, qualifier, target, relation_id}], rel_count},
+             empty for a graph without them.
              Every part reads a labelled pattern - MATCH (n:`Event`),
              MATCH (a:`Event`)-[r:`DF`]->(b:`Event`) - with its own labels
              and type, through ident(). Other packages add their own parts (e.g. the class graph) and
@@ -35,7 +39,7 @@ from soup_pkg_ekg.api import Query, ident
 
 from .kinds import DEFAULT_KINDS, STANDARD_KINDS
 from .values import clean
-from .views import CORR, DF, ENTITY, EVENT
+from .views import CORR, DF, ENTITY, EVENT, REL
 
 
 class JsonPart(ABC):
@@ -103,10 +107,37 @@ class RelationshipsPart(JsonPart):
         return {f"{self.prefix}_data": data, f"{self.prefix}_count": len(data)}
 
 
+class RelPart(JsonPart):
+    """The :REL relationships between entities with their qualifier: {rel_data, rel_count}, relation_id from 1."""
+
+    key = "rel"
+    label = "REL relationships"
+    kinds = STANDARD_KINDS
+
+    def query(self) -> Query:
+        return Query(f"""
+            MATCH (a:{ident(ENTITY)})-[r:{ident(REL)}]->(b:{ident(ENTITY)})
+            RETURN properties(a) AS source, properties(r) AS relation, properties(b) AS target""")
+
+    def transform(self, records: Sequence[Mapping[str, Any]]) -> Any:
+        data = [
+            {
+                "source": clean(dict(record.get("source") or {})),
+                "relation_type": REL,
+                "qualifier": (record.get("relation") or {}).get("qualifier"),
+                "target": clean(dict(record.get("target") or {})),
+                "relation_id": index,
+            }
+            for index, record in enumerate(records, start=1)
+        ]
+        return {"rel_data": data, "rel_count": len(data)}
+
+
 def builtin_parts() -> list[JsonPart]:
     return [
         NodesPart("event_nodes", "Event nodes", EVENT, STANDARD_KINDS),
         NodesPart("entity_nodes", "Entity nodes", ENTITY, STANDARD_KINDS),
         RelationshipsPart("corr", "CORR relationships", EVENT, CORR, ENTITY, "corr", STANDARD_KINDS),
         RelationshipsPart("df", "DF relationships", EVENT, DF, EVENT, "df", STANDARD_KINDS),
+        RelPart(),
     ]

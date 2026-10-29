@@ -14,11 +14,13 @@ Flask-Cors==6.0.5
 Werkzeug==3.1.9
 waitress==3.0.2
 packaging==23.1
-pandas==2.1.1
-# pandas 2.1.1 is compiled against numpy 1.x and does not cap numpy: left
-# to pip, numpy 2.x comes in and importing pandas fails with "numpy.dtype
-# size changed, may indicate binary incompatibility" (ekg, csv_ekg and
-# every package requiring them do not load).
-numpy==1.26.4
+pandas==2.2.3
+# numpy 2 (pandas 2.2.3 is built against it). Pinned together with pandas:
+# a pandas compiled against numpy 1.x fails to import under numpy 2 with
+# "numpy.dtype size changed, may indicate binary incompatibility" (ekg,
+# csv_ekg and every package requiring them would not load). The 2.2 series
+# is the last one for Python 3.10 (numpy 2.3 requires 3.11), which the
+# tests still run on.
+numpy==2.2.6
 neo4j==6.4.1
 docker~=7.1.0

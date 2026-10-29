@@ -2,7 +2,8 @@
 
 Package fornito e attivo di default: visualizzatori **Grafo**, **Statistiche** e **Interrogazioni**
 ed exporter **JSON del grafo** per gli oggetti di kind `ekg`, con i punti di estensione
-`ekg.graph_views`, `ekg.queries` ed `ekg.json_parts`. Contratti, azioni e formati sono descritti
+`ekg.graph_views`, `ekg.queries`, `ekg.json_parts` ed `ekg.stats_notices` (gli avvisi di
+**Statistiche**, `StatsNotice`). Contratti, azioni e formati sono descritti
 nella sezione "Viste dell'EKG" di [../README.md](../README.md).
 
 `requires: ["ekg", "soup_base"]`, `requires_tools: ["memgraph", "storage"]`. Ogni contributo
@@ -40,7 +41,9 @@ contribuisce qualcosa di dedicato a quel kind; Grafo e Statistiche restano per `
 - `npm test` dalla radice di `soup-packages`: gli elementi `<soup-pkg-ekg-graph>`,
   `<soup-pkg-ekg-stats>`, `<soup-pkg-ekg-queries>` con un context finto.
 - `tests/memgraph_smoke.py` (non raccolto da pytest) esegue ogni query generata contro un Memgraph
-  vero, su un piccolo EKG di esempio, e riporta quelle che falliscono (codice di uscita 1):
+  vero, su un piccolo EKG di esempio (con i qualifier su due `:CORR` e due `:REL` aggiunti dalle
+  query dello step di ocel, su righe passate come parametro invece dei suoi file per `LOAD CSV`), e
+  riporta quelle che falliscono (codice di uscita 1):
 
   ```sh
   docker run -d --rm --name ekg-views-smoke -p 17687:7687 memgraph/memgraph-mage:3.13.2
@@ -52,7 +55,8 @@ contribuisce qualcosa di dedicato a quel kind; Grafo e Statistiche restano per `
   Lo script **svuota il database**: non va mai puntato su un Memgraph con dati da conservare.
   L'immagine è la stessa di `docker-compose.yaml` (`memgraph/memgraph-mage:3.13.2`, Memgraph 3.13.2): se si
   aggiorna il tag lì, va aggiornato anche qui e lo script rieseguito (lo controlla
-  `soup-server/tests/test_cypher_compatibility.py`). Ultima esecuzione: `43/43 queries ok` (anche su
+  `soup-server/tests/test_cypher_compatibility.py`). Ultima esecuzione: `58/58 queries ok` su
+  `memgraph/memgraph-mage:3.13.2` (la versione precedente, con 43 query, anche su
   `memgraph/memgraph-platform` 2.14.1).
 
 ## Verifica con Memgraph
@@ -70,7 +74,8 @@ Passi manuali con l'intero stack (`docker compose` dalla radice del repository):
    - **Grafo**: viene disegnato con al massimo 200 archi DF e la barra indica il massimo mostrabile.
      Cambia il limite, attiva CORR (compaiono le entità), torna alla sola DF, cambia la forma dei
      nodi. Dopo il primo disegno, tornando al workspace, l'oggetto ha l'anteprima. "Esporta SVG"
-     scarica `<nome>.svg`.
+     scarica `<nome>.svg`. La vista **Grafo degli oggetti** mostra le `:REL` tra le entità, un colore
+     per qualifier (vuota per un CSV), e le `:CORR` con il loro qualifier.
    - **Statistiche**: conteggi uguali a quelli della config del dataset, primo e ultimo timestamp,
      attività distinte, tipi di entità con l'avviso "N nodi hanno valore NaN." dove ci sono valori
      nulli, la torta della composizione e, se l'import ha salvato i tempi, quella dei tempi.
@@ -78,13 +83,14 @@ Passi manuali con l'intero stack (`docker compose` dalla radice del repository):
    risultati (le pagine successive arrivano scorrendo); seleziona un risultato non disegnato e
    verifica che il pannello mostri le sue proprietà. Passa ad **Archi**, cerca un tipo di entità e
    passa col mouse su un risultato per evidenziarne i nodi.
-5. **Ogni interrogazione.** In **Interrogazioni** esegui una per una tutte le 20 voci di tutti i
+5. **Ogni interrogazione.** In **Interrogazioni** esegui una per una tutte le 21 voci di tutti i
    gruppi (Nodi, Relazioni, Conteggi, Attività, Entità, Tempo, Grafo), compilando i campi
    obbligatori (un tipo di entità, un'attività), cambiando `Righe` e `Dalla riga` nelle tabelle
    paginate: nessuna risponde con un errore e i conteggi coincidono con le Statistiche.
 6. **Export JSON.** Dal menu di export dell'oggetto scegli **JSON del grafo** con tutte le parti:
    il file ha le chiavi `Event nodes`, `Entity nodes`, `CORR relationships` (`corr_data`,
-   `corr_count`) e `DF relationships` (`df_data`, `df_count`), con i `Timestamp` come testo. Ripeti
+   `corr_count`), `DF relationships` (`df_data`, `df_count`) e `REL relationships` (`rel_data` con
+   `source`, `qualifier`, `target`; `rel_count`, 0 per un CSV), con i `Timestamp` come testo. Ripeti
    con una sola parte: il file ha solo quella chiave.
 7. In Memgraph Lab (`http://localhost:3300`) puoi controllare i conteggi con
    `MATCH (n:Event) RETURN count(n)` e `MATCH ()-[r:DF]->() RETURN count(r)`.

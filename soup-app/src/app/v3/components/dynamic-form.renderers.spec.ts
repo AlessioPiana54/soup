@@ -40,8 +40,8 @@ describe('DynamicFormComponent renderers', () => {
 
     for (const type of FIELD_TYPES) {
       const container = root.querySelector(`[data-field="f_${type}"]`);
-      expect(container?.getAttribute('data-type')).withContext(type).toBe(type);
-      expect(container?.querySelector(DRAWN[type])).withContext(type).not.toBeNull();
+      expect(container?.getAttribute('data-type'), type).toBe(type);
+      expect(container?.querySelector(DRAWN[type]), type).not.toBeNull();
     }
   });
 

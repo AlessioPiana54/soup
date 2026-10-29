@@ -13,8 +13,13 @@ Description: Tests for the ocel package through /api/v3, with the real
                summary, the OCEL 2.0 JSON export with the extension of
                the imported file, the folder removed on delete;
              - "come EKG": kind "ekg" with an entity type per object type,
-               the qualifiers and object-object relationships declared
-               missing from the graph, the visualizers of ekg_views;
+               the visualizers of ekg_views; the qualifiers and the
+               object-object relationships staged with the dataset and
+               added by ocel's build step (qualifier on :CORR, :REL with
+               the qualifier as a parameter of LOAD CSV rows, never in the
+               text), at the first build and at a rebuild; a CSV runs no
+               such query; Statistiche tells an OCEL EKG without the files
+               (imported before) how to get them;
              - "Scomponi in EKG": an "ekg" child of the tables, with the
                same dataset as the importer;
              - installed from a zip with the test client (ocel not on the
@@ -262,9 +267,9 @@ def test_import_as_ekg_has_an_entity_type_per_object_type_and_the_ekg_views(setu
         "entities": ["customer", "item", "order"], "values": ["resource", "amount"],
     }
     assert meta["source_format"] == "ocel2_json"
-    assert meta["ocel"]["not_in_graph"] == ["qualifiers", "object_objects"]
     assert meta["ocel"]["qualified_event_objects"] == 8
-    assert "qualifier" in meta["notice"] and "oggetto-oggetto (4)" in meta["notice"]
+    assert "not_in_graph" not in meta["ocel"] and "notice" not in meta
+    assert meta["ocel"]["in_graph"] == {"qualified_corr": 0, "rel": 0}  # FakeDatabase counts nothing
     assert _entity_types(volume, "orders") == ["customer", "item", "order"]
     events = (volume / "orders" / "orders.csv").read_text(encoding="utf-8").splitlines()
     assert events[0] == "event_id,timestamp,activity_name,resource,amount,customer,item,order"
@@ -274,6 +279,77 @@ def test_import_as_ekg_has_an_entity_type_per_object_type_and_the_ekg_views(setu
 
     assert set(EKG_VISUALIZERS) <= set(_visualizers(client, obj["id"]))
     assert not {"ocel.tables", "ocel.summary"} & set(_visualizers(client, obj["id"]))
+
+
+def _relationship_queries(db):
+    return [query for query in db.received_queries if "row.qualifier" in query.text]
+
+
+def test_the_qualifiers_and_the_object_object_relationships_enter_the_graph(setup):
+    client, _engine, db, volume = setup
+
+    obj = _import(client, "ocel.ekg")
+
+    qualifiers = (volume / "orders" / "orders_ocel_qualifiers.csv").read_text(encoding="utf-8").splitlines()
+    assert qualifiers[0] == "event_id,object_id,object_type,qualifier"
+    assert "e1,o1,order,order" in qualifiers and "e1,i2,item,item" in qualifiers
+    assert not any(line.startswith("e3,") for line in qualifiers)  # e3's links have no qualifier
+    o2o = (volume / "orders" / "orders_ocel_o2o.csv").read_text(encoding="utf-8").splitlines()
+    assert o2o == ["source_id,source_type,target_id,target_type,qualifier", "o1,order,i1,item,contains",
+                   "o1,order,i2,item,contains", "o1,order,c1,customer,ordered by", "o2,order,i3,item,contains"]
+    config = json.loads((volume / "orders" / "orders_config.json").read_text(encoding="utf-8"))
+    assert config["extra_files"] == ["ocel_o2o.csv", "ocel_qualifiers.csv"]
+
+    corr, rel = _relationship_queries(db)
+    assert corr.text.lstrip().startswith("LOAD CSV FROM '") and "orders_ocel_qualifiers.csv' WITH HEADER AS row" in corr.text
+    assert "-[c:CORR {Type: row.object_type}]-" in corr.text and "SET c.qualifier = row.qualifier" in corr.text
+    assert "orders_ocel_o2o.csv'" in rel.text and "CREATE (a)-[r:REL]->(b)" in rel.text
+    # The qualifiers are values of the rows, never in the text of a query.
+    texts = " ".join(query.text for query in db.received_queries)
+    assert [word for word in ("contains", "ordered by") if word in texts] == []
+    texts_order = [query.text for query in db.received_queries]
+    corr_at = texts_order.index(corr.text)
+    assert any("MERGE (e)-[c:CORR" in text for text in texts_order[:corr_at])
+    assert not any("-[df:DF" in text for text in texts_order[:corr_at])
+
+    db.received_queries.clear()
+    response = client.post("/api/v3/operations/ekg.load/run", json={"objects": [obj["id"]], "params": {"force": True}})
+    assert response.status_code == 201, response.get_json()
+    assert [query.text for query in _relationship_queries(db)] == [corr.text, rel.text]
+
+
+def test_a_csv_runs_no_relationship_query_and_stages_no_extra_file(tmp_path, monkeypatch):
+    db = FakeDatabase()
+    engine = ekg_engine(tmp_path, monkeypatch, packages=(*PACKAGES, "csv_table", "csv_ekg"), db=db)
+    client = client_for(engine)
+    csv = b"case,time,activity,order\n1,2021-01-01T10:00:00,Create,o1\n2,2021-01-01T11:00:00,Ship,o1\n"
+    options = {"event_id": "case", "timestamp": "time", "activity": "activity", "entities": ["order"]}
+    response = client.post("/api/v3/imports", data={
+        "file": (io.BytesIO(csv), "log.csv"), "importer_id": "csv_ekg.csv", "name": "log", "options": json.dumps(options),
+    }, content_type="multipart/form-data")
+
+    assert response.status_code == 201, response.get_json()
+    assert _relationship_queries(db) == []
+    volume = tmp_path / "volume"
+    assert sorted(path.name for path in (volume / "log").iterdir()) == ["log.csv", "log_config.json", "log_entity.csv"]
+    assert "extra_files" not in json.loads((volume / "log" / "log_config.json").read_text(encoding="utf-8"))
+    stats = data_of(client.get(f"/api/v3/objects/{data_of(response)['id']}/visualizers/ekg_views.stats/data"))
+    assert stats["notice"] is None
+
+
+def test_the_statistics_of_an_ocel_ekg_without_the_files_say_how_to_get_them(setup):
+    client, _engine, _db, volume = setup
+    obj = _import(client, "ocel.ekg")
+    stats = data_of(client.get(f"/api/v3/objects/{obj['id']}/visualizers/ekg_views.stats/data"))
+    assert stats["notice"] is None
+
+    # An EKG imported before: its dataset has not the two files.
+    for name in ("orders_ocel_qualifiers.csv", "orders_ocel_o2o.csv"):
+        (volume / "orders" / name).unlink()
+
+    stats = data_of(client.get(f"/api/v3/objects/{obj['id']}/visualizers/ekg_views.stats/data"))
+    assert "prima che i qualifier e le relazioni oggetto-oggetto" in stats["notice"]
+    assert "Scomponi in EKG" in stats["notice"]
 
 
 def test_decompose_into_ekg_creates_a_child_of_the_tables_with_the_same_graph(setup):
@@ -290,7 +366,7 @@ def test_decompose_into_ekg_creates_a_child_of_the_tables_with_the_same_graph(se
     assert child["meta"]["ocel"]["extension"] == ".jsonocel"
     assert child["meta"]["mapping"] == direct["meta"]["mapping"]
     dataset = child["meta"]["dataset"]
-    for suffix in (".csv", "_entity.csv"):
+    for suffix in (".csv", "_entity.csv", "_ocel_qualifiers.csv", "_ocel_o2o.csv"):
         assert (volume / dataset / f"{dataset}{suffix}").read_bytes() == (volume / "direct" / f"direct{suffix}").read_bytes()
     assert set(EKG_VISUALIZERS) <= set(_visualizers(client, child["id"]))
     assert data_of(client.get(f"/api/v3/objects/{child['id']}"))["parents"] == [tables["id"]]

@@ -4,8 +4,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
- * <soup-graph-view> of soup_base in a real browser (dagre-d3 needs a
- * laid-out SVG, which jsdom does not have): the built bundle is served to
+ * <soup-graph-view> of soup_base in a real browser (the dagre layout needs
+ * the sizes of a laid-out SVG, which jsdom does not have): the built bundle is served to
  * an empty page, without the host.
  */
 

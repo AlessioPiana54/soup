@@ -31,13 +31,14 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from soup_pkg_csv_table.api import KIND as TABLE_KIND
 from soup_pkg_csv_table.api import read_table
 from soup_pkg_ekg.api import EKG_KIND, ColumnMapping, EventLogData, Table, build_ekg, dispose, validate_mapping
 
 from soup.core.contracts import (
+    Choice,
     Field,
     Importer,
     Inspection,
@@ -91,7 +92,7 @@ def mapping_fields(columns: Sequence[str]) -> list[Field]:
     """The fields of the old import form, with these columns as choices."""
 
     columns = [str(column) for column in columns]
-    choices = columns or None
+    choices = cast("tuple[Choice, ...]", columns or None)
     return [
         Field("event_id", "ID evento", type="column", required=True, choices=choices,
               default=_guess(columns, "event_id")),

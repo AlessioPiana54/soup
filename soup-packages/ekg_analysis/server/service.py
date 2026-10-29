@@ -34,7 +34,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import soup_pkg_ekg.api as ekg
 from soup_pkg_ekg.api import Query
@@ -115,7 +115,7 @@ class AnalysisService:
 
         conditions = analysis.ordered(self._runtime.filters())
         dataset = ekg.root_of(parent).meta["dataset"]
-        repository = ekg.DatasetRepository(tools.get(STORAGE))
+        repository = ekg.DatasetRepository(cast(ekg.StorageSpaceTool, tools.get(STORAGE)))
         if analysis.name in repository.analyses(dataset):
             raise ConflictError(f"Analysis '{analysis.name}' already exists for the dataset '{dataset}'")
         # A nested analysis names its parent in the file, so the adoption

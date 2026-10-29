@@ -4,6 +4,7 @@ import { Component } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRouteSnapshot, provideRouter, Route, Router, ViewTransitionInfo } from '@angular/router';
 
+import { createSpyObj } from '../testing/spy-obj';
 import { AppComponent } from './app.component';
 import { changesPage, PAGE_TRANSITIONS } from './page-transitions';
 
@@ -30,8 +31,8 @@ describe('AppComponent', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [AppComponent],
-      // No view transitions here: navigating with them in the iframe of karma makes ChromeHeadless disconnect
-      // (the e2e run them in the browser); PAGE_TRANSITIONS is tested below.
+      // No view transitions here: jsdom has no document.startViewTransition (the e2e run them in the
+      // browser); PAGE_TRANSITIONS is tested below.
       providers: [provideRouter([FIRST, SECOND]), provideHttpClient(), provideHttpClientTesting()]
     }).compileComponents();
 
@@ -70,13 +71,13 @@ describe('AppComponent', () => {
 
 describe('PAGE_TRANSITIONS', () => {
   it('a navigation to another page changes it, one that keeps the route (only its parameters) does not', () => {
-    expect(changesPage(snapshot(FIRST), snapshot(SECOND))).toBeTrue();
-    expect(changesPage(snapshot(null), snapshot(FIRST))).toBeTrue();
-    expect(changesPage(snapshot(OBJECT), snapshot(OBJECT))).toBeFalse();
+    expect(changesPage(snapshot(FIRST), snapshot(SECOND))).toBe(true);
+    expect(changesPage(snapshot(null), snapshot(FIRST))).toBe(true);
+    expect(changesPage(snapshot(OBJECT), snapshot(OBJECT))).toBe(false);
   });
 
   it('skips the transition of a navigation that keeps its page', () => {
-    const transition = jasmine.createSpyObj<ViewTransition>('transition', ['skipTransition']);
+    const transition = createSpyObj<ViewTransition>(['skipTransition']);
     const created = (from: Route, to: Route) =>
       PAGE_TRANSITIONS.onViewTransitionCreated!({ transition, from: snapshot(from), to: snapshot(to) } as ViewTransitionInfo);
 

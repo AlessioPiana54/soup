@@ -25,10 +25,10 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 import soup_pkg_ekg.api as ekg
-from soup_pkg_ekg_views.api import GraphVisualizer, notice_of
+from soup_pkg_ekg_views.api import GraphView, GraphVisualizer, notice_of
 
 from soup.core.contracts import ObjectRef, ToolAccess, Visualizer
 
@@ -48,7 +48,7 @@ class ClassGraphVisualizer(GraphVisualizer):
     accepts = (CLASS_KIND,)
     requires_tools = (MEMGRAPH,)
 
-    def views(self, kind: str = CLASS_KIND):
+    def views(self, kind: str = CLASS_KIND) -> dict[str, GraphView]:
         # The views dedicated to the aggregate graph first (the default
         # one is the first), then the standard ones: its graph holds the
         # EKG of the parent too.
@@ -86,7 +86,7 @@ class ClassStatsVisualizer(Visualizer):
 
     def data(self, obj: ObjectRef, params: Mapping[str, Any], tools: ToolAccess) -> Any:
         ekg.ensure_loaded(obj, tools)
-        counts = class_counts(tools.get(MEMGRAPH).run)
+        counts = class_counts(cast(ekg.GraphDatabase, tools.get(MEMGRAPH)).run)
         composition = {"chart": "pie", "labels": ["Class Nodes", "OBS", "DF_C"],
                        "datasets": [{"label": "numero",
                            "data": [counts["class_nodes"], counts["obs_rel"], counts["dfc_rel"]]}]}

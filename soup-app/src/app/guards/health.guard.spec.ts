@@ -29,7 +29,7 @@ describe('engineGuard', () => {
 
   it('lets the page open when the Engine answers, even degraded', async () => {
     health = () => of({ status: 'degraded', tools: [], problems: ['memgraph: down'] });
-    expect(await run()).toBeTrue();
+    expect(await run()).toBe(true);
     expect(toasts).toEqual([]);
   });
 

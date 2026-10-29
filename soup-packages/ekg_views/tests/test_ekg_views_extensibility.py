@@ -4,10 +4,11 @@ File : test_ekg_views_extensibility.py
 Description: ekg_views is extended without being modified: a test package
              written on disk (views_test, requires ekg_views) contributes
              a GraphQuery to "ekg.queries", a GraphView to
-             "ekg.graph_views" and a JsonPart to "ekg.json_parts"; they
-             appear in Interrogazioni, in the views of Grafo and among the
-             parts of the JSON export, and disappear when the package is
-             disabled. In the host: an "ekg" object offers the three
+             "ekg.graph_views", a JsonPart to "ekg.json_parts" and a
+             StatsNotice to "ekg.stats_notices"; they appear in
+             Interrogazioni, in the views of Grafo, among the parts of the
+             JSON export and in the notice of Statistiche, and disappear
+             when the package is disabled. In the host: an "ekg" object offers the three
              visualizers (also through GET /api/v3/objects/<id>/visualizers)
              and the JSON export in the format of /api/v2/json/graph/*;
              "table" and "text" objects get no EKG visualizer or exporter.
@@ -41,7 +42,8 @@ PLUGIN = '''
 from soup.core.contracts import Field, PluginContext, SoupPlugin, report
 from soup_pkg_ekg.api import Query
 from soup_pkg_ekg_views.api import (
-    GRAPH_VIEWS_POINT, JSON_PARTS_POINT, QUERIES_POINT, EdgeListGraphView, GraphQuery, NodesPart,
+    GRAPH_VIEWS_POINT, JSON_PARTS_POINT, QUERIES_POINT, STATS_NOTICES_POINT, EdgeListGraphView, GraphQuery, NodesPart,
+    StatsNotice,
 )
 
 
@@ -65,8 +67,16 @@ class Echo(GraphQuery):
         return [report.text(str(records[0]["word"]) if records else "", title="Eco")]
 
 
+class OrdersNotice(StatsNotice):
+    key = "test.orders"
+
+    def notice(self, obj, tools):
+        return "Un avviso del test." if obj.name == "orders" else None
+
+
 class Plugin(SoupPlugin):
     def register(self, ctx: PluginContext) -> None:
+        ctx.contribute(STATS_NOTICES_POINT, OrdersNotice(), key=OrdersNotice.key)
         ctx.contribute(GRAPH_VIEWS_POINT, OnlyDf(), key=OnlyDf.key)
         ctx.contribute(QUERIES_POINT, Echo(), key=Echo.key)
         ctx.contribute(JSON_PARTS_POINT, NodesPart("class_nodes", "Class nodes", "Class"), key="class_nodes")
@@ -119,7 +129,7 @@ def test_a_view_of_another_package_disappears_with_its_package(setup):
     obj = _import_ekg(engine)
 
     data = engine.visualizer_router.data("ekg_views.graph", obj.id, {})
-    assert [view["key"] for view in data["views"]] == ["standard", "only_df"]
+    assert [view["key"] for view in data["views"]] == ["standard", "object", "only_df"]
     result = engine.visualizer_router.action("ekg_views.graph", obj.id, "graph", {"view": "only_df"})
     assert result["view"] == "only_df"
     assert "MATCH (a:`Event`)-[r:`DF`]->(b:`Event`)" in db.received_queries[-2].text
@@ -127,11 +137,24 @@ def test_a_view_of_another_package_disappears_with_its_package(setup):
     engine.package_manager.disable("views_test")
 
     data = engine.visualizer_router.data("ekg_views.graph", obj.id, {})
-    assert [view["key"] for view in data["views"]] == ["standard"]
+    assert [view["key"] for view in data["views"]] == ["standard", "object"]
     with pytest.raises(ValidationError, match="view"):
         engine.visualizer_router.action("ekg_views.graph", obj.id, "graph", {"view": "only_df"})
     groups = [group["group"] for group in engine.visualizer_router.data("ekg_views.queries", obj.id, {})["groups"]]
     assert "Test" not in groups
+
+
+def test_a_notice_of_another_package_is_shown_by_the_statistics_until_it_is_disabled(setup):
+    engine, _db = setup
+    obj = _import_ekg(engine)
+    other = engine.import_router.import_("csv_ekg.csv", Upload.from_bytes("other.csv", CSV), "other", options=OPTIONS)
+
+    assert engine.visualizer_router.data("ekg_views.stats", obj.id, {})["notice"] == "Un avviso del test."
+    assert engine.visualizer_router.data("ekg_views.stats", other.id, {})["notice"] is None
+
+    engine.package_manager.disable("views_test")
+
+    assert engine.visualizer_router.data("ekg_views.stats", obj.id, {})["notice"] is None
 
 
 def test_a_json_part_of_another_package_is_exported_under_its_own_key(setup):
@@ -142,7 +165,7 @@ def test_a_json_part_of_another_package_is_exported_under_its_own_key(setup):
     assert field.type == "multiselect"
     assert [(choice.value, choice.label) for choice in field.choices] == [
         ("event_nodes", "Event nodes"), ("entity_nodes", "Entity nodes"), ("corr", "CORR relationships"),
-        ("df", "DF relationships"), ("class_nodes", "Class nodes"),
+        ("df", "DF relationships"), ("rel", "REL relationships"), ("class_nodes", "Class nodes"),
     ]
 
     db.set_default_response([{"node": {"Name": "Create"}}])

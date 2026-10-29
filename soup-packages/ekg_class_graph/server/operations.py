@@ -22,7 +22,7 @@ Project : soup-packages/ekg_class_graph
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, cast
 
 import soup_pkg_ekg.api as ekg
 import soup_pkg_ekg_views.api as views_api
@@ -38,16 +38,20 @@ from soup.core.contracts import (
     ValidationError,
 )
 
-from .classes import build_classes, class_counts, entity_types_query
+from .classes import Run, build_classes, class_counts, entity_types_query
 from .provider import CLASSES_PROVIDER
 from .views import CLASS_KIND
 
 MEMGRAPH = "memgraph"
 
 
+def _db(tools: ToolAccess) -> ekg.GraphDatabase:
+    return cast(ekg.GraphDatabase, tools.get(MEMGRAPH))
+
+
 def graph_entity_types(obj: ObjectRef, tools: ToolAccess) -> list[str]:
     ekg.ensure_loaded(obj, tools)
-    return [str(row["entity_type"]) for row in tools.get(MEMGRAPH).run(entity_types_query())
+    return [str(row["entity_type"]) for row in _db(tools).run(entity_types_query())
             if row.get("entity_type") is not None]
 
 
@@ -55,7 +59,7 @@ def entity_type_choices(types: list[str], tools: ToolAccess) -> tuple[Choice, ..
     """The entity types, labelled with the warning of the ones with null values (the graph is loaded)."""
 
     nulls = views_api.NullEntities()
-    counts = nulls.rows(tools.get(MEMGRAPH).run(nulls.build({})))
+    counts = nulls.rows(_db(tools).run(nulls.build({})))
     return tuple(
         Choice(name, f"{name} ({views_api.warning_label(counts[name])})"
             if counts.get(name) else name) for name in types
@@ -95,7 +99,7 @@ class BuildClassGraph(Operation):
 
         result: dict[str, Any] = {}
 
-        def build(run) -> None:
+        def build(run: Run) -> None:
             result["process_info"] = build_classes(run, chosen)
             result["counts"] = class_counts(run)
 

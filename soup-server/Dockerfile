@@ -28,10 +28,26 @@ RUN python -c "import numpy, pandas, neo4j, docker, waitress; print(numpy.__vers
 COPY soup-server/ .
 COPY --from=packages /srv/soup-packages/ /srv/soup-packages/
 
+# The server runs as an unprivileged user with the UID/GID of the
+# "memgraph" user of the Memgraph image of docker-compose.yaml, so the
+# files one writes in the shared soup-volume (/soup) are readable and
+# writable by the other. Read from the image, not guessed:
+#   docker run --rm --entrypoint id memgraph/memgraph-mage:3.13.2 memgraph
+#   uid=101(memgraph) gid=103(memgraph)
+# Check them again when the Memgraph tag changes.
+ARG SOUP_UID=101
+ARG SOUP_GID=103
+RUN groupadd --gid "${SOUP_GID}" soup \
+    && useradd --uid "${SOUP_UID}" --gid "${SOUP_GID}" --no-create-home --shell /usr/sbin/nologin soup \
+    && mkdir -p /soup /data/soup-packages \
+    && chown soup:soup /soup /data/soup-packages
+
 # Packages installed at runtime (and their enabled/disabled state) live in
 # a volume, so they survive a rebuild of the image.
 ENV SOUP_INSTALLED_PACKAGES_DIR=/data/soup-packages
 VOLUME /data/soup-packages
+
+USER soup
 
 # waitress (wsgi.py), one process with several threads: the engine keeps
 # its state in memory. app.py (the Flask development server) is for local

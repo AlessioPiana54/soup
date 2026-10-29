@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import datetime
+from types import TracebackType
+from typing import Literal
 
 DATE_FORMAT = "%Y-%m-%dT%H:%M:%S.%f"
 
@@ -40,7 +42,9 @@ class ProcessTimer:
         self.started_at = self._now()
         return self
 
-    def __exit__(self, exc_type, exc, tb) -> bool:
+    def __exit__(
+        self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: TracebackType | None
+    ) -> Literal[False]:
         self.finished_at = self._now()
         return False
 

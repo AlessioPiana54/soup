@@ -6,7 +6,7 @@ import { SoupGraphView } from '../src/graph/soup-graph-view';
 
 if (!customElements.get('soup-graph-view')) customElements.define('soup-graph-view', SoupGraphView);
 
-/** An engine that draws nothing (jsdom has no layout for dagre-d3). */
+/** An engine that draws nothing (jsdom has no SVG sizes for the dagre layout). */
 class FakeRenderer implements GraphRenderer {
   public onNodeClick: ((id: string) => void) | null = null;
   public models: GraphModel[] = [];

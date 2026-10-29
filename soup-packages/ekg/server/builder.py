@@ -27,10 +27,10 @@ Project : soup-packages/ekg
 from __future__ import annotations
 
 import uuid
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
-from soup_pkg_tool_memgraph.api import GraphDatabase
+from soup_pkg_tool_memgraph.api import GraphDatabase, Query, Run
 
 from soup.core.contracts import ConflictError, ValidationError, validate_name
 
@@ -86,10 +86,10 @@ COUNT_KEYS = ("event_nodes", "entity_nodes", "corr_rel", "df_rel")
 class RunDatabase(GraphDatabase):
     """The `run` a memgraph tool loader receives, as a GraphDatabase for the build steps."""
 
-    def __init__(self, run):
+    def __init__(self, run: Run):
         self._run = run
 
-    def run(self, query):
+    def run(self, query: Query) -> list[dict[str, Any]]:
         return self._run(query)
 
 
@@ -137,6 +137,11 @@ def build_context(repository: DatasetRepository, dataset: str, config: dict[str,
         events_csv_path=repository.events_csv_load_path(dataset),
         entities_csv_path=repository.entities_csv_load_path(dataset),
         trigger_target_rows=tuple(config.get("trigger_target_rows") or ()),
+        extra_files={
+            file: repository.extra_file_load_path(dataset, file)
+            for file in config.get("extra_files") or ()
+            if repository.has_extra_file(dataset, file)
+        },
     )
 
 
@@ -196,6 +201,7 @@ def build_ekg(  # noqa: PLR0913 - public API (soup_pkg_ekg.api.build_ekg)
     trigger_target: Iterable[Sequence[str]] = (),
     source_format: str = "",
     save_process_times: bool = False,
+    extra_files: Mapping[str, bytes] | None = None,
 ) -> dict[str, Any]:
     """
     Stage `data` as a dataset and build its EKG on Memgraph; return the
@@ -206,6 +212,9 @@ def build_ekg(  # noqa: PLR0913 - public API (soup_pkg_ekg.api.build_ekg)
     `dataset` is the folder name (default: the object's name, made unique
     with _2, _3...); an explicit one that exists is a 409. `tools` must
     give the "memgraph" and "storage" tools (the caller declares them).
+    `extra_files` ({name: content}) are staged with the dataset and
+    listed in its config, for the build steps of the caller's package
+    (BuildContext.extra_files); without them the dataset is as before.
 
     :raises ValidationError: invalid mapping (e.g. one column for two
         standard roles), columns or pairs
@@ -223,6 +232,8 @@ def build_ekg(  # noqa: PLR0913 - public API (soup_pkg_ekg.api.build_ekg)
     columns = data.events.columns if all_columns is None else all_columns
 
     repository.save_event_log(name, log.events_csv(), log.entities_csv())
+    if extra_files:
+        repository.save_extra_files(name, extra_files)
 
     # filtered_columns/values_columns must match what the graph was
     # actually built with (log.mapping, already normalized by
@@ -244,6 +255,7 @@ def build_ekg(  # noqa: PLR0913 - public API (soup_pkg_ekg.api.build_ekg)
         "values_columns": list(log.mapping.value_columns),
         "trigger_target_rows": trigger_target_rows,
         "source_format": source_format,
+        **({"extra_files": sorted(extra_files)} if extra_files else {}),
         **{key: 0 for key in COUNT_KEYS},
         "date_created": None,
         "date_modified": None,
@@ -257,7 +269,7 @@ def build_ekg(  # noqa: PLR0913 - public API (soup_pkg_ekg.api.build_ekg)
     counts: dict[str, int] = {}
     times: dict[str, str] = {}
 
-    def loader(run) -> None:
+    def loader(run: Run) -> None:
         service = EkgService(RunDatabase(run), runtime.build_steps)
         service.build(ctx, times if save_process_times else None)
         counts.update(service.counts())

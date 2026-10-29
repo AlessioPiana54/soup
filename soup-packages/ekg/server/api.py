@@ -18,9 +18,13 @@ Description: Public API of the ekg package. Other packages import it as
                buildable_problem(obj), why its graph cannot be built (or
                None);
              - DatasetRepository: the files of a dataset, the analyses
-               in Analyses/ included;
+               in Analyses/ included, on a StorageSpaceTool (what it
+               uses of the "storage" tool);
              - the extension points: BUILD_STEPS_POINT (EkgBuildStep,
-               BuildContext) and STATE_PROVIDERS_POINT (StateProvider);
+               BuildContext, with load_csv_clause for the extra files a
+               step reads and normalize_text, how names and values are
+               normalized in the graph) and STATE_PROVIDERS_POINT
+               (StateProvider);
              - the events EKG_BEFORE_RESET and EKG_BUILT, the kind
                EKG_KIND, and GraphDatabase and Query/ident to write the Cypher
                of a step.
@@ -36,10 +40,11 @@ from soup_pkg_tool_memgraph.api import GraphDatabase, Query, ident
 
 from .build import BuildContext, EkgBuildStep
 from .builder import EKG_BEFORE_RESET, EKG_BUILT, EKG_KIND, build_ekg, new_graph_key
-from .dataset_repository import ANALYSES_FOLDER, DatasetRepository
-from .event_log import ColumnMapping, EventLog, EventLogData, mapping_problem, validate_mapping
+from .dataset_repository import ANALYSES_FOLDER, DatasetRepository, StorageSpaceTool
+from .event_log import ColumnMapping, EventLog, EventLogData, mapping_problem, normalize_text, validate_mapping
 from .migration import LEGACY_IMPORTER, LEGACY_PACKAGE
 from .runtime import BUILD_STEPS_POINT, STATE_PROVIDERS_POINT
+from .schema import load_csv_clause
 from .state import (
     StateProvider,
     buildable_problem,
@@ -70,6 +75,7 @@ __all__ = [
     "EventLogData",
     "Query",
     "StateProvider",
+    "StorageSpaceTool",
     "Table",
     "build_ekg",
     "buildable_problem",
@@ -80,8 +86,10 @@ __all__ = [
     "graph_key_of",
     "ident",
     "is_derived",
+    "load_csv_clause",
     "mapping_problem",
     "new_graph_key",
+    "normalize_text",
     "root_of",
     "to_dataframe",
     "validate_mapping",

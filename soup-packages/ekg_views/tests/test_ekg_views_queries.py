@@ -53,7 +53,7 @@ def _run(key, rows, params=None):
 
 
 def test_about_twenty_queries_cover_every_legacy_read():
-    assert len(QUERIES) == 20
+    assert len(QUERIES) == 21
     assert {query.group for query in QUERIES.values()} == {"Nodi", "Relazioni", "Conteggi", "Attività", "Entità", "Tempo", "Grafo"}
     assert all(query.label for query in QUERIES.values())
 
@@ -188,7 +188,9 @@ def test_clean_converts_memgraph_values():
 
 def test_json_parts_have_the_v2_format():
     by_key = {part.key: part for part in parts.builtin_parts()}
-    assert [part.label for part in by_key.values()] == ["Event nodes", "Entity nodes", "CORR relationships", "DF relationships"]
+    assert [part.label for part in by_key.values()] == [
+        "Event nodes", "Entity nodes", "CORR relationships", "DF relationships", "REL relationships",
+    ]
 
     assert by_key["event_nodes"].transform([{"node": EVENT}]) == [
         {"Event_Id": "1", "Timestamp": "2021-01-01T10:00:00.000000", "ActivityName": "Create", "order": "o1", "cost": None}
@@ -201,7 +203,27 @@ def test_json_parts_have_the_v2_format():
     assert "MATCH (a:`Event`)-[r:`DF`]->(b:`Event`)" in by_key["df"].query().text
     assert "MATCH (n:`Entity`)" in by_key["entity_nodes"].query().text
     assert "MATCH (a:`Event`)-[r:`CORR`]->(b:`Entity`)" in by_key["corr"].query().text
+    assert "MATCH (a:`Entity`)-[r:`REL`]->(b:`Entity`)" in by_key["rel"].query().text
+    rel = by_key["rel"].transform([{"source": ENTITY, "relation": {"qualifier": "contains"}, "target": {"Value": "i1", "Type": "item"}},
+                                   {"source": ENTITY, "relation": {}, "target": ENTITY}])
+    assert rel["rel_count"] == 2
+    assert rel["rel_data"][0] == {"source": ENTITY, "relation_type": "REL", "qualifier": "contains",
+                                  "target": {"Value": "i1", "Type": "item"}, "relation_id": 1}
+    assert rel["rel_data"][1]["qualifier"] is None
+    assert by_key["rel"].transform([]) == {"rel_data": [], "rel_count": 0}
     assert all(part.query().params == {} for part in by_key.values())
+
+
+def test_the_qualifiers_are_counted_per_relationship():
+    built, blocks = _run("qualifiers", [
+        {"relationship": "REL", "qualifier": "contains", "count": 3},
+        {"relationship": "CORR", "qualifier": "order", "count": 2},
+    ])
+
+    assert "WHERE r.qualifier IS NOT NULL" in built.text and built.params == {}
+    [table] = blocks
+    assert table["data"]["rows"] == [["REL", "contains", 3], ["CORR", "order", 2]]
+    assert table["data"]["columns"] == ["relazione", "qualifier", "numero"]
 
 
 # The labelled pattern every generated query must contain.
@@ -214,6 +236,7 @@ PATTERNS = {
     "corr": "MATCH (a:`Event`)-[r:`CORR`]->(b:`Entity`)",
     "df": "MATCH (a:`Event`)-[r:`DF`]->(b:`Event`)",
     "df_of_type": "MATCH (a:`Event`)-[r:`DF`]->(b:`Event`) WHERE r.Type = $entity_type",
+    "qualifiers": "MATCH ()-[r:`REL`|`CORR`]->()",
     "count_events": "MATCH (n:`Event`)",
     "count_entities": "MATCH (n:`Entity`)",
     "count_corr": "MATCH ()-[r:`CORR`]->()",

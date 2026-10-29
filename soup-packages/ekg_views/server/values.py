@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Iterable, Mapping, Sequence
-from typing import Any
+from typing import Any, cast
 
 from soup.core.contracts import ValidationError
 
@@ -98,7 +98,7 @@ def as_choice(value: Any, name: str, choices: Sequence[str], default: str | None
         return default
     if value not in choices:
         raise ValidationError(f"'{name}' must be one of {list(choices)}, got {value!r}")
-    return value
+    return cast(str, value)
 
 
 def as_list(value: Any, name: str, choices: Iterable[str], default: Sequence[str]) -> list[str]:

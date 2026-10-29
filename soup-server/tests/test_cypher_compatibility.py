@@ -149,7 +149,7 @@ SMOKE_FILES = (
 def _compose_images() -> dict[str, str]:
     images, service = {}, None
     for line in (REPOSITORY / "docker-compose.yaml").read_text(encoding="utf-8").splitlines():
-        if re.match(r"^  [a-z]+:\s*$", line):
+        if re.match(r"^  [a-z][a-z-]*:\s*$", line):
             service = line.strip().rstrip(":")
         match = re.match(r"^\s+image:\s*(\S+)", line)
         if match and service:
@@ -165,6 +165,7 @@ def test_compose_pins_the_memgraph_images_and_the_smoke_tests_use_the_same():
         tag = image.rpartition(":")[2]
         assert re.fullmatch(r"\d+\.\d+\.\d+", tag), image  # never the implicit "latest"
     assert memgraph.rpartition(":")[2] == lab.rpartition(":")[2]
+    assert images["volume-init"] == memgraph  # it gives the files to the user of this image
     for path in SMOKE_FILES:
         text = (REPOSITORY / path).read_text(encoding="utf-8")
         assert re.findall(r"docker run [^\n]*memgraph/\S+", text) and all(

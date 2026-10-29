@@ -3,13 +3,16 @@
 File : memgraph_smoke.py
 Description: Smoke test of every query ekg_views generates, against a REAL
              Memgraph (not collected by pytest: the name does not start
-             with test_). It empties the database, writes a small EKG
+             with its own Cypher. It empties the database, writes a small EKG
              (4 :Event, 3 :Entity, :CORR and :DF, the schema of the ekg
-             package), then runs and transforms: the 20 GraphQuery of
-             builtin_queries.py, the 4 JsonPart, and for StandardGraphView
-             the edges, the max data, the node/edge search (with and
-             without a node label) and the node query, for every
-             combination of relationship types. It prints one line per
+             package), adds the qualifiers of two :CORR and two :REL with
+             the queries of ocel's build step (step.py, on rows passed as
+             a parameter instead of its LOAD CSV files) and checks them,
+             then runs and transforms: the 21 GraphQuery of
+             builtin_queries.py, the 5 JsonPart, and for StandardGraphView
+             and ObjectGraphView the edges, the max data, the node/edge
+             search (with and without a node label) and the node query,
+             for every combination of relationship types. It prints one line per
              query and the ones that failed, and exits with 1 if any did.
 
              docker run -d --rm --name ekg-views-smoke -p 17687:7687 memgraph/memgraph-mage:3.13.2
@@ -41,6 +44,7 @@ query_module = bundled_module("tool_memgraph", "query")
 builtin = bundled_module("ekg_views", "builtin_queries")
 parts = bundled_module("ekg_views", "json_parts")
 views = bundled_module("ekg_views", "views")
+ocel_step = bundled_module("ocel", "step")
 
 Query = query_module.Query
 
@@ -57,6 +61,19 @@ CREATE (e1:Event {Event_Id: '1', Timestamp: localDateTime('2021-01-01T10:00:00')
 """
 
 # Params for the queries with fields (the others use their defaults).
+# The rows of ocel's two files: a qualifier on (e1)-[:CORR]->(o1), none on
+# (e1)-[:CORR]->(i1); a :REL with a qualifier, one without, one towards an
+# object with no :Entity (left out).
+QUALIFIER_ROWS = [
+    {"event_id": "1", "object_id": "o1", "object_type": "order", "qualifier": "placed"},
+    {"event_id": "1", "object_id": "i1", "object_type": "item", "qualifier": ""},
+]
+O2O_ROWS = [
+    {"source_id": "o1", "source_type": "order", "target_id": "i1", "target_type": "item", "qualifier": "contains"},
+    {"source_id": "o2", "source_type": "order", "target_id": "i1", "target_type": "item", "qualifier": ""},
+    {"source_id": "o2", "source_type": "order", "target_id": "x9", "target_type": "item", "qualifier": "missing"},
+]
+
 PARAMS = {
     "entities_of_type": {"type": "order"},
     "events_of_activity": {"activity": "Create"},
@@ -69,7 +86,7 @@ def main(uri: str) -> int:
     db.run(Query("MATCH (n) DETACH DELETE n"))
     db.run(Query(SAMPLE_GRAPH))
 
-    checks: list[tuple[str, Callable[[], Any]]] = []
+    checks: list[tuple[str, Callable[[], Any]]] = [("ocel step: qualifiers and REL", lambda: _ocel_step(db))]
 
     for query in builtin.builtin_queries():
         def run_query(query=query):
@@ -80,13 +97,15 @@ def main(uri: str) -> int:
     for part in parts.builtin_parts():
         checks.append((f"json part {part.key}", lambda part=part: part.transform(db.run(part.query()))))
 
+    for view, combinations in ((views.StandardGraphView(), (["DF"], ["CORR"], ["DF", "CORR"])),
+                               (views.ObjectGraphView(), (["REL"], ["CORR"], ["REL", "CORR"]))):
+        for relations in combinations:
+            name = f"{view.key} " + "|".join(relations)
+            checks.append((f"view edges {name}", lambda v=view, r=relations: v.to_graph(db.run(v.edges_query(50, r)))))
+            checks.append((f"view max_data {name}", lambda v=view, r=relations: db.run(v.max_data_query(r))))
+            checks.append((f"view search edge {name}", lambda v=view, r=relations: v.search_items(db.run(v.search_query("o", "edge", 0, 50, r)), "edge")))
+            checks.append((f"view search edge count {name}", lambda v=view, r=relations: db.run(v.search_count_query("o", "edge", r))))
     view = views.StandardGraphView()
-    for relations in (["DF"], ["CORR"], ["DF", "CORR"]):
-        name = "|".join(relations)
-        checks.append((f"view edges {name}", lambda r=relations: view.to_graph(db.run(view.edges_query(50, r)))))
-        checks.append((f"view max_data {name}", lambda r=relations: db.run(view.max_data_query(r))))
-        checks.append((f"view search edge {name}", lambda r=relations: view.search_items(db.run(view.search_query("order", "edge", 0, 50, r)), "edge")))
-        checks.append((f"view search edge count {name}", lambda r=relations: db.run(view.search_count_query("order", "edge", r))))
     for label in (None, "Event", "Entity"):
         checks.append((f"view search node {label}", lambda l=label: view.search_items(db.run(view.search_query("cre", "node", 0, 50, ["DF"], l)), "node")))
         checks.append((f"view search node count {label}", lambda l=label: db.run(view.search_count_query("", "node", ["DF"], l))))
@@ -112,6 +131,17 @@ def main(uri: str) -> int:
     for name, exc in failures:
         print(f"  failed: {name}: {exc}")
     return 1 if failures else 0
+
+
+def _ocel_step(db: Any) -> str:
+    db.run(Query(ocel_step.qualifiers_query(ocel_step.ROWS).text, {"rows": QUALIFIER_ROWS}))
+    db.run(Query(ocel_step.object_relationships_query(ocel_step.ROWS).text, {"rows": O2O_ROWS}))
+    corr = db.run(Query("MATCH (:Event)-[c:CORR]->(n:Entity) RETURN n.Value AS value, c.qualifier AS qualifier"))
+    assert sorted((row["value"], row["qualifier"] or "") for row in corr) == [
+        ("i1", ""), ("o1", ""), ("o1", ""), ("o1", "placed"), ("o2", "")], corr
+    rel = db.run(Query("MATCH (a:Entity)-[r:REL]->(b:Entity) RETURN a.Value AS a, b.Value AS b, r.qualifier AS qualifier"))
+    assert sorted((row["a"], row["b"], row["qualifier"] or "") for row in rel) == [("o1", "i1", "contains"), ("o2", "i1", "")], rel
+    return f"{len(rel)} REL, 1 qualified CORR"
 
 
 def _summary(result: Any) -> str:

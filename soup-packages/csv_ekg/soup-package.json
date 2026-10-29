@@ -9,6 +9,6 @@
   "requires_tools": ["memgraph", "storage"],
   "provides_tools": [],
   "extension_points": [],
-  "python_dependencies": ["pandas>=2", "numpy>=1.23,<2"],
+  "python_dependencies": ["pandas>=2.2", "numpy>=2"],
   "server": {"module": "server", "plugin": "plugin:Plugin"}
 }

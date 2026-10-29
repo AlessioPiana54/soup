@@ -4,7 +4,8 @@ File : test_requirements.py
 Description: soup-server/requirements.txt, the libraries of the server
              image: numpy, pandas, neo4j and docker are pinned (== or ~=),
              so pip cannot pull in a combination that fails at import
-             (numpy 2.x under pandas 2.1.1: "numpy.dtype size changed");
+             (a pandas built for numpy 1.x under numpy 2: "numpy.dtype
+             size changed"): pandas 2.2 with numpy 2;
              and the python_dependencies of every bundled package are
              satisfied by those versions, so in the image no package is
              excluded for a missing or wrong library. The check reads the
@@ -68,10 +69,10 @@ def test_the_data_and_driver_libraries_are_pinned(name):
     _pinned_version(requirements[name])
 
 
-def test_numpy_is_a_1_x_for_pandas_2_1():
+def test_numpy_is_a_2_x_for_pandas_2_2():
     requirements = _requirements()
-    assert _pinned_version(requirements["pandas"]).startswith("2.1.")
-    assert _pinned_version(requirements["numpy"]).startswith("1.")
+    assert _pinned_version(requirements["pandas"]).startswith("2.2.")
+    assert _pinned_version(requirements["numpy"]).startswith("2.")
 
 
 def test_python_dependencies_of_every_package_are_satisfied_by_requirements():
@@ -90,9 +91,10 @@ def test_python_dependencies_of_every_package_are_satisfied_by_requirements():
     assert problems == []
 
 
-def test_the_packages_using_pandas_declare_numpy_1_x():
+def test_the_packages_using_pandas_declare_pandas_2_2_and_numpy_2_x():
     for manifest in _manifests():
         names = {canonicalize_name(Requirement(spec).name): Requirement(spec) for spec in manifest.get("python_dependencies", [])}
         if "pandas" in names:
             assert "numpy" in names, f"{manifest['name']} uses pandas without declaring numpy"
-            assert not names["numpy"].specifier.contains("2.0.0"), f"{manifest['name']} allows numpy 2.x"
+            assert not names["numpy"].specifier.contains("1.26.4"), f"{manifest['name']} allows numpy 1.x"
+            assert not names["pandas"].specifier.contains("2.1.4"), f"{manifest['name']} allows pandas 2.1"

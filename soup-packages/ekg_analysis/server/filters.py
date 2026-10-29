@@ -39,7 +39,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import suppress
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 import soup_pkg_ekg.api as ekg
 from soup_pkg_ekg.api import Query, ident
@@ -89,7 +89,7 @@ def _column(rows: Sequence[Mapping[str, Any]], column: str) -> list[str]:
 
 
 def _run(tools: ToolAccess) -> Run:
-    return tools.get(MEMGRAPH).run
+    return cast(ekg.GraphDatabase, tools.get(MEMGRAPH)).run
 
 
 def entity_types(obj: ObjectRef, tools: ToolAccess) -> list[str]:
@@ -158,7 +158,7 @@ def require_operator(spec: Mapping[str, Any]) -> str:
     value = spec.get("operator")
     if value not in OPERATORS:
         raise ValidationError(f"operator: {value!r} is not one of {list(OPERATORS)}")
-    return value
+    return cast(str, value)
 
 
 def require_positive(spec: Mapping[str, Any], name: str, integer: bool = False) -> int | float:
@@ -218,7 +218,8 @@ class AnalysisFilter(ABC):
 
 def entity_field(types: Sequence[str]) -> Field:
     if types:
-        return Field("entity", "Tipo di entità", type="select", required=True, choices=tuple(types), default=types[0])
+        return Field("entity", "Tipo di entità", type="select", required=True,
+                     choices=cast("tuple[Choice, ...]", tuple(types)), default=types[0])
     return Field("entity", "Tipo di entità", required=True, help="Il grafo non ha entità.")
 
 
@@ -343,7 +344,8 @@ class _ActivitiesFilter(AnalysisFilter):
     def fields(self, obj: ObjectRef, tools: ToolAccess) -> list[Field]:
         names = activities(obj, tools)
         if names:
-            return [Field("activities", "Attività", type="multiselect", required=True, choices=tuple(names))]
+            return [Field("activities", "Attività", type="multiselect", required=True,
+                          choices=cast("tuple[Choice, ...]", tuple(names)))]
         return [Field("activities", "Attività", type="columns", required=True, help="Il grafo non ha attività.")]
 
     def validate(self, spec: Any) -> dict[str, Any]:

@@ -31,9 +31,10 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping, Sequence
-from typing import Any
+from typing import Any, cast
 
 from soup_pkg_soup_base.api import DEFAULT_MAX_BYTES, DEFAULT_MAX_OBJECTS, ParsedCache
+from soup_pkg_tool_storage.api import StorageSpace, StorageTool
 
 from soup.core.contracts import (
     Choice,
@@ -100,7 +101,7 @@ def separator_char(value: Any) -> str:
     if value in SEPARATOR_NAMES:
         return SEPARATOR_NAMES[value]
     if value in table.SEPARATORS:
-        return value
+        return cast(str, value)
     raise ValidationError(f"Unknown separator {value!r}; expected one of {sorted(SEPARATOR_NAMES)}")
 
 
@@ -109,8 +110,8 @@ def _separator_field(default: str) -> Field:
     return Field("separator", "Separatore", type="select", default=default, choices=SEPARATOR_CHOICES)
 
 
-def _space(tools: ToolAccess):
-    return tools.get(STORAGE).space(NAMESPACE)
+def _space(tools: ToolAccess) -> StorageSpace:
+    return cast(StorageTool, tools.get(STORAGE)).space(NAMESPACE)
 
 
 def _file_of(obj: ObjectRef) -> str:
@@ -329,7 +330,7 @@ class ColumnDistribution(_Cached, Operation):
     def fields(self, inputs: Mapping[str, ObjectRef], tools: ToolAccess) -> list[Field]:
         columns = [str(name) for name in inputs["table"].meta.get("columns") or []]
         return [
-            Field("column", "Colonna", type="column", required=True, choices=columns),
+            Field("column", "Colonna", type="column", required=True, choices=cast("tuple[Choice, ...]", columns)),
             Field("top", "Valori mostrati", type="number", default=DEFAULT_TOP,
                   help=f"I valori più frequenti (al massimo {MAX_TOP}); gli altri sono sommati."),
         ]

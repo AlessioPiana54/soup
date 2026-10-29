@@ -30,10 +30,11 @@ import io
 import posixpath
 import tarfile
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 import docker
 from docker.errors import DockerException, NotFound
+from docker.models.containers import Container, ExecResult
 
 from soup.core.contracts import FileStorage, ServiceUnavailableError
 
@@ -54,10 +55,10 @@ class DockerVolumeStorage(FileStorage):
         self._root = root.rstrip("/") or "/"
         self._client_factory = client_factory
 
-    def _container(self):
+    def _container(self) -> Container:
         try:
             client = self._client_factory()
-            return client.containers.get(self._container_name)
+            return cast(Container, client.containers.get(self._container_name))
         except DockerException as exc:
             raise self._unavailable(f"Unable to reach container '{self._container_name}'", exc) from exc
 
@@ -132,9 +133,10 @@ class DockerVolumeStorage(FileStorage):
         result = self._exec(["ls", "-1", self._full_path(prefix)], "listing")
         if result.exit_code != 0:
             return []
-        return [line for line in result.output.decode("utf-8").splitlines() if line]
+        # exec_run without stream=True: the whole output as bytes.
+        return [line for line in cast(bytes, result.output).decode("utf-8").splitlines() if line]
 
-    def _exec(self, argv: builtins.list[str], what: str):
+    def _exec(self, argv: builtins.list[str], what: str) -> ExecResult:
         container = self._container()
         try:
             return container.exec_run(argv, user=EXEC_USER)

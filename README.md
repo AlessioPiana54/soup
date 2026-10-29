@@ -79,9 +79,9 @@ SOUP follows the plug-in model of [ProM](https://promtools.org/):
 | `ekg` | | Load into Memgraph | | | extension points `ekg.build_steps`, `ekg.state_providers`; events `ekg.before_reset`, `ekg.built` |
 | `csv_ekg` | CSV as event log (EKG on Memgraph): column mapping, trigger/target, multiplicity diagram | Convert to EKG (`table` → `ekg`) | | | uses `memgraph`, `storage` |
 | `causal_df` | | | | | contributes the causal `:DF` step to `ekg.build_steps` |
-| `ekg_views` | | | Graph, Statistics, Queries | Graph JSON | extension points `ekg.graph_views`, `ekg.queries`, `ekg.json_parts` |
+| `ekg_views` | | | Graph (standard and object views), Statistics, Queries | Graph JSON | extension points `ekg.graph_views`, `ekg.queries`, `ekg.json_parts`, `ekg.stats_notices` |
 | `ekg_analysis` | | New analysis, Import analysis configuration, Configuration example | Process indicators | Analysis configuration | extension point `ekg.analysis_filters` (6 filters); event `analysis.before_apply` |
-| `ocel` | OCEL 2.0 as tables (`.json`, `.jsonocel`, kind `ocel_tables`), OCEL 2.0 as EKG on Memgraph | Decompose into EKG (`ocel_tables` → `ekg`) | OCEL tables, OCEL summary | OCEL 2.0 JSON | uses `storage` (tables), `memgraph` (EKG) |
+| `ocel` | OCEL 2.0 as tables (`.json`, `.jsonocel`, kind `ocel_tables`), OCEL 2.0 as EKG on Memgraph | Decompose into EKG (`ocel_tables` → `ekg`) | OCEL tables, OCEL summary | OCEL 2.0 JSON | uses `storage` (tables), `memgraph` (EKG); contributes the step of the qualifiers on `:CORR` and the object-object `:REL` to `ekg.build_steps` (order 420) and a notice to `ekg.stats_notices` |
 | `ekg_class_graph` | | Build aggregated graph (`ekg` → `ekg_class`) | Aggregated graph, Aggregated graph statistics | | contributes a view, queries and JSON parts; subscribes to `ekg.before_reset`, `analysis.before_apply` |
 
 Details of every package, of the tools and of the extension points are in
@@ -106,9 +106,10 @@ docker compose -p soup-tool up --build
 | Container | Description | Access point |
 |---|---|---|
 | **soup-app** | Frontend (nginx; `/api/` is proxied to the backend) | [http://localhost:4200](http://localhost:4200) |
-| **soup-engine** | Backend `/api/v3` and the package bundles, served by waitress (`wsgi.py`) | [http://localhost:8080](http://localhost:8080) |
+| **soup-engine** | Backend `/api/v3` and the package bundles, served by waitress (`wsgi.py`), with the `soup-volume` volume on `/soup` | [http://localhost:8080](http://localhost:8080) |
 | **soup-database** | Memgraph (`memgraph/memgraph-mage:3.13.2`), with the `soup-volume` volume on `/soup` | `7687` (Bolt), `7444` |
 | **soup-lab** | Memgraph Lab (`memgraph/lab:3.13.2`) | [http://localhost:3300](http://localhost:3300) |
+| **volume-init** | One-off: gives the files of the volumes to the user of the backend and of Memgraph, then exits | |
 
 The backend image runs `python wsgi.py`: the [waitress](https://docs.pylonsproject.org/projects/waitress/)
 WSGI server, in **one process with 8 threads**. The engine keeps its state in memory (the loaded
@@ -123,7 +124,7 @@ procedures) and `memgraph/lab:3.13.2` (the web interface) as two services. The i
 `memgraph/memgraph-platform` without a tag, is deprecated: its `latest` has stayed at Memgraph 2.14.1
 (February 2024), which does not implement list and pattern comprehensions (`[x IN list | expr]`).
 The packages never use them (`soup-server/tests/test_cypher_compatibility.py` checks it) and run on
-2.14.1 too. Update the two tags together, then run the smoke tests of `ekg_views` and `ekg_analysis`
+2.14.1 too. Update the tags together (the `volume-init` service uses the Memgraph image too), then run the smoke tests of `ekg_views` and `ekg_analysis`
 against the new image (their READMEs).
 
 To read the version of the running Memgraph, run `SHOW VERSION;` in Memgraph Lab or with mgconsole:
@@ -131,11 +132,6 @@ To read the version of the running Memgraph, run `SHOW VERSION;` in Memgraph Lab
 ```sh
 echo "SHOW VERSION;" | docker exec -i soup-database mgconsole
 ```
-
-The `memgraph/memgraph-mage` image runs as the unprivileged `memgraph` user: `tool_storage` runs its
-commands in the container as root (`docker exec --user root`), so it can write in the `soup-volume`
-volume, and leaves the files readable by Memgraph for `LOAD CSV`. The volume keeps the datasets of an
-existing installation; the graph itself is rebuilt from them when an object is opened.
 
 At startup Memgraph may warn that `vm.max_map_count` is too low. It is a setting of the Linux kernel
 that runs Docker, not of the image. On Docker Desktop for Windows (WSL2):
@@ -147,6 +143,28 @@ wsl -d docker-desktop sysctl -w vm.max_map_count=524288
 It lasts until WSL restarts. To keep it, add `kernelCommandLine = sysctl.vm.max_map_count=524288`
 under `[wsl2]` in `%UserProfile%\.wslconfig`, then run `wsl --shutdown`. On Linux:
 `sudo sysctl -w vm.max_map_count=524288` (permanent in `/etc/sysctl.conf`).
+
+### The `soup-volume` volume
+
+The datasets, the catalog and the preferences are files in the `soup-volume` volume, mounted on `/soup`
+in both the backend and Memgraph: the backend writes them as plain files (`SOUP_STORAGE_KIND=local`,
+`SOUP_LOCAL_STORAGE_ROOT=/soup`) and Memgraph reads the CSVs with `LOAD CSV` from the same path. The
+volume keeps the datasets of an existing installation; the graph itself is rebuilt from them when an
+object is opened.
+
+The `memgraph/memgraph-mage` image runs as the unprivileged `memgraph` user, UID 101 and GID 103 in
+3.13.2 (`docker run --rm --entrypoint id memgraph/memgraph-mage:3.13.2 memgraph`). The backend image
+runs as a user with the same UID and GID (`ARG SOUP_UID`, `SOUP_GID` in `soup-server/Dockerfile`), so
+what one writes the other can read and write. Check them again when the Memgraph tag changes.
+
+Volumes created before this layout were written by the backend through the Docker socket as root. The
+`volume-init` service runs before the backend at every `up`: it gives the files of `soup-volume` and
+`soup-installed-packages` that have another owner to the `memgraph` user and exits; it removes and
+moves nothing, and does nothing when every owner is already right. The same by hand:
+
+```sh
+docker compose -p soup-tool run --rm volume-init
+```
 
 The backend image builds every package frontend (`npm ci && npm run build:packages`). Packages
 installed at runtime are stored in the `soup-installed-packages` volume.
@@ -190,9 +208,12 @@ python scripts/metrics.py            # lines, files, ruff warnings, cyclomatic c
 # packages: lint (eslint, knip, tsc), unit tests (vitest/jsdom), type check and bundles
 cd soup-packages && npm install && npm run lint && npm test && npm run build:packages
 
-# host frontend: lint (ng lint, knip, tsc), build (with type check), unit tests (Chrome headless), end to end (Playwright)
+# host frontend: lint (ng lint, knip, tsc), build (with type check), unit tests (Vitest, jsdom), end to end (Playwright)
 cd soup-app && npm install && npm run lint && npm run build && npm run test:v3 && npm run e2e
 ```
+
+The same checks run in continuous integration on every push and pull request, plus the Memgraph
+smoke tests and the build of the two images: [.github/workflows/README.md](.github/workflows/README.md).
 
 `soup-server/tests/test_architecture_boundaries.py` checks the boundaries statically:
 
@@ -234,8 +255,8 @@ To regenerate the fixture: `python -m tests.tools.dump_v3_routes`.
 | `SOUP_MAX_UPLOAD_MB` | `200` | host | Maximum request body of `/api/v3` (413 above). |
 | `SOUP_DEBUG` | `false` | `app.py` (local development; not `wsgi.py`) | `1` or `true` turns on Flask's debug mode. **Development only, never on a reachable port:** the Werkzeug debugger runs Python code on the server for whoever reaches port 8080 (`docker-compose.yaml` publishes it and does not set the variable). The reloader stays off in any case, so the engine starts once. |
 | `MEMGRAPH_HOST`, `MEMGRAPH_PORT` | `memgraph`, `7687` | `tool_memgraph` | Memgraph connection. |
-| `SOUP_STORAGE_KIND` | `docker` | `tool_storage` | `docker` (files in the Memgraph container volume `/soup`, so `LOAD CSV` reads them) or `local`. |
-| `SOUP_CONTAINER_NAME` | `soup-database` | `tool_storage` | Container of the `docker` storage. |
+| `SOUP_STORAGE_KIND` | `docker` (`local` in `docker-compose.yaml`) | `tool_storage` | `local` (files under `SOUP_LOCAL_STORAGE_ROOT`; in `docker-compose.yaml` the `/soup` volume Memgraph also mounts) or `docker` (files written into the `/soup` of the Memgraph container through the Docker socket: see "Security" below). |
+| `SOUP_CONTAINER_NAME` | `soup-database` | `tool_storage` | Container of the `docker` storage (the `container_name` of the Memgraph service). |
 | `SOUP_LOCAL_STORAGE_ROOT` | `/soup` | `tool_storage` | Root of the `local` storage. |
 | `SOUP_EKG_VIEWS_MAX_LIMIT` | `2000` | `ekg_views` | Maximum number of graph elements drawn. |
 | `SOUP_TEXT_CACHE_OBJECTS`, `SOUP_TEXT_CACHE_MB` | `8`, `200` | `text` | In-memory cache of the decoded files. |
@@ -243,6 +264,19 @@ To regenerate the fixture: `python -m tests.tools.dump_v3_routes`.
 | `SOUP_OCEL_CACHE_OBJECTS`, `SOUP_OCEL_CACHE_MB` | `8`, `200` | `ocel` | In-memory cache of the tables of the OCEL logs. |
 
 ---
+
+## Security of the backend container
+
+The backend container has **no access to the Docker daemon**: `docker-compose.yaml` does not mount
+`/var/run/docker.sock` and the backend runs as an unprivileged user, not root. Whoever reaches the
+Docker socket controls every container and, through them, the host as root; a backend holding it
+would hand that to any code running in it, packages included.
+
+The `docker` storage (`SOUP_STORAGE_KIND=docker`, `DockerVolumeStorage`) is still available for an
+installation that cannot share a volume between the backend and Memgraph: it writes into the
+Memgraph container (`SOUP_CONTAINER_NAME`) through the Docker socket, so it needs the socket mounted
+in the backend, with the risk above. It is not the default of `docker-compose.yaml`; choose it only
+on purpose.
 
 ## Security of runtime installation
 

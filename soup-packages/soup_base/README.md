@@ -158,9 +158,16 @@ interface GraphRenderer {
 }
 ```
 
-Il motore predefinito, `DagreGraphRenderer` (dagre-d3, zoom e pan d3), crea una sola volta il suo
-`<svg>` e il gruppo che zoom e pan trasformano, e ridisegna sempre lì. Un package può fornirne un
-altro senza importare codice di soup_base:
+Il motore predefinito, `DagreGraphRenderer` (layout di `@dagrejs/dagre`, disegno, zoom e pan d3 con lo
+stesso SVG del vecchio dagre-d3: `g.node`, `g.edgePath`, `g.edgeLabel`), crea una sola volta il suo
+`<svg>` e il gruppo che zoom e pan trasformano, e ridisegna sempre lì. `@dagrejs/dagre` è alla 3.1.1
+(versione esatta in `app/package.json`; l'ultima 3.x rilasciata da almeno due settimane al momento della scelta). Rispetto
+alla 1.1.8, che disponeva i nodi come il dagre 0.8.5 di dagre-d3, la 3.x li ordina diversamente in
+ogni colonna: sui grafi di prova (ordini, la sua vista degli oggetti, order_process e il suo grafo
+aggregato, try4) ha avuto meno incroci tra archi sui grafi più fitti (24 → 17 e 19 → 17), lo stesso
+numero sugli altri (±1) e nessuna etichetta sovrapposta, come la 1.1.8; è anche la serie mantenuta,
+con i tipi inclusi. Il disegno (forme, stili, colori, frecce, struttura SVG) non dipende dalla versione.
+Un package può fornire un altro motore senza importare codice di soup_base:
 
 ```ts
 const GraphView = customElements.get('soup-graph-view') as unknown as {

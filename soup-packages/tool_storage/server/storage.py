@@ -23,7 +23,8 @@ from __future__ import annotations
 
 import builtins
 import posixpath
-from typing import Any
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 from soup.core.contracts import (
     FileStorage,
@@ -36,6 +37,8 @@ from soup.core.contracts import (
 
 STORAGE_TOOL = "storage"
 
+T = TypeVar("T")
+
 
 def _namespace(namespace: str) -> str:
     return validate_name(namespace, label="Namespace")
@@ -45,7 +48,7 @@ def _file_name(name: str) -> str:
     return validate_name(name, label="File")
 
 
-def guard_os_errors(what: str, call, *args):
+def guard_os_errors(what: str, call: Callable[..., T], *args: Any) -> T:
     """Run a backend call: missing file -> NotFoundError, other OS errors -> 503."""
 
     try:

@@ -34,14 +34,20 @@ class BuildContext:
     CausalDirectlyFollowsStep) declare which entity types it has already
     created :DF edges for, so DirectlyFollowsStep (order 500) skips them
     instead of creating duplicate/conflicting edges for the same type.
+
+    `extra_files` are the files the importer staged with the dataset
+    (build_ekg's extra_files) that exist, by name, with their path for
+    LOAD CSV: a contributed step uses its own ones (e.g. ocel's
+    relationships), at the first build and at every rebuild.
     """
 
     dataset_name: str
     mapping: Any
     events_csv_path: str
     entities_csv_path: str
-    trigger_target_rows: tuple = ()
-    df_handled_types: set = field(default_factory=set)
+    trigger_target_rows: tuple[dict[str, str], ...] = ()
+    df_handled_types: set[str] = field(default_factory=set)
+    extra_files: dict[str, str] = field(default_factory=dict)
 
 
 class EkgBuildStep(ABC):

@@ -81,7 +81,7 @@ class Table:
     def column_index(self, name: str) -> int:
         return self.columns.index(name)
 
-    def iter_records(self) -> Iterator[dict]:
+    def iter_records(self) -> Iterator[dict[str, str | None]]:
         for row in self.rows:
             yield dict(zip(self.columns, row, strict=False))
 

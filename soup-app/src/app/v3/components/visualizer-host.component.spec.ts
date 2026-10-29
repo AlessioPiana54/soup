@@ -3,6 +3,7 @@ import { Router } from '@angular/router';
 import { defineSoupElement, dispatchSoupEvent, ObjectRef, SOUP_EVENTS, VisualizerContext } from '@soup/sdk';
 import { of, throwError } from 'rxjs';
 
+import { createSpyObj, SpyObj } from '../../../testing/spy-obj';
 import { ApiResponse } from '../../core/models/api_response.model';
 import { PackageLoaderService } from '../../core/v3/package-loader.service';
 import { VisualizerInfo } from '../../core/v3/v3.models';
@@ -49,27 +50,27 @@ async function until(condition: () => boolean, fixture: ComponentFixture<unknown
     await new Promise((resolve) => setTimeout(resolve, 10));
     fixture.detectChanges();
   }
-  expect(condition()).withContext('condition not reached').toBeTrue();
+  expect(condition(), 'condition not reached').toBe(true);
 }
 
 describe('VisualizerHostComponent', () => {
   let fixture: ComponentFixture<VisualizerHostComponent>;
-  let api: jasmine.SpyObj<V3ApiService>;
-  let loader: jasmine.SpyObj<PackageLoaderService>;
-  let router: jasmine.SpyObj<Router>;
-  let notifications: jasmine.SpyObj<NotificationService>;
+  let api: SpyObj<V3ApiService>;
+  let loader: SpyObj<PackageLoaderService>;
+  let router: SpyObj<Router>;
+  let notifications: SpyObj<NotificationService>;
 
   beforeEach(async () => {
     FakeViewer.last = null;
-    api = jasmine.createSpyObj<V3ApiService>('V3ApiService', ['visualizerData', 'visualizerAction', 'setThumbnail']);
-    api.visualizerData.and.returnValue(of({ rows: [[1, 2]] }));
-    api.visualizerAction.and.returnValue(of({ page: 2 }));
-    api.setThumbnail.and.returnValue(of(undefined));
-    loader = jasmine.createSpyObj<PackageLoaderService>('PackageLoaderService', ['ensureLoaded']);
-    loader.ensureLoaded.and.resolveTo();
-    router = jasmine.createSpyObj<Router>('Router', ['navigate']);
-    router.navigate.and.resolveTo(true);
-    notifications = jasmine.createSpyObj<NotificationService>('NotificationService', ['show']);
+    api = createSpyObj<V3ApiService>(['visualizerData', 'visualizerAction', 'setThumbnail']);
+    api.visualizerData.mockReturnValue(of({ rows: [[1, 2]] }));
+    api.visualizerAction.mockReturnValue(of({ page: 2 }));
+    api.setThumbnail.mockReturnValue(of(undefined));
+    loader = createSpyObj<PackageLoaderService>(['ensureLoaded']);
+    loader.ensureLoaded.mockResolvedValue(undefined);
+    router = createSpyObj<Router>(['navigate']);
+    router.navigate.mockResolvedValue(true);
+    notifications = createSpyObj<NotificationService>(['show']);
 
     await TestBed.configureTestingModule({
       imports: [VisualizerHostComponent],
@@ -103,7 +104,7 @@ describe('VisualizerHostComponent', () => {
     expect(element.context.theme).toBe('light');
     expect((fixture.nativeElement as HTMLElement).querySelector('soup-fake-viewer')).toBe(element);
 
-    await expectAsync(element.context.action<{ page: number }>('page', { n: 2 })).toBeResolvedTo({ page: 2 });
+    await expect(element.context.action<{ page: number }>('page', { n: 2 })).resolves.toEqual({ page: 2 });
     expect(api.visualizerAction).toHaveBeenCalledWith('obj-1', 'feat.table', 'page', { n: 2 });
   });
 
@@ -124,17 +125,17 @@ describe('VisualizerHostComponent', () => {
 
     expect(router.navigate).toHaveBeenCalledWith(['/o', 'obj-2']);
     expect(router.navigate).toHaveBeenCalledWith(['/o', 'obj-3']);
-    expect(notifications.show).toHaveBeenCalledWith('done', jasmine.any(Number), jasmine.any(Number));
+    expect(notifications.show).toHaveBeenCalledWith('done', expect.any(Number), expect.any(Number));
     expect(api.setThumbnail).toHaveBeenCalledWith('obj-1', '<svg xmlns="http://www.w3.org/2000/svg"/>');
     expect(thumbnails).toEqual(['<svg xmlns="http://www.w3.org/2000/svg"/>']);
   });
 
   it('turns a failed action into an Error for the element', async () => {
-    api.visualizerAction.and.returnValue(throwError(() => new ApiResponse(404, null, "Visualizer has no action 'x'")));
+    api.visualizerAction.mockReturnValue(throwError(() => new ApiResponse(404, null, "Visualizer has no action 'x'")));
     render(VIEWER);
     await until(() => FakeViewer.last !== null, fixture);
 
-    await expectAsync(FakeViewer.last!.context.action('x')).toBeRejectedWithError("Visualizer has no action 'x'");
+    await expect(FakeViewer.last!.context.action('x')).rejects.toThrow(/^Visualizer has no action 'x'$/);
   });
 
   it('without a visualizer says none is installed for the kind and shows the meta as JSON', () => {
@@ -147,7 +148,7 @@ describe('VisualizerHostComponent', () => {
   });
 
   it('shows the load error of the package and mounts nothing', async () => {
-    loader.ensureLoaded.and.rejectWith(new Error('SyntaxError in bundle'));
+    loader.ensureLoaded.mockRejectedValue(new Error('SyntaxError in bundle'));
     render(VIEWER);
 
     await until(() => text().includes('SyntaxError in bundle'), fixture);

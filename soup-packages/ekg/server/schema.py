@@ -53,6 +53,12 @@ def _quote_path(path: str) -> str:
     return f"'{escaped}'"
 
 
+def load_csv_clause(csv_path: str) -> str:
+    """`LOAD CSV FROM '<path>' WITH HEADER AS row`, for the queries of a contributed step on its extra files."""
+
+    return f"LOAD CSV FROM {_quote_path(csv_path)} WITH HEADER AS row"
+
+
 def load_events_query(csv_path: str, extra_columns: Sequence[str] = ()) -> Query:
     """
     LOAD CSV -> CREATE (:Event {Event_Id, Timestamp, ActivityName, ...}).

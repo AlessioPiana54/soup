@@ -25,7 +25,7 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Any
+from typing import Any, Protocol, cast
 
 from soup.core.contracts import Importer, Inspection, NotFoundError, ObjectRef, ToolAccess, Upload, report
 
@@ -91,11 +91,37 @@ class OcelImporterBase(Importer):
 # ---------------------------------------------------------------------- #
 # The tables of an "ocel_tables" object
 # ---------------------------------------------------------------------- #
-def _space(tools: ToolAccess):
-    return tools.get(STORAGE).space(NAMESPACE)
+class StorageSpace(Protocol):
+    """What these tables use of a folder of the "storage" tool (tool_storage's StorageSpace)."""
+
+    def read(self, path: str) -> bytes:
+        ...
+
+    def write(self, path: str, data: bytes) -> None:
+        ...
+
+    def exists(self, path: str) -> bool:
+        ...
+
+    def delete(self, path: str) -> None:
+        ...
+
+    def subspace(self, name: str) -> StorageSpace:
+        ...
 
 
-def _folder(obj: ObjectRef, tools: ToolAccess):
+class StorageTool(Protocol):
+    """What these tables use of the "storage" tool (tool_storage's StorageTool)."""
+
+    def space(self, namespace: str) -> StorageSpace:
+        ...
+
+
+def _space(tools: ToolAccess) -> StorageSpace:
+    return cast(StorageTool, tools.get(STORAGE)).space(NAMESPACE)
+
+
+def _folder(obj: ObjectRef, tools: ToolAccess) -> StorageSpace:
     return _space(tools).subspace(obj.id)
 
 

@@ -8,7 +8,7 @@ import { CORE_TOOLS, PackageChanges, packages, PACKAGES_DIR, skipFirstAccessHint
 /**
  * The ocel package installed at runtime on the e2e backend, which does not
  * have it: first the packages it requires, from their zips (soup_base,
- * tool_storage, tool_memgraph and ekg; tool_storage also provides the
+ * tool_storage, tool_memgraph, ekg and ekg_views; tool_storage also provides the
  * catalog and the preferences, so the in-memory ones of the e2e server are
  * disabled first), then ocel from the /packages page. Without a reload or
  * a rebuild of the host its importers are offered for a .json file, the
@@ -21,14 +21,14 @@ import { CORE_TOOLS, PackageChanges, packages, PACKAGES_DIR, skipFirstAccessHint
  */
 
 const FIXTURE = readFileSync(join(PACKAGES_DIR, 'ocel', 'tests', 'fixtures', 'orders.json'));
-const REQUIRED = ['soup_base', 'tool_storage', 'tool_memgraph', 'ekg'];
+const REQUIRED = ['soup_base', 'tool_storage', 'tool_memgraph', 'ekg', 'ekg_views'];
 const changes = new PackageChanges();
 
 test.describe.serial('ocel installed at runtime', () => {
   test.beforeEach(({ page }) => skipFirstAccessHint(page));
 
   test.beforeAll(async ({ request }) => {
-    execSync('npm run build:packages -- soup_base ocel', { cwd: PACKAGES_DIR, stdio: 'inherit' });
+    execSync('npm run build:packages -- soup_base ekg_views ocel', { cwd: PACKAGES_DIR, stdio: 'inherit' });
     for (const name of [...REQUIRED, 'ocel']) {
       execSync(`npm run pack -- ${name}`, { cwd: PACKAGES_DIR, stdio: 'inherit' });
     }

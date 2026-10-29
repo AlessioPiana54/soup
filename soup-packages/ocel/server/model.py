@@ -439,7 +439,7 @@ def events_table(log: OcelLog, limit: int | None = None) -> StoredTable:
 
     attributes = _attribute_names(log.event_types, (name for event in log.events for name, _value in event.attributes))
     rows = []
-    nulls = []
+    nulls: list[tuple[int, int]] = []
     for index, event in enumerate(log.events[:limit]):
         values = dict(event.attributes)
         rows.append((event.id, event.type, event.time, *(values.get(name) for name in attributes)))

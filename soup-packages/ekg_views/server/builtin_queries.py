@@ -9,7 +9,8 @@ Description: The GraphQuery contributions of ekg_views to "ekg.queries":
              - Nodi: event nodes, entity nodes, one entity per type
                (get_nodes_entity_query_distinct), the entities of a type,
                the events of an activity;
-             - Relazioni: :CORR, :DF, the :DF of one entity type;
+             - Relazioni: :CORR, :DF, the :DF of one entity type, the
+               number of :REL and :CORR per qualifier (OCEL);
              - Conteggi: events, entities, :CORR, :DF, all the nodes;
              - Attività: the distinct activities, their frequency;
              - Entità: the entity keys (types), their number per type,
@@ -30,7 +31,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from soup_pkg_ekg.api import Query
+from soup_pkg_ekg.api import Query, ident
 
 from soup.core.contracts import Field, report
 
@@ -46,7 +47,7 @@ from .queries import (
     limit_fields,
 )
 from .values import clean
-from .views import CORR, DF, ENTITY, EVENT, StandardGraphView
+from .views import CORR, DF, ENTITY, EVENT, REL, StandardGraphView
 
 NODES = "Nodi"
 RELATIONSHIPS = "Relazioni"
@@ -196,6 +197,26 @@ class EntityKeys(GraphQuery):
         return [report.table(["tipo di entità"], [[name] for name in self.rows(records)], title=self.label)]
 
 
+class RelationshipQualifiers(GraphQuery):
+    """The :REL and :CORR with a qualifier (from an OCEL log), counted per qualifier."""
+
+    key = "qualifiers"
+    label = "Qualifier delle relazioni"
+    group = RELATIONSHIPS
+
+    def build(self, params: Mapping[str, Any]) -> Query:
+        return Query(f"""
+            MATCH ()-[r:{ident(REL)}|{ident(CORR)}]->()
+            WHERE r.qualifier IS NOT NULL
+            RETURN type(r) AS relationship, r.qualifier AS qualifier, count(r) AS count
+            ORDER BY relationship DESC, count DESC, qualifier""")
+
+    def transform(self, records: Sequence[Mapping[str, Any]], params: Mapping[str, Any]) -> list[Block]:
+        rows = [[str(record.get("relationship")), str(record.get("qualifier")), int(record.get("count") or 0)]
+                for record in records]
+        return [report.table(["relazione", "qualifier", "numero"], rows, title=self.label)]
+
+
 class EntitiesPerType(GraphQuery):
     key = "entities_per_type"
     label = "Entità per tipo"
@@ -311,7 +332,7 @@ COUNT_DF = CountQuery("count_df", "Relazioni DF", COUNTS, relationship=DF)
 
 
 def builtin_queries() -> list[GraphQuery]:
-    """The 20 queries of ekg_views, for "ekg" and "ekg_class" objects (STANDARD_KINDS)."""
+    """The 21 queries of ekg_views, for "ekg" and "ekg_class" objects (STANDARD_KINDS)."""
 
     queries = [
         NodeListQuery("event_nodes", "Nodi evento", NODES, node_label=EVENT),
@@ -322,6 +343,7 @@ def builtin_queries() -> list[GraphQuery]:
         RelationshipListQuery("corr", "Relazioni CORR", RELATIONSHIPS, EVENT, CORR, ENTITY),
         RelationshipListQuery("df", "Relazioni DF", RELATIONSHIPS, EVENT, DF, EVENT),
         DfOfType(),
+        RelationshipQualifiers(),
         COUNT_EVENTS,
         COUNT_ENTITIES,
         COUNT_CORR,

@@ -48,7 +48,7 @@ import io
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
-from typing import Any
+from typing import Any, cast
 
 from soup.core.contracts import ValidationError
 
@@ -76,6 +76,12 @@ def _normalize_text(value: str) -> str:
     """Strip leading/trailing whitespace, then collapse internal runs of whitespace to '_'."""
 
     return _WHITESPACE_RE.sub("_", value.strip())
+
+
+def normalize_text(value: str) -> str:
+    """How a column name or a cell becomes a property name or value of the graph (e.g. an :Entity Value)."""
+
+    return _normalize_text(value)
 
 
 def _fix_millis_comma(value: str) -> str:
@@ -120,7 +126,9 @@ class EventLogData:
     - Separated (OCEL 2.0-style): `events` holds only event attributes;
       `objects` holds one row per object (object_id, object_type, plus
       any attribute columns); `event_objects` links event_id to
-      object_id (with an optional, currently-unused `qualifier` column).
+      object_id (with an optional `qualifier` column, not used here: an
+      importer that wants it in the graph stages it as an extra file for
+      its own build step, like ocel).
       An importer for a format that already separates events from
       objects (e.g. a future OCEL importer) returns this shape instead of
       flattening it itself - EventLog.from_data does the flattening once,
@@ -341,20 +349,20 @@ class EventLog:
         obj_id_idx = objects.column_index(_OBJECT_ID)
         obj_type_idx = objects.column_index(_OBJECT_TYPE)
         for row in objects.rows:
-            object_type_by_id[row[obj_id_idx]] = row[obj_type_idx]
+            object_type_by_id[cast(str, row[obj_id_idx])] = cast(str, row[obj_type_idx])
 
         object_types = sorted(set(object_type_by_id.values()))
 
         # event_objects may carry an optional `qualifier` column (e.g.
-        # "placed by" vs "shipped by"). It is ignored: every link of an
-        # object type becomes the same :CORR edge, since the build steps
-        # (build.py) have no typed object-event relationships.
+        # "placed by" vs "shipped by"). It is ignored here: every link of
+        # an object type becomes the same :CORR edge; ocel puts the
+        # qualifier on it with its own build step and extra file.
         eo_event_idx = event_objects.column_index(_EVENT_ID)
         eo_object_idx = event_objects.column_index(_OBJECT_ID)
 
         objects_per_event: dict[str, dict[str, list[str]]] = {}
         for row in event_objects.rows:
-            event_id, object_id = row[eo_event_idx], row[eo_object_idx]
+            event_id, object_id = cast(str, row[eo_event_idx]), cast(str, row[eo_object_idx])
             obj_type = object_type_by_id.get(object_id)
             if obj_type is None:
                 continue  # reference to an object missing from `objects`; silently skipped
@@ -365,7 +373,7 @@ class EventLog:
 
         new_rows = []
         for row in data.events.rows:
-            event_id = row[event_id_idx]
+            event_id = cast(str, row[event_id_idx])
             per_type = objects_per_event.get(event_id, {})
             extra = tuple((",".join(per_type[object_type]) or None) if object_type in per_type else None
                            for object_type in object_types)
@@ -390,7 +398,7 @@ class EventLog:
 
         normalized_rows = []
         for row in table.rows:
-            new_row = []
+            new_row: list[str | None] = []
             for index, value in enumerate(row):
                 if value is None:
                     new_row.append(None)
@@ -427,7 +435,7 @@ class EventLog:
             obj_type_idx = self.objects.column_index(_OBJECT_TYPE)
             attr_indexes = [self.objects.column_index(c) for c in attribute_columns]
             for row in self.objects.rows:
-                value, type_ = row[obj_id_idx], row[obj_type_idx]
+                value, type_ = cast(str, row[obj_id_idx]), cast(str, row[obj_type_idx])
                 attributes_by_key[(type_, value)] = {
                     column: row[idx] for column, idx in zip(attribute_columns, attr_indexes, strict=False)
                 }

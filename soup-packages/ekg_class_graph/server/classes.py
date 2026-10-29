@@ -35,7 +35,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 from soup_pkg_ekg.api import Query, ident
 from soup_pkg_ekg_views.api import count_of
@@ -153,7 +153,7 @@ def build_classes(run: Run, entity_types: Sequence[str]) -> dict[str, str]:
     times["init_class_node_time"] = _now()
     for row in rows:
         try:
-            query = as_text_query(row.get("prop"))
+            query = as_text_query(cast(str, row.get("prop")))
         except ValueError:
             # Not a property name ident() can quote: never one of the
             # columns of the event log, which are normalized.

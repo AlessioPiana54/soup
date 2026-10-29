@@ -234,9 +234,11 @@ def test_on_an_ekg_only_the_standard_queries_and_parts(setup):
 
     groups = {group["group"]: group["queries"] for group in engine.visualizer_router.data("ekg_views.queries", root.id, {})["groups"]}
     assert "Grafo aggregato" not in groups and "Conteggi" in groups
-    assert _part_labels(engine, root.id) == ["Event nodes", "Entity nodes", "CORR relationships", "DF relationships"]
+    assert _part_labels(engine, root.id) == [
+        "Event nodes", "Entity nodes", "CORR relationships", "DF relationships", "REL relationships",
+    ]
     views = engine.visualizer_router.data("ekg_views.graph", root.id, {})["views"]
-    assert [view["key"] for view in views] == ["standard"]
+    assert [view["key"] for view in views] == ["standard", "object"]
     with pytest.raises(NotFoundError):
         engine.visualizer_router.action("ekg_views.queries", root.id, "query", {"key": "class.nodes"})
 
@@ -256,7 +258,7 @@ def test_on_an_ekg_class_the_standard_queries_and_parts_and_the_classes(setup):
     assert any("MATCH (a:`Class`)-[r:`DF_C`]->(b:`Class`)" in text for text in db.texts())
 
     assert _part_labels(engine, obj.id) == ["Event nodes", "Entity nodes", "CORR relationships", "DF relationships",
-                                            "Class nodes", "OBS relationships", "DF_C relationships"]
+                                            "REL relationships", "Class nodes", "OBS relationships", "DF_C relationships"]
 
 
 def test_the_class_json_parts_are_exported_under_their_own_keys(setup):
@@ -292,7 +294,7 @@ def test_the_aggregate_graph_draws_the_class_view_first(setup):
 
     data = engine.visualizer_router.data("ekg_class_graph.graph", obj.id, {})
 
-    assert [view["key"] for view in data["views"]] == ["class", "standard"]
+    assert [view["key"] for view in data["views"]] == ["class", "standard", "object"]
     assert (data["view"], data["relations"]) == ("class", ["DF_C"])
     nodes = {node["id"]: node for node in data["graph"]["nodes"]}
     assert (nodes["1"]["label"], nodes["1"]["group"]) == ("i1 / o1", "Class")

@@ -4,6 +4,7 @@ import { Router } from '@angular/router';
 import { Block, defineSoupElement, ReportData, VisualizerContext } from '@soup/sdk';
 import { of } from 'rxjs';
 
+import { createSpyObj, SpyObj } from '../../../testing/spy-obj';
 import { FrontendPackageStatus, PackageLoaderService } from '../../core/v3/package-loader.service';
 import { VisualizerInfo } from '../../core/v3/v3.models';
 import { V3ApiService } from '../../core/v3/v3-api.service';
@@ -32,26 +33,26 @@ async function until(condition: () => boolean, fixture: ComponentFixture<unknown
     await new Promise((resolve) => setTimeout(resolve, 10));
     fixture.detectChanges();
   }
-  expect(condition()).withContext('condition not reached').toBeTrue();
+  expect(condition(), 'condition not reached').toBe(true);
 }
 
 describe('BlocksPreviewComponent', () => {
-  let api: jasmine.SpyObj<V3ApiService>;
+  let api: SpyObj<V3ApiService>;
   let statuses: ReturnType<typeof signal<ReadonlyMap<string, FrontendPackageStatus>>>;
   let fixture: ComponentFixture<BlocksPreviewComponent>;
 
   beforeEach(async () => {
-    api = jasmine.createSpyObj<V3ApiService>('V3ApiService', ['visualizersForKind', 'visualizerData', 'setThumbnail']);
+    api = createSpyObj<V3ApiService>(['visualizersForKind', 'visualizerData', 'setThumbnail']);
     statuses = signal<ReadonlyMap<string, FrontendPackageStatus>>(new Map());
-    const loader = { statuses, ensureLoaded: jasmine.createSpy('ensureLoaded').and.resolveTo() };
+    const loader = { statuses, ensureLoaded: vi.fn().mockResolvedValue(undefined) };
 
     await TestBed.configureTestingModule({
       imports: [BlocksPreviewComponent],
       providers: [
         { provide: V3ApiService, useValue: api },
         { provide: PackageLoaderService, useValue: loader },
-        { provide: Router, useValue: jasmine.createSpyObj<Router>('Router', ['navigate']) },
-        { provide: NotificationService, useValue: jasmine.createSpyObj<NotificationService>('NotificationService', ['show']) }
+        { provide: Router, useValue: createSpyObj<Router>(['navigate']) },
+        { provide: NotificationService, useValue: createSpyObj<NotificationService>(['show']) }
       ]
     }).compileComponents();
   });
@@ -66,7 +67,7 @@ describe('BlocksPreviewComponent', () => {
   const host = () => fixture.nativeElement as HTMLElement;
 
   it('draws the blocks with the visualizer of "report", without asking an object', async () => {
-    api.visualizersForKind.and.returnValue(of([REPORT_VIEW]));
+    api.visualizersForKind.mockReturnValue(of([REPORT_VIEW]));
     render();
 
     await until(() => host().querySelector('soup-fake-report-view') !== null, fixture);
@@ -75,14 +76,14 @@ describe('BlocksPreviewComponent', () => {
     expect(api.visualizersForKind).toHaveBeenCalledWith('report');
     expect(element.data).toEqual({ blocks: BLOCKS, name: 'notes' });
     expect(api.visualizerData).not.toHaveBeenCalled();
-    await expectAsync(element.context.action('anything')).toBeRejectedWithError(/does not show an object/);
+    await expect(element.context.action('anything')).rejects.toThrow(/does not show an object/);
     // A thumbnail of a preview belongs to no object.
     element.context.setThumbnail('<svg xmlns="http://www.w3.org/2000/svg"/>');
     expect(api.setThumbnail).not.toHaveBeenCalled();
   });
 
   it('without a visualizer of "report" says so and shows the blocks as JSON', async () => {
-    api.visualizersForKind.and.returnValue(of([]));
+    api.visualizersForKind.mockReturnValue(of([]));
     render();
 
     await until(() => (host().textContent ?? '').includes('nessun visualizzatore installato per report'), fixture);
@@ -90,12 +91,12 @@ describe('BlocksPreviewComponent', () => {
   });
 
   it('looks the visualizers up again when the frontend packages change', async () => {
-    api.visualizersForKind.and.returnValue(of([REPORT_VIEW]));
+    api.visualizersForKind.mockReturnValue(of([REPORT_VIEW]));
     render();
     await until(() => host().querySelector('soup-fake-report-view') !== null, fixture);
 
     // soup_base disabled from /packages
-    api.visualizersForKind.and.returnValue(of([]));
+    api.visualizersForKind.mockReturnValue(of([]));
     statuses.set(new Map());
     fixture.detectChanges();
 
