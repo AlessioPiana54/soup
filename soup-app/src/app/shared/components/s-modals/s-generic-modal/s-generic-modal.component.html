@@ -5,7 +5,8 @@
   <div
     class="card"
     [ngClass]="{ show: this.isVisible }"
-    [@slideInOut]>
+    animate.enter="card-enter"
+    animate.leave="card-leave">
     <!--Header and description-->
     <div class="header">
       <h4 class="card-title">{{ this.title }}</h4>

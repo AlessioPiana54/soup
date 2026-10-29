@@ -1,26 +1,21 @@
 import { provideHttpClient } from '@angular/common/http';
-import { APP_INITIALIZER, ApplicationConfig, provideZoneChangeDetection } from '@angular/core';
-import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
-import { provideRouter } from '@angular/router';
+import { ApplicationConfig, inject, provideAppInitializer, provideZoneChangeDetection } from '@angular/core';
+import { provideRouter, withViewTransitions } from '@angular/router';
 
 import { routes } from './app.routes';
 import { PackageLoaderService } from './core/v3/package-loader.service';
+import { PAGE_TRANSITIONS } from './page-transitions';
 
 // Application provider configuration
 export const appConfig: ApplicationConfig = {
   providers: [
     provideZoneChangeDetection({ eventCoalescing: true }),
-    provideRouter(routes),
-    provideAnimationsAsync(),
+    // The pages slide at every change (page-transitions.ts, styles.scss)
+    provideRouter(routes, withViewTransitions(PAGE_TRANSITIONS)),
     provideHttpClient(),
     // Load the frontend bundles of the active packages, without delaying the start
-    {
-      provide: APP_INITIALIZER,
-      multi: true,
-      deps: [PackageLoaderService],
-      useFactory: (loader: PackageLoaderService) => () => {
-        void loader.reload();
-      }
-    }
+    provideAppInitializer(() => {
+      void inject(PackageLoaderService).reload();
+    })
   ]
 };

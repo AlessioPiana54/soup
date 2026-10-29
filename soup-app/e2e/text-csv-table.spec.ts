@@ -39,7 +39,7 @@ async function installFromPage(page: Page, name: string): Promise<void> {
 /** Drop a file on /import and pick `importer` (chosen directly when it is the only one). */
 async function dropFile(page: Page, file: { name: string; mimeType: string; content: string }, importer: string): Promise<void> {
   await page.goto('/import');
-  await page.locator('ngx-dropzone input[type="file"]').setInputFiles({
+  await page.locator('.ngx-dropzone input[type="file"]').setInputFiles({
     name: file.name,
     mimeType: file.mimeType,
     buffer: Buffer.from(file.content)

@@ -17,12 +17,21 @@
         </button>
       </div>
     } @else {
-      <ngx-dropzone
-        class="soup-dropzone"
-        [multiple]="false"
-        (change)="this.onSelectFile($event)">
-        <ngx-dropzone-label>Trascina qui un file o fai clic per sceglierlo</ngx-dropzone-label>
-      </ngx-dropzone>
+      <div
+        class="ngx-dropzone soup-dropzone"
+        [class.ngx-dz-hovered]="this.dragging()"
+        (click)="fileInput.click()"
+        (dragover)="this.onDragOver($event)"
+        (dragleave)="this.dragging.set(false)"
+        (drop)="this.onDrop($event)">
+        <input
+          #fileInput
+          type="file"
+          accept="*"
+          (click)="$event.stopPropagation()"
+          (change)="this.onInputChange(fileInput)" />
+        <div class="ngx-dropzone-label">Trascina qui un file o fai clic per sceglierlo</div>
+      </div>
     }
   </section>
 

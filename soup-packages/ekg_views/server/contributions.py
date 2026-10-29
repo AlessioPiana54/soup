@@ -282,6 +282,9 @@ class StatsVisualizer(_EkgContribution, Visualizer):
     element = "soup-pkg-ekg-stats"
 
     def data(self, obj: ObjectRef, params: Mapping[str, Any], tools: ToolAccess) -> Any:
+        problem = ekg.buildable_problem(obj)
+        if problem:
+            return self._metadata_only(obj, problem)
         self._loaded(obj, tools)
 
         def rows(query: GraphQuery) -> list[dict[str, Any]]:
@@ -313,6 +316,26 @@ class StatsVisualizer(_EkgContribution, Visualizer):
             "columns": dataset_columns(source.meta),
             "charts": {"data": composition, "process": phase_times(obj.meta.get("process_info"))},
             "notice": notice_of(obj),
+        }
+
+    @staticmethod
+    def _metadata_only(obj: ObjectRef, problem: str) -> dict[str, Any]:
+        """A graph that cannot be built: the metadata of the dataset and why, with no query."""
+
+        source = obj if obj.meta.get("columns") else ekg.root_of(obj)
+        meta_counts = source.meta.get("counts")
+        stored: Mapping[str, Any] = meta_counts if isinstance(meta_counts, Mapping) else {}
+        counts = {key: count_of([stored], key) for key in ("event_nodes", "entity_nodes", "corr_rel", "df_rel")}
+        composition = {"chart": "pie", "labels": ["Event", "Entity", "CORR", "DF"],
+                       "datasets": [{"label": "numero", "data": list(counts.values())}]}
+        return {
+            "counts": counts,
+            "timestamps": {"min": None, "max": None},
+            "activities": [],
+            "entities": [],
+            "columns": dataset_columns(source.meta),
+            "charts": {"data": composition, "process": phase_times(source.meta.get("process_info"))},
+            "notice": problem,
         }
 
 

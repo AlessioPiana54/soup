@@ -27,6 +27,11 @@ Description: The graph state of "ekg" objects. Memgraph holds one graph
                is rebuilt (compensating action) and the error re-raised.
              - dispose(obj, tools): if obj is active, "ekg.before_reset"
                and the graph is emptied; a root's files are removed.
+             - buildable_problem(obj): why the graph of obj cannot be
+               built (a legacy config with one column for two standard
+               roles, meta.warning of the adoption), or None; read from
+               the meta, without the volume. ensure_loaded refuses such a
+               dataset with a ValidationError (400) before any query.
              `tools` are the caller's: it must declare "memgraph". The
              parents are read from the catalog and the datasets from the
              storage with this package's own tools.
@@ -57,6 +62,7 @@ from .builder import (
 )
 from .dataset_repository import DatasetRepository
 from .ekg_service import EkgService
+from .event_log import config_mapping_problem, mapping_problem
 from .process_timer import ProcessTimer
 from .runtime import current
 
@@ -127,6 +133,28 @@ def root_of(obj: ObjectRef) -> ObjectRef:
     return chain_of(obj, current().tools.typed(CATALOG, Catalog))[0]
 
 
+def unbuildable_message(dataset: str, problem: str) -> str:
+    return f"The graph of dataset '{dataset}' cannot be built: {problem}"
+
+
+def buildable_problem(obj: ObjectRef) -> str | None:
+    """
+    Why the graph of obj cannot be built, or None: meta.warning of a root
+    adopted with meta.buildable false, or one column for two standard
+    roles in meta.mapping (a root adopted before that check).
+    """
+
+    root = root_of(obj)
+    warning = root.meta.get("warning")
+    if root.meta.get("buildable") is False and isinstance(warning, str) and warning:
+        return warning
+    mapping = root.meta.get("mapping")
+    if not isinstance(mapping, Mapping):
+        return None
+    problem = mapping_problem(mapping.get("event_id"), mapping.get("timestamp"), mapping.get("activity"))
+    return unbuildable_message(str(root.meta.get("dataset")), problem) if problem else None
+
+
 def ensure_loaded(obj: ObjectRef, tools: Any, force: bool = False) -> bool:
     """
     Make `obj` the graph in Memgraph. Returns True if it was (re)built,
@@ -145,6 +173,9 @@ def ensure_loaded(obj: ObjectRef, tools: Any, force: bool = False) -> bool:
     repository = DatasetRepository(runtime.tools.get(STORAGE))
     providers =[(runtime.state_provider(item.meta["state"].get("provider", "")), item) for item in chain[1:]]
     config = repository.load_config(dataset)
+    problem = config_mapping_problem(config)
+    if problem:
+        raise ValidationError(unbuildable_message(dataset, problem))
     ctx = build_context(repository, dataset, config)
     counts: dict[str, int] = {}
     times: dict[str, str] = {}

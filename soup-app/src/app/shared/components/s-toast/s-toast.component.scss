@@ -42,6 +42,33 @@
   opacity: 1;
 }
 
+// Entering and leaving the page (animate.enter / animate.leave)
+.toast-enter {
+  animation: toast-enter 0.5s ease-out;
+}
+
+.toast-leave {
+  animation: toast-leave 0.5s ease-in forwards;
+}
+
+@keyframes toast-enter {
+  from {
+    opacity: 0;
+    bottom: -70px;
+  }
+  to {
+    opacity: 1;
+    bottom: 20px;
+  }
+}
+
+@keyframes toast-leave {
+  to {
+    opacity: 0;
+    bottom: -70px;
+  }
+}
+
 .toast.success {
   background-color: #2fca53;
 }

@@ -5,8 +5,12 @@ Description: The datasets already on the volume (/soup/<name>/ with a
              <name>_config.json, written by the old pages) become "ekg"
              objects of the catalog when the ekg package starts, created
              by the csv_ekg importer, with the meta read from the config;
-             a second start adds nothing; folders without a config, with
-             a broken config or already in the catalog are skipped. The
+             a second start adds nothing; a config encoded twice by the
+             old interface is adopted; one with a column for every
+             standard role is adopted with meta.warning and
+             meta.buildable false; folders without a config, with a
+             broken config (one log line when it is not an object) or
+             already in the catalog are skipped. The
              adopted object loads and is deleted like an imported one.
 Project : soup-packages/ekg
 ------------------------------------------------------------------------
@@ -77,6 +81,42 @@ def test_the_datasets_on_the_volume_become_ekg_objects(tmp_path, monkeypatch):
     assert obj.meta["process_info"]["init_df_time"] is None
     # The importer that created it is the one that disposes of it.
     assert engine.import_router.get("csv_ekg.csv") is not None
+
+
+def test_a_config_encoded_twice_is_adopted_and_one_that_is_not_an_object_is_skipped(tmp_path, monkeypatch, caplog):
+    twice = dict(LEGACY_CONFIG, dataset_name="try")
+    _write(tmp_path, "try/try_config.json", json.dumps(json.dumps(twice, indent=4)).encode("utf-8"))
+    _write(tmp_path, "number/number_config.json", b"42")
+
+    with caplog.at_level("WARNING", logger="soup.ekg"):
+        engine = ekg_engine(tmp_path, monkeypatch)
+
+    [obj] = _ekg_objects(engine)
+    assert (obj.name, obj.description, obj.meta["columns"]) == ("try", "From the old pages", LEGACY_CONFIG["all_columns"])
+    [record] = [r for r in caplog.records if "number" in r.getMessage()]
+    assert record.getMessage() == "Dataset 'number' could not be added to the catalog: The config of dataset 'number' is not a JSON object"
+    assert record.exc_info is None
+
+
+def test_a_config_with_one_column_for_every_role_is_adopted_with_a_warning(tmp_path, monkeypatch, caplog):
+    _legacy_volume(tmp_path)
+    duplicate = dict(LEGACY_CONFIG, dataset_name="try", standard_columns=["Timestamp", "Timestamp", "Timestamp"])
+    _write(tmp_path, "try/try.csv", b"EventID,Activity,Timestamp\ne1,Create,2021-01-01T10:00:00.000\n")
+    _write(tmp_path, "try/try_config.json", json.dumps(json.dumps(duplicate)).encode("utf-8"))
+
+    with caplog.at_level("WARNING", logger="soup.ekg"):
+        engine = ekg_engine(tmp_path, monkeypatch)
+
+    by_name = {obj.name: obj for obj in _ekg_objects(engine)}
+    problem = "event_id, timestamp and activity must be three different columns: 'Timestamp' is used for event_id, timestamp, activity"
+    assert by_name["try"].meta["buildable"] is False
+    assert by_name["try"].meta["warning"] == f"The graph of dataset 'try' cannot be built: {problem}"
+    # Its files stay on the volume; a valid dataset gets neither key.
+    assert "try/try.csv" in volume_files(tmp_path)
+    assert "warning" not in by_name["legacy"].meta and "buildable" not in by_name["legacy"].meta
+    [record] = [r for r in caplog.records if "'try'" in r.getMessage()]
+    assert record.getMessage() == f"Dataset 'try' adopted but its graph cannot be built: {problem}"
+    assert record.exc_info is None
 
 
 def test_a_second_start_adds_nothing(tmp_path, monkeypatch):

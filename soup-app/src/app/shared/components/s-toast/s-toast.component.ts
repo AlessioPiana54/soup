@@ -1,4 +1,3 @@
-import { animate, style, transition, trigger } from '@angular/animations';
 import { CommonModule } from '@angular/common';
 import { Component, OnInit } from '@angular/core';
 
@@ -13,14 +12,7 @@ import { ToastLevel } from './toast_type.enum';
  */
 @Component({
   selector: 'app-s-toast',
-  standalone: true,
   imports: [CommonModule],
-  animations: [
-    trigger('toastAnimation', [
-      transition(':enter', [style({ opacity: 0, bottom: '-70px' }), animate('0.5s ease-out', style({ opacity: 1, bottom: '20px' }))]),
-      transition(':leave', [animate('0.5s ease-in', style({ opacity: 0, bottom: '-70px' }))])
-    ])
-  ],
   templateUrl: './s-toast.component.html',
   styleUrl: './s-toast.component.scss'
 })

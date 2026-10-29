@@ -23,7 +23,7 @@ let reportUrl = '';
 
 async function dropTextFile(page: Page): Promise<void> {
   await page.goto('/import');
-  await page.locator('ngx-dropzone input[type="file"]').setInputFiles({
+  await page.locator('.ngx-dropzone input[type="file"]').setInputFiles({
     name: 'notes.txt',
     mimeType: 'text/plain',
     buffer: Buffer.from('first line\nsecond line here\nthird\n')

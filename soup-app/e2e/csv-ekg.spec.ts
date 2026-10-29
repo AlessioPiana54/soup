@@ -29,7 +29,7 @@ const changes = new PackageChanges();
 /** Drop the CSV on /import and pick csv_ekg's importer among the ones for .csv. */
 async function dropCsv(page: Page): Promise<void> {
   await page.goto('/import');
-  await page.locator('ngx-dropzone input[type="file"]').setInputFiles({
+  await page.locator('.ngx-dropzone input[type="file"]').setInputFiles({
     name: 'orders.csv',
     mimeType: 'text/csv',
     buffer: Buffer.from(CSV)

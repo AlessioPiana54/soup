@@ -19,7 +19,6 @@ import logging
 from flask import Flask, Request, current_app, jsonify
 from flask.typing import ResponseReturnValue
 from flask_cors import CORS
-from flask_socketio import SocketIO
 from werkzeug.exceptions import HTTPException
 
 from soup.api.import_routes import build_import_blueprint
@@ -38,17 +37,23 @@ V3_MAX_CONTENT_LENGTH = "SOUP_V3_MAX_CONTENT_LENGTH"
 
 class SoupRequest(Request):
     """
-    Flask 2.3 has a single, app-wide MAX_CONTENT_LENGTH: this request
-    applies the upload limit to /api/v3 (the package bundles and the
-    other routes are not uploads). Werkzeug answers 413 when the body is
-    larger.
+    MAX_CONTENT_LENGTH is app-wide: this request applies the upload
+    limit to /api/v3 (the package bundles and the other routes are not
+    uploads). Werkzeug answers 413 when the body is larger. As in Flask
+    3.1, a limit set on the request itself wins (nothing sets one).
     """
 
     @property
-    def max_content_length(self) -> int | None:  # type: ignore[override]
+    def max_content_length(self) -> int | None:
+        if self._max_content_length is not None:
+            return self._max_content_length
         if self.path.startswith(V3_PREFIX):
             return current_app.config.get(V3_MAX_CONTENT_LENGTH)
         return super().max_content_length
+
+    @max_content_length.setter
+    def max_content_length(self, value: int | None) -> None:
+        self._max_content_length = value
 
 
 def build_flask_app(engine: Engine) -> Flask:
@@ -64,8 +69,6 @@ def build_flask_app(engine: Engine) -> Flask:
     app.register_blueprint(build_system_blueprint(engine))
     _register_error_handlers(app)
 
-    socketio = SocketIO(app, cors_allowed_origins="*")
-    app.config["socketio"] = socketio
     # The host reads the name of an exported file from Content-Disposition:
     # in development it runs on another origin, where the browser hides the
     # header unless it is exposed.

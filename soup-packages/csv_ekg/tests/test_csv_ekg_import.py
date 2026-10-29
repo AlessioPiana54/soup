@@ -7,7 +7,9 @@ Description: Tests for the csv_ekg importer on the ImportRouter (moved
              the choice among the importers of a .csv, a full import
              with FakeDatabase producing an "ekg" object (files, LOAD
              CSV paths, legacy config shape, normalized names), the
-             options checked by the importer, the folder of the dataset,
+             options checked by the importer (one column for two
+             standard roles: 400, also through the API), the folder of
+             the dataset,
              the compensating delete when the EKG build fails, and the
              "Converti in EKG" operation creating an "ekg" child of a
              csv_table table, whose graph (meta.graph_key) is already the
@@ -18,11 +20,13 @@ Project : soup-packages/csv_ekg
 
 from __future__ import annotations
 
+import io
 import json
 
 import pytest
 
 from soup.core.contracts import ConflictError, NotFoundError, Upload, ValidationError
+from tests.api_client import client_for
 from tests.fakes import FakeDatabase, ekg_engine, volume_files
 from tests.packages import bundled_api
 
@@ -249,6 +253,28 @@ def test_invalid_options_are_refused_before_anything_is_stored(tmp_path, monkeyp
     with pytest.raises(ValidationError):
         _import(engine, upload, options={**_fixture_options(), **change})
 
+    assert volume_files(tmp_path) == []
+    assert db.received_queries == []
+
+
+def test_one_column_for_two_standard_roles_is_refused_with_400(tmp_path, monkeypatch, sample_event_log_csv):
+    db = FakeDatabase()
+    engine = ekg_engine(tmp_path, monkeypatch, db=db)
+    options = {**_fixture_options(), "timestamp": " EventID "}
+    message = "event_id, timestamp and activity must be three different columns: ' EventID ' is used for event_id, timestamp"
+
+    with pytest.raises(ValidationError) as error:
+        _import(engine, Upload.from_bytes("log.csv", sample_event_log_csv.read_bytes()), options=options)
+    assert str(error.value) == message
+
+    response = client_for(engine).post(
+        "/api/v3/imports",
+        data={"file": (io.BytesIO(sample_event_log_csv.read_bytes()), "log.csv"), "importer_id": IMPORTER,
+              "name": "orders", "options": json.dumps(options)},
+        content_type="multipart/form-data",
+    )
+    assert response.status_code == 400
+    assert response.get_json()["message"] == message
     assert volume_files(tmp_path) == []
     assert db.received_queries == []
 

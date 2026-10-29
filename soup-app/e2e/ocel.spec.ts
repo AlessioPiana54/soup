@@ -67,7 +67,7 @@ test.describe.serial('ocel installed at runtime', () => {
       .first()
       .click();
     await expect(page).toHaveURL(/\/import$/);
-    await page.locator('ngx-dropzone input[type="file"]').setInputFiles({
+    await page.locator('.ngx-dropzone input[type="file"]').setInputFiles({
       name: 'orders.json',
       mimeType: 'application/json',
       buffer: FIXTURE
@@ -116,5 +116,26 @@ test.describe.serial('ocel installed at runtime', () => {
     expect(exported.events[3].attributes).toEqual([{ name: 'resource', value: null }]);
     expect(exported.objects).toHaveLength(6);
     expect(errors).toEqual([]);
+  });
+
+  test('the Esporta menu of a log imported from .jsonocel shows the extension of its file', async ({ page }) => {
+    await page.goto('/import');
+    await page.locator('.ngx-dropzone input[type="file"]').setInputFiles({
+      name: 'orders.jsonocel',
+      mimeType: 'application/json',
+      buffer: FIXTURE
+    });
+    await page.locator('[data-importer="ocel.tables"]').click();
+    await expect(page.locator('soup-blocks-preview soup-report-view')).toBeVisible();
+    await page.locator('#soup-import-name').fill('orders-jsonocel-e2e');
+    await page.locator('.soup-import-button').click();
+    await expect(page).toHaveURL(/\/o\/[0-9a-f-]+$/);
+
+    await page.getByRole('button', { name: 'Esporta' }).click();
+    const item = page.getByRole('button', { name: /OCEL 2.0 JSON/ });
+    await expect(item).toContainText('.jsonocel');
+    const download = page.waitForEvent('download');
+    await item.click();
+    expect((await download).suggestedFilename()).toBe('orders-jsonocel-e2e.jsonocel');
   });
 });

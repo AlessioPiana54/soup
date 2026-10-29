@@ -1,9 +1,8 @@
-import { SpBtnTxtComponent } from '@aledevsharp/sp-lib';
-import { animate, style, transition, trigger } from '@angular/animations';
 import { CommonModule } from '@angular/common';
 import { Component, OnInit, Output } from '@angular/core';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
 
+import { SpBtnTxtComponent } from '../../sp-btn-txt/sp-btn-txt.component';
 import { ModalService } from '../modal.service';
 
 /**
@@ -14,19 +13,12 @@ import { ModalService } from '../modal.service';
  */
 @Component({
   selector: 'app-s-generic-modal',
-  standalone: true,
   imports: [
     CommonModule,
     FormsModule,
     ReactiveFormsModule,
     // Components import
     SpBtnTxtComponent
-  ],
-  animations: [
-    trigger('slideInOut', [
-      transition(':enter', [style({ top: '-300px', opacity: 0 }), animate('0.3s ease-out', style({ top: '55px', opacity: 1 }))]),
-      transition(':leave', [animate('0.3s ease-in', style({ top: '-300px', opacity: 0 }))])
-    ])
   ],
   templateUrl: './s-generic-modal.component.html',
   styleUrl: './s-generic-modal.component.scss'

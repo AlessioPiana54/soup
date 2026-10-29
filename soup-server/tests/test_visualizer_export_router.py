@@ -10,7 +10,9 @@ Description: Tests for VisualizerRouter and ExportRouter - contributions
              Exporter.file_type (contracts "4.1") gives the extension and
              the MIME type of each file, the exporter's own by default,
              and an invalid one is a 500 naming the package, never a
-             file name.
+             file name; the list of exporters shows the file type of each
+             object (default params), the fixed one with a warning when
+             file_type() fails.
 Project : soup-server
 ------------------------------------------------------------------------
 """
@@ -22,7 +24,7 @@ import logging
 import pytest
 
 from soup.core.contracts import DomainError, NotFoundError, ValidationError
-from tests.api_client import client_for
+from tests.api_client import client_for, data_of
 from tests.mediator_doubles import (
     FakeExporter,
     FakeImporter,
@@ -255,3 +257,49 @@ def test_over_http_an_invalid_file_type_answers_500_with_the_message_and_no_file
     message = response.get_json()["message"]
     assert "files.bad" in message and "package 'files'" in message
     assert "Content-Disposition" not in response.headers
+
+
+# ---------------------------------------------------------------------- #
+# The list of exporters shows the file type of the object
+# ---------------------------------------------------------------------- #
+class Raising(FakeExporter):
+    def __init__(self, exporter_id: str):
+        super().__init__(exporter_id, ["text"], ".txt", "text/plain")
+
+    def file_type(self, obj, params):
+        raise RuntimeError("file_type exploded")
+
+
+def test_the_list_shows_the_file_type_of_each_object_with_the_default_params():
+    exporter = PerObject("original")
+    engine, objects = _file_type_setup(exporter)
+    client = client_for(engine)
+
+    listed = {
+        key: data_of(client.get(f"/api/v3/objects/{obj.id}/exporters"))[0] for key, obj in objects.items()
+    }
+
+    assert {key: (item["extension"], item["mime"]) for key, item in listed.items()} == {
+        "md": (".md", "text/markdown"), "log": (".log", "text/plain"), "plain": (".txt", "text/plain"),
+    }
+    # file_type() received the defaults of the fields (FakeExporter: separator ",").
+    assert exporter.calls[0][1] == {"separator": ","}
+
+
+@pytest.mark.parametrize("broken", [Raising("broken"), PerObject("broken", given=("../x", "text/plain"))])
+def test_a_failing_file_type_lists_the_fixed_extension_with_a_warning_and_no_500(broken, caplog):
+    engine, objects = _file_type_setup(broken)
+    client = client_for(engine)
+
+    with caplog.at_level(logging.WARNING, logger="soup.export"):
+        response = client.get(f"/api/v3/objects/{objects['md'].id}/exporters")
+
+    assert response.status_code == 200
+    [item] = data_of(response)
+    assert (item["id"], item["extension"], item["mime"]) == ("files.broken", ".txt", "text/plain")
+    assert any(
+        record.levelno == logging.WARNING and "files.broken" in record.getMessage() and "'files'" in record.getMessage()
+        for record in caplog.records
+    )
+    # The export itself still refuses it.
+    assert client.get(f"/api/v3/objects/{objects['md'].id}/export/files.broken").status_code == 500

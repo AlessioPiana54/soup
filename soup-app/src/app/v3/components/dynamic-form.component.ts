@@ -42,7 +42,6 @@ interface ItemEditor {
  */
 @Component({
   selector: 'soup-dynamic-form',
-  standalone: true,
   imports: [KeyValuePipe, NgTemplateOutlet],
   templateUrl: './dynamic-form.component.html',
   styleUrl: './dynamic-form.component.scss'

@@ -1,5 +1,44 @@
 @use '../v3-page';
 
+// The drop zone, with the look of ngx-dropzone 3.1.0 (deprecated, replaced by
+// a native zone): dashed border, solid while a file is dragged over it.
+.ngx-dropzone {
+  display: flex;
+  align-items: center;
+  height: 180px;
+  background: #fff;
+  cursor: pointer;
+  color: #717386;
+  border: 2px dashed #717386;
+  border-radius: 5px;
+  font-size: 16px;
+  overflow-x: auto;
+}
+
+.ngx-dropzone.ngx-dz-hovered {
+  border-style: solid;
+}
+
+.ngx-dropzone input {
+  width: 0.1px;
+  height: 0.1px;
+  opacity: 0;
+  overflow: hidden;
+  position: absolute;
+  z-index: -1;
+}
+
+.ngx-dropzone-label {
+  text-align: center;
+  z-index: 10;
+  margin: 10px auto;
+}
+
+.ngx-dropzone input:focus + .ngx-dropzone-label {
+  outline: 1px dotted #000;
+  outline: -webkit-focus-ring-color auto 5px;
+}
+
 .soup-dropzone {
   height: 140px;
 }

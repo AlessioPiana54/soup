@@ -1,17 +1,18 @@
 # Libraries imported by the host (soup/api: Flask and its extensions,
-# Werkzeug; soup/core/packages: packaging) and by the bundled packages,
+# Werkzeug; soup/core/packages: packaging; wsgi.py: waitress, the
+# production server of the Docker image) and by the bundled packages,
 # as their soup-package.json python_dependencies declare (pandas: ekg,
 # csv_ekg; neo4j: tool_memgraph; docker: tool_storage). Their own
-# dependencies (Jinja2, click, python-socketio, ...) come with them,
+# dependencies (Jinja2, click, blinker, ...) come with them,
 # except numpy (below). A package installed at runtime cannot add to this
 # list: the loader refuses it if one of its python_dependencies is
 # missing. numpy, pandas, neo4j and docker stay pinned (== or ~=):
 # tests/test_requirements.py checks it, and that they satisfy the
 # packages' python_dependencies.
-Flask==2.3.3
-Flask-Cors==4.0.0
-Flask-SocketIO
-Werkzeug==2.3.7
+Flask==3.1.3
+Flask-Cors==6.0.5
+Werkzeug==3.1.9
+waitress==3.0.2
 packaging==23.1
 pandas==2.1.1
 # pandas 2.1.1 is compiled against numpy 1.x and does not cap numpy: left

@@ -16,7 +16,8 @@ Description: The contributions of csv_table, for objects of kind "table"
              - ColumnDistribution ("distribution"): table -> report with
                a bar chart and a table of the values of one column.
              - CsvExporter ("csv"): the table with the chosen separator,
-               with or without the header.
+               with or without the header; with the tab separator the
+               file is a .tsv (text/tab-separated-values, file_type).
              Every contribution reads the tables through the same
              ParsedCache (soup_base's, soup_pkg_soup_base.api), created by the Plugin: the actions do
              not read and parse the file again at every page; import_()
@@ -357,6 +358,10 @@ class ColumnDistribution(_Cached, Operation):
         return [report.report(_object_name(f"{source.name} - distribuzione di {name}"), blocks)]
 
 
+# The file type of an export with the "tab" separator (Exporter.file_type, contracts "4.1").
+TSV_FILE_TYPE = (".tsv", "text/tab-separated-values")
+
+
 class CsvExporter(_Cached, Exporter):
     id = "csv"
     label = "CSV"
@@ -372,6 +377,12 @@ class CsvExporter(_Cached, Exporter):
             Field("header", "Intestazione", type="bool", default=True,
                 help="Scrive i nomi delle colonne nella prima riga."),
         ]
+
+    def file_type(self, obj: ObjectRef, params: Mapping[str, Any]) -> tuple[str, str]:
+        """A tab-separated file is a .tsv; the separator of the export, else the one of the import."""
+
+        separator = params.get("separator") or obj.meta.get("separator") or "comma"
+        return TSV_FILE_TYPE if separator == "tab" else (self.extension, self.mime)
 
     def export(self, obj: ObjectRef, params: Mapping[str, Any], tools: ToolAccess) -> bytes:
         columns, rows = self._load(obj, tools)

@@ -30,7 +30,6 @@ interface PendingDelete {
  */
 @Component({
   selector: 'app-workspace',
-  standalone: true,
   imports: [NgTemplateOutlet, RouterLink, DatePipe],
   templateUrl: './workspace.component.html',
   styleUrl: './workspace.component.scss'

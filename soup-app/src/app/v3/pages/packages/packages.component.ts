@@ -25,7 +25,6 @@ interface PendingChange {
  */
 @Component({
   selector: 'app-packages',
-  standalone: true,
   imports: [KeyValuePipe],
   templateUrl: './packages.component.html',
   styleUrl: './packages.component.scss'

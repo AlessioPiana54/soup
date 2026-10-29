@@ -1,5 +1,4 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideNoopAnimations } from '@angular/platform-browser/animations';
 
 import { SToastComponent } from './s-toast.component';
 
@@ -9,8 +8,7 @@ describe('SToastComponent', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [SToastComponent],
-      providers: [provideNoopAnimations()]
+      imports: [SToastComponent]
     }).compileComponents();
 
     fixture = TestBed.createComponent(SToastComponent);

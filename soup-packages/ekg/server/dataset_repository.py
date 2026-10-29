@@ -114,8 +114,20 @@ class DatasetRepository:
         self._space(name).write(self._config(name), payload)
 
     def load_config(self, name: str) -> dict[str, Any]:
+        """
+        The config as a dict. Some configs written by the old interface
+        are encoded twice (a JSON string holding the JSON of the config):
+        they are decoded a second time. Anything else that is not an
+        object raises ValidationError.
+        """
+
         raw = self._space(name).read(self._config(name))
-        return json.loads(raw.decode("utf-8"))
+        config = json.loads(raw.decode("utf-8"))
+        if isinstance(config, str):
+            config = json.loads(config)
+        if not isinstance(config, dict):
+            raise ValidationError(f"The config of dataset '{name}' is not a JSON object")
+        return config
 
     def exists(self, name: str) -> bool:
         return self._space(name).exists(self._config(name))

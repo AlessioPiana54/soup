@@ -1,13 +1,9 @@
 <!--Navigation bar-->
 <app-navbar></app-navbar>
 
-<!--Content-->
-<div
-  class="content"
-  [@routeAnimation]="this.prepareRoute(o)"
-  (@routeAnimation.start)="this.onAnimationStart()"
-  (@routeAnimation.done)="this.onAnimationDone()">
-  <router-outlet #o="outlet"></router-outlet>
+<!--Content (it slides at every page change: styles.scss)-->
+<div class="content">
+  <router-outlet></router-outlet>
 </div>
 
 <!--Toast-->

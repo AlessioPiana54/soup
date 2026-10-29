@@ -132,7 +132,7 @@ export class ConfigElementHostComponent implements OnChanges, AfterViewInit, OnD
           try {
             return await firstValueFrom(this.api.preview(importer.id, file, options));
           } catch (error) {
-            throw new Error(errorMessage(error));
+            throw new Error(errorMessage(error), { cause: error });
           }
         }
       });

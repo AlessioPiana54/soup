@@ -51,7 +51,6 @@ function groupOperations(operations: readonly OperationInfo[]): OperationGroup[]
  */
 @Component({
   selector: 'app-object',
-  standalone: true,
   imports: [RouterLink, DatePipe, VisualizerHostComponent, DynamicFormComponent],
   templateUrl: './object.component.html',
   styleUrl: './object.component.scss'

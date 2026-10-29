@@ -9,7 +9,6 @@ import { Component, input } from '@angular/core';
  */
 @Component({
   selector: 'soup-object-fallback',
-  standalone: true,
   imports: [JsonPipe],
   template: `
     <div class="soup-fallback">

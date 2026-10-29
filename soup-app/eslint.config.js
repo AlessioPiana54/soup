@@ -43,6 +43,9 @@ module.exports = tseslint.config(
         'error',
         {
           type: 'element',
+          // Explicit since angular-eslint 21 (it defaults to the "app" of angular.json):
+          // the hosts of the packages are soup-*, the buttons copied from sp-lib sp-*.
+          prefix: ['app', 'soup', 'sp'],
           style: 'kebab-case'
         }
       ],
@@ -141,6 +144,8 @@ module.exports = tseslint.config(
       '@angular-eslint/component-class-suffix': 'off',
       '@angular-eslint/directive-class-suffix': 'off',
       '@typescript-eslint/prefer-for-of': 'off',
+      // Recommended since angular-eslint 20: the services are injected in the constructors.
+      '@angular-eslint/prefer-inject': 'off',
       // Reported, not blocking: the limits of the code-quality review (commit 13).
       complexity: ['warn', 10],
       'max-lines-per-function': ['warn', { max: 60, skipBlankLines: true, skipComments: true }]

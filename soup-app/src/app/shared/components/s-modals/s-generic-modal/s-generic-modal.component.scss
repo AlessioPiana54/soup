@@ -34,6 +34,33 @@
   transform: translate(-50%, 0);
 }
 
+// Opening and closing (animate.enter / animate.leave)
+.card-enter {
+  animation: card-enter 0.3s ease-out;
+}
+
+.card-leave {
+  animation: card-leave 0.3s ease-in forwards;
+}
+
+@keyframes card-enter {
+  from {
+    top: -300px;
+    opacity: 0;
+  }
+  to {
+    top: 55px;
+    opacity: 1;
+  }
+}
+
+@keyframes card-leave {
+  to {
+    top: -300px;
+    opacity: 0;
+  }
+}
+
 span.close {
   float: right;
   font-size: 30px;

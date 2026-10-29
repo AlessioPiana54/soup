@@ -16,7 +16,6 @@ import { VisualizerHostComponent } from './visualizer-host.component';
  */
 @Component({
   selector: 'soup-blocks-preview',
-  standalone: true,
   imports: [VisualizerHostComponent],
   template: `
     @if (this.ready()) {

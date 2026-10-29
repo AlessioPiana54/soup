@@ -7,8 +7,6 @@
     "src/**/*.scss"
   ],
   "ignoreDependencies": [
-    "@angular/compiler",
-    "@angular/platform-browser-dynamic",
     "bootstrap",
     "bootstrap-icons",
     "sass",

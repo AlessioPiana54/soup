@@ -45,6 +45,7 @@ from .event_log import (
     EventLog,
     EventLogData,
     _normalize_text,
+    validate_mapping,
 )
 from .process_timer import ProcessTimer
 from .runtime import current
@@ -206,10 +207,12 @@ def build_ekg(  # noqa: PLR0913 - public API (soup_pkg_ekg.api.build_ekg)
     with _2, _3...); an explicit one that exists is a 409. `tools` must
     give the "memgraph" and "storage" tools (the caller declares them).
 
-    :raises ValidationError: invalid mapping, columns or pairs
+    :raises ValidationError: invalid mapping (e.g. one column for two
+        standard roles), columns or pairs
     :raises ConflictError: `dataset` already exists
     """
 
+    validate_mapping(mapping.event_id, mapping.timestamp, mapping.activity)
     runtime = current()
     memgraph = tools.get(MEMGRAPH)
     repository = DatasetRepository(tools.get(STORAGE))

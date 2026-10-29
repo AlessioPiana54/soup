@@ -1,7 +1,7 @@
 # Soup
 
-![Angular](https://img.shields.io/badge/Angular-v18.2.0-DD0031?style=for-the-badge&logo=Angular&color=%23e61919)
-![Python](https://img.shields.io/badge/Python-3.11.5-3776AB?style=for-the-badge&logo=Python&color=blue)
+![Angular](https://img.shields.io/badge/Angular-v21.2-DD0031?style=for-the-badge&logo=Angular&color=%23e61919)
+![Python](https://img.shields.io/badge/Python-3.12.16-3776AB?style=for-the-badge&logo=Python&color=blue)
 ![Memgraph](https://img.shields.io/badge/Memgraph-v3.13.2-000000?style=for-the-badge&color=orange)
 
 ## Description
@@ -17,7 +17,7 @@ together, which can be installed at runtime.
 ## Architecture
 
 ```
-soup-app/        host frontend (Angular 18): workspace, import, object page, packages page
+soup-app/        host frontend (Angular 21): workspace, import, object page, packages page
 soup-server/     host backend (Python/Flask)
   soup/core/     the mediator: loads packages, registers their contributions, routes requests,
                  keeps the workspace of objects, the EventBus and the tools
@@ -106,9 +106,15 @@ docker compose -p soup-tool up --build
 | Container | Description | Access point |
 |---|---|---|
 | **soup-app** | Frontend (nginx; `/api/` is proxied to the backend) | [http://localhost:4200](http://localhost:4200) |
-| **soup-engine** | Backend `/api/v3` and the package bundles | [http://localhost:8080](http://localhost:8080) |
+| **soup-engine** | Backend `/api/v3` and the package bundles, served by waitress (`wsgi.py`) | [http://localhost:8080](http://localhost:8080) |
 | **soup-database** | Memgraph (`memgraph/memgraph-mage:3.13.2`), with the `soup-volume` volume on `/soup` | `7687` (Bolt), `7444` |
 | **soup-lab** | Memgraph Lab (`memgraph/lab:3.13.2`) | [http://localhost:3300](http://localhost:3300) |
+
+The backend image runs `python wsgi.py`: the [waitress](https://docs.pylonsproject.org/projects/waitress/)
+WSGI server, in **one process with 8 threads**. The engine keeps its state in memory (the loaded
+packages, the graph active in Memgraph, the caches and their locks), so it must not run as several
+worker processes (e.g. gunicorn with more than one worker). For local development, `python app.py`
+in `soup-server/` starts the same engine with the Flask development server (`SOUP_DEBUG`).
 
 ### Memgraph
 
@@ -130,6 +136,17 @@ The `memgraph/memgraph-mage` image runs as the unprivileged `memgraph` user: `to
 commands in the container as root (`docker exec --user root`), so it can write in the `soup-volume`
 volume, and leaves the files readable by Memgraph for `LOAD CSV`. The volume keeps the datasets of an
 existing installation; the graph itself is rebuilt from them when an object is opened.
+
+At startup Memgraph may warn that `vm.max_map_count` is too low. It is a setting of the Linux kernel
+that runs Docker, not of the image. On Docker Desktop for Windows (WSL2):
+
+```sh
+wsl -d docker-desktop sysctl -w vm.max_map_count=524288
+```
+
+It lasts until WSL restarts. To keep it, add `kernelCommandLine = sysctl.vm.max_map_count=524288`
+under `[wsl2]` in `%UserProfile%\.wslconfig`, then run `wsl --shutdown`. On Linux:
+`sudo sysctl -w vm.max_map_count=524288` (permanent in `/etc/sysctl.conf`).
 
 The backend image builds every package frontend (`npm ci && npm run build:packages`). Packages
 installed at runtime are stored in the `soup-installed-packages` volume.
@@ -156,6 +173,10 @@ The addresses of the old interface still work as redirects:
 ---
 
 ## Tests
+
+Node **24.22.0** or later with npm 11 (`.nvmrc` at the root; `engines` in `soup-app/package.json`
+and `soup-packages/package.json`): the `package-lock.json` of `soup-app` installs with `npm ci`
+only with npm 11, while npm 10 reports it as out of sync.
 
 ```sh
 # backend and the Python tests of the packages (FakeDatabase and in-memory storage: no Docker)
@@ -211,6 +232,7 @@ To regenerate the fixture: `python -m tests.tools.dump_v3_routes`.
 | `SOUP_ALLOW_PACKAGE_INSTALL` | `false` (`true` in `docker-compose.yaml`) | host | Allows installing and uninstalling packages at runtime. |
 | `SOUP_STRICT` | `false` | host | A package that fails to load stops the startup. |
 | `SOUP_MAX_UPLOAD_MB` | `200` | host | Maximum request body of `/api/v3` (413 above). |
+| `SOUP_DEBUG` | `false` | `app.py` (local development; not `wsgi.py`) | `1` or `true` turns on Flask's debug mode. **Development only, never on a reachable port:** the Werkzeug debugger runs Python code on the server for whoever reaches port 8080 (`docker-compose.yaml` publishes it and does not set the variable). The reloader stays off in any case, so the engine starts once. |
 | `MEMGRAPH_HOST`, `MEMGRAPH_PORT` | `memgraph`, `7687` | `tool_memgraph` | Memgraph connection. |
 | `SOUP_STORAGE_KIND` | `docker` | `tool_storage` | `docker` (files in the Memgraph container volume `/soup`, so `LOAD CSV` reads them) or `local`. |
 | `SOUP_CONTAINER_NAME` | `soup-database` | `tool_storage` | Container of the `docker` storage. |

@@ -377,3 +377,12 @@ def test_installed_from_a_zip_its_contributions_are_available_at_once(server_wit
     assert any(item["name"] == "ocel" and item["module_url"] == "/api/v3/packages/ocel/app/index.js" for item in manifest)
     bundle = client.get("/api/v3/packages/ocel/app/index.js")
     assert bundle.status_code == 200 and b"soup-pkg-ocel-tables" in bundle.data
+
+
+@pytest.mark.parametrize("filename, extension", [("orders.json", ".json"), ("orders.jsonocel", ".jsonocel")])
+def test_the_list_of_exporters_shows_the_extension_of_the_imported_file(client, filename, extension):
+    obj = _import(client, "ocel.tables", name="orders-log", filename=filename)
+
+    [exporter] = data_of(client.get(f"/api/v3/objects/{obj['id']}/exporters"))
+
+    assert (exporter["label"], exporter["extension"], exporter["mime"]) == ("OCEL 2.0 JSON", extension, "application/json")

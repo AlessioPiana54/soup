@@ -2,10 +2,10 @@ import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { Component } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideNoopAnimations } from '@angular/platform-browser/animations';
-import { provideRouter, Router } from '@angular/router';
+import { ActivatedRouteSnapshot, provideRouter, Route, Router, ViewTransitionInfo } from '@angular/router';
 
 import { AppComponent } from './app.component';
+import { changesPage, PAGE_TRANSITIONS } from './page-transitions';
 
 @Component({ selector: 'app-first-page', standalone: true, template: '<p>first</p>' })
 class FirstPageComponent {}
@@ -13,40 +13,31 @@ class FirstPageComponent {}
 @Component({ selector: 'app-second-page', standalone: true, template: '<p>second</p>' })
 class SecondPageComponent {}
 
+const FIRST: Route = { path: 'first', component: FirstPageComponent };
+const SECOND: Route = { path: 'second', component: SecondPageComponent };
+const OBJECT: Route = { path: 'o/:id', component: SecondPageComponent };
+
+/** A snapshot whose deepest route (the page) is `page`. */
+function snapshot(page: Route | null): ActivatedRouteSnapshot {
+  const child = { routeConfig: page, firstChild: null } as unknown as ActivatedRouteSnapshot;
+  return { routeConfig: null, firstChild: child } as unknown as ActivatedRouteSnapshot;
+}
+
 describe('AppComponent', () => {
   let fixture: ComponentFixture<AppComponent>;
   let router: Router;
-  // body.style.overflow seen when each route animation ends, before it is restored
-  let overflowAtDone: string[];
 
   beforeEach(async () => {
-    overflowAtDone = [];
-    const restore = AppComponent.prototype.onAnimationDone;
-    spyOn(AppComponent.prototype, 'onAnimationDone').and.callFake(function (this: AppComponent) {
-      overflowAtDone.push(document.body.style.overflow);
-      restore.call(this);
-    });
-
     await TestBed.configureTestingModule({
       imports: [AppComponent],
-      providers: [
-        provideRouter([
-          { path: 'first', component: FirstPageComponent },
-          { path: 'second', component: SecondPageComponent }
-        ]),
-        provideNoopAnimations(),
-        provideHttpClient(),
-        provideHttpClientTesting()
-      ]
+      // No view transitions here: navigating with them in the iframe of karma makes ChromeHeadless disconnect
+      // (the e2e run them in the browser); PAGE_TRANSITIONS is tested below.
+      providers: [provideRouter([FIRST, SECOND]), provideHttpClient(), provideHttpClientTesting()]
     }).compileComponents();
 
     fixture = TestBed.createComponent(AppComponent);
     router = TestBed.inject(Router);
     fixture.detectChanges();
-  });
-
-  afterEach(() => {
-    document.body.style.removeProperty('overflow');
   });
 
   async function navigate(url: string): Promise<void> {
@@ -59,29 +50,40 @@ describe('AppComponent', () => {
     expect(fixture.componentInstance.title).toEqual('soup-app');
   });
 
-  it('hides the overflow of the body only while the route animation runs', async () => {
+  it('keeps the page scrollable at the change detections after a navigation', async () => {
     await navigate('/first');
     await navigate('/second');
 
-    expect(overflowAtDone.length).toBeGreaterThan(0);
-    expect(overflowAtDone.every((value) => value === 'hidden')).toBeTrue();
-    expect(document.body.style.overflow).not.toBe('hidden');
-  });
-
-  it('keeps the page scrollable at the change detections after a navigation', async () => {
-    await navigate('/first');
-
-    fixture.detectChanges();
     fixture.detectChanges();
 
     expect(document.body.style.overflow).not.toBe('hidden');
     expect(getComputedStyle(document.body).overflow).not.toBe('hidden');
+    expect(fixture.nativeElement.querySelector('.content app-second-page')).not.toBeNull();
   });
 
-  it('prepareRoute has no side effects', () => {
-    const outlet = { isActivated: false } as never;
+  it('names the content for the view transitions only while one runs (styles.scss)', () => {
+    const content = fixture.nativeElement.querySelector('.content') as HTMLElement;
 
-    expect(fixture.componentInstance.prepareRoute(outlet)).toBe('');
-    expect(document.body.style.overflow).not.toBe('hidden');
+    expect(getComputedStyle(content).getPropertyValue('view-transition-name')).toBe('none');
+  });
+});
+
+describe('PAGE_TRANSITIONS', () => {
+  it('a navigation to another page changes it, one that keeps the route (only its parameters) does not', () => {
+    expect(changesPage(snapshot(FIRST), snapshot(SECOND))).toBeTrue();
+    expect(changesPage(snapshot(null), snapshot(FIRST))).toBeTrue();
+    expect(changesPage(snapshot(OBJECT), snapshot(OBJECT))).toBeFalse();
+  });
+
+  it('skips the transition of a navigation that keeps its page', () => {
+    const transition = jasmine.createSpyObj<ViewTransition>('transition', ['skipTransition']);
+    const created = (from: Route, to: Route) =>
+      PAGE_TRANSITIONS.onViewTransitionCreated!({ transition, from: snapshot(from), to: snapshot(to) } as ViewTransitionInfo);
+
+    created(FIRST, SECOND);
+    expect(transition.skipTransition).not.toHaveBeenCalled();
+
+    created(OBJECT, OBJECT);
+    expect(transition.skipTransition).toHaveBeenCalledTimes(1);
   });
 });

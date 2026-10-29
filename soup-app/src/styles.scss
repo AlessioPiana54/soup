@@ -19,3 +19,70 @@ body {
     font-family: 'Times New Roman', Times, serif;
   }
 }
+
+// ================================
+// Region: Page change
+// ================================
+// The router changes the pages as View Transitions (app.config.ts): the
+// content (.content of app.component) slides, the new page in from the right
+// while the old one leaves to the left, 350ms ease; the rest shows the new
+// state at once, the navbar and the footer above the sliding pages. The names
+// exist only during a transition: a named element is a layer of its own,
+// whose text the browser would otherwise draw with another antialiasing.
+:root:active-view-transition {
+  .content {
+    view-transition-name: soup-page;
+  }
+
+  .master {
+    view-transition-name: soup-navbar;
+  }
+
+  .master-footer {
+    view-transition-name: soup-footer;
+  }
+}
+
+::view-transition-old(root),
+::view-transition-old(soup-navbar),
+::view-transition-old(soup-footer) {
+  display: none;
+}
+
+::view-transition-new(root),
+::view-transition-new(soup-navbar),
+::view-transition-new(soup-footer),
+::view-transition-group(soup-navbar),
+::view-transition-group(soup-footer) {
+  animation: none;
+}
+
+::view-transition-group(soup-page) {
+  animation-duration: 350ms;
+  animation-timing-function: ease;
+}
+
+::view-transition-old(soup-page),
+::view-transition-new(soup-page) {
+  mix-blend-mode: normal;
+}
+
+::view-transition-old(soup-page) {
+  animation: 350ms ease both soup-page-leave;
+}
+
+::view-transition-new(soup-page) {
+  animation: 350ms ease both soup-page-enter;
+}
+
+@keyframes soup-page-enter {
+  from {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes soup-page-leave {
+  to {
+    transform: translateX(-100%);
+  }
+}

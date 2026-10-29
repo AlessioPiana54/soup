@@ -9,13 +9,18 @@ Description: The "Grafo" and "Statistiche" visualizers of ekg_views and
              fails the package); the actions graph, search and node; every
              visualizer first loads its own object (ensure_loaded); the
              statistics read the counts, the activities, the entities with
-             null values and the phase times of meta.process_info.
+             null values and the phase times of meta.process_info. A
+             dataset whose graph cannot be built (one column for every
+             standard role): the graph is a 400 with the reason and no
+             query, the statistics show its metadata and the reason.
 Project : soup-packages/ekg_views
 ------------------------------------------------------------------------
 """
 
 from __future__ import annotations
 
+import dataclasses
+import json
 import sys
 
 import pytest
@@ -357,3 +362,70 @@ def test_the_phase_times_pie():
     }
     assert contributions.phase_times({}) is None
     assert contributions.phase_times(None) is None
+
+
+# ---------------------------------------------------------------------- #
+# A dataset whose graph cannot be built (one column for every role)
+# ---------------------------------------------------------------------- #
+UNBUILDABLE = {
+    "dataset_name": "try",
+    "all_columns": ["EventID", "Activity", "Timestamp", "Item"],
+    "standard_columns": ["Timestamp", "Timestamp", "Timestamp"],
+    "filtered_columns": ["Timestamp", "Item"],
+    "values_columns": ["Timestamp"],
+    "event_nodes": 21, "entity_nodes": 9, "corr_rel": 15, "df_rel": 10,
+}
+PROBLEM = (
+    "The graph of dataset 'try' cannot be built: event_id, timestamp and activity must be three "
+    "different columns: 'Timestamp' is used for event_id, timestamp, activity"
+)
+
+
+@pytest.fixture
+def unbuildable(tmp_path, monkeypatch):
+    for path, content in (("try/try.csv", b"EventID,Activity,Timestamp,Item\n"),
+                          ("try/try_config.json", json.dumps(UNBUILDABLE).encode("utf-8"))):
+        target = tmp_path / "volume" / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
+    db = FakeDatabase()
+    engine = ekg_engine(tmp_path, monkeypatch, db=db)
+    [obj] = [obj for obj in engine.core_tools.catalog().list() if obj.kind == "ekg"]
+    return engine, db, obj
+
+
+def _without_warning(engine, obj):
+    """The object as the adoption before the check left it (no meta.warning/buildable)."""
+
+    meta = {key: value for key, value in obj.meta.items() if key not in ("warning", "buildable")}
+    engine.core_tools.catalog().update(dataclasses.replace(obj, meta=meta))
+    return engine.core_tools.catalog().get(obj.id)
+
+
+@pytest.mark.parametrize("adopted_before_the_check", [False, True])
+def test_the_graph_of_a_dataset_that_cannot_be_built_is_a_400_without_queries(unbuildable, adopted_before_the_check):
+    engine, db, obj = unbuildable
+    if adopted_before_the_check:
+        obj = _without_warning(engine, obj)
+
+    with pytest.raises(ValidationError) as error:
+        engine.visualizer_router.data("ekg_views.graph", obj.id, {})
+
+    assert str(error.value) == PROBLEM
+    assert error.value.http_status_code == 400
+    assert db.received_queries == []
+
+
+@pytest.mark.parametrize("adopted_before_the_check", [False, True])
+def test_the_statistics_of_a_dataset_that_cannot_be_built_show_its_metadata_and_why(unbuildable, adopted_before_the_check):
+    engine, db, obj = unbuildable
+    if adopted_before_the_check:
+        obj = _without_warning(engine, obj)
+
+    data = engine.visualizer_router.data("ekg_views.stats", obj.id, {})
+
+    assert data["notice"] == PROBLEM
+    assert data["counts"] == {"event_nodes": 21, "entity_nodes": 9, "corr_rel": 15, "df_rel": 10}
+    assert (data["timestamps"], data["activities"], data["entities"]) == ({"min": None, "max": None}, [], [])
+    assert data["columns"][2] == {"name": "Timestamp", "role": "activity"}
+    assert db.received_queries == []

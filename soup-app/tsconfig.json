@@ -19,13 +19,11 @@
     "importHelpers": true,
     "target": "ES2022",
     "module": "ES2022",
-    "lib": ["ES2022", "dom"],
     // The app also compiles @soup/sdk from ../soup-packages/sdk
     "rootDir": "..",
     // Relative to this file (no baseUrl): "src/*" keeps the imports "src/app/..." working
     "paths": {
       "src/*": ["./src/*"],
-      "@aledevsharp/sp-lib": ["./node_modules/@aledevsharp/sp-lib"],
       "@soup/sdk": ["../soup-packages/sdk/src/index.ts"]
     }
   },

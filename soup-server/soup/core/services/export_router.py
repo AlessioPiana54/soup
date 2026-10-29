@@ -14,12 +14,18 @@ Description: ExportRouter - offers the exporters that accept an object's
              the exporter's `extension` and `mime`) and are validated: an
              invalid one is a DomainError (500) naming the exporter and
              its package, and no file name is built with it.
+             listed_file_type() gives the extension and MIME type of the
+             list of exporters: file_type() with the defaults of the
+             fields; if it raises or gives an invalid value, the
+             exporter's own `extension` and `mime` (with a warning in the
+             log): the list never fails for it.
 Project : soup-server
 ------------------------------------------------------------------------
 """
 
 from __future__ import annotations
 
+import copy
 import logging
 import re
 from collections.abc import Mapping
@@ -64,6 +70,26 @@ class ExportRouter:
         entry, ref = self._resolve(exporter_id, obj)
         return self._fields(entry.item, ref, self._toolbox(exporter_id, entry.item))
 
+    def listed_file_type(self, exporter_id: str, obj: ObjectLike, fields: list[Field]) -> tuple[str, str]:
+        """(extension, mime) of the file exported with the default values of `fields` (those of fields())."""
+
+        entry, ref = self._resolve(exporter_id, obj)
+        exporter = entry.item
+        defaults = {field.name: copy.deepcopy(field.default) for field in fields}
+        try:
+            value = exporter.file_type(ref, defaults)
+        except Exception as exc:  # noqa: BLE001 - the list shows the fixed extension instead
+            problems = [f"file_type() raised {exc!r}"]
+        else:
+            problems = _file_type_problems(value)
+            if not problems:
+                return value
+        _LOGGER.warning(
+            "Exporter '%s' of package '%s': the list shows its fixed extension, file_type() failed: %s",
+            entry.key, entry.package, problems,
+        )
+        return exporter.extension, exporter.mime
+
     def export(self, exporter_id: str, obj: ObjectLike, params: Mapping[str, Any] | None = None) -> ExportedFile:
         """
         :raises DomainError: (500) file_type() gave an invalid extension or MIME type
@@ -100,17 +126,9 @@ class ExportRouter:
     @staticmethod
     def _file_type(entry: Registered[Exporter], obj: ObjectRef, params: Mapping[str, Any]) -> tuple[str, str]:
         value = entry.item.file_type(obj, params)
-        if not isinstance(value, tuple) or len(value) != len(_FILE_TYPE):
-            problems = [f"{value!r} instead of (extension, mime)"]
-        else:
-            extension, mime = value
-            problems = []
-            if not isinstance(extension, str) or not _EXTENSION_RE.fullmatch(extension):
-                problems.append(f"extension {extension!r} (a '.' and 1-15 letters, digits, '.', '-' or '_')")
-            if not isinstance(mime, str) or not _MIME_RE.fullmatch(mime):
-                problems.append(f"MIME type {mime!r} (type/subtype)")
-            if not problems:
-                return extension, mime
+        problems = _file_type_problems(value)
+        if not problems:
+            return value
         _LOGGER.error("Exporter '%s' of package '%s' gave an invalid file type: %s", entry.key, entry.package, problems)
         raise DomainError(
             f"Exporter '{entry.key}' of package '{entry.package}' gave an invalid file type for object "
@@ -127,3 +145,17 @@ class ExportRouter:
             if not isinstance(item, Field):
                 raise TypeError(f"Exporter '{exporter.id}'.fields() must return Fields, got {type(item).__name__}")
         return fields
+
+
+def _file_type_problems(value: object) -> list[str]:
+    """What is wrong with a value returned by Exporter.file_type() (empty: a valid (extension, mime))."""
+
+    if not isinstance(value, tuple) or len(value) != len(_FILE_TYPE):
+        return [f"{value!r} instead of (extension, mime)"]
+    extension, mime = value
+    problems = []
+    if not isinstance(extension, str) or not _EXTENSION_RE.fullmatch(extension):
+        problems.append(f"extension {extension!r} (a '.' and 1-15 letters, digits, '.', '-' or '_')")
+    if not isinstance(mime, str) or not _MIME_RE.fullmatch(mime):
+        problems.append(f"MIME type {mime!r} (type/subtype)")
+    return problems

@@ -7,8 +7,9 @@ Description: The contributions of csv_ekg, which replaces the csv_reader
                Memgraph)"): a .csv read with pandas (dtype=str) becomes an
                "ekg" object. inspect() shows the first rows and the fields
                of the old NewDatasetComponent form: event_id, timestamp,
-               activity (one column each, required), entities and values
-               (columns), trigger_target (pairs of entity columns, for
+               activity (one column each, three different ones,
+               required), entities and values (columns), trigger_target
+               (pairs of entity columns, for
                causal_df) and save_process_times (the old
                process_execution). preview() adds, with at least two
                entity columns, the graph of their multiplicities (the old
@@ -34,7 +35,7 @@ from typing import Any
 
 from soup_pkg_csv_table.api import KIND as TABLE_KIND
 from soup_pkg_csv_table.api import read_table
-from soup_pkg_ekg.api import EKG_KIND, ColumnMapping, EventLogData, Table, build_ekg, dispose
+from soup_pkg_ekg.api import EKG_KIND, ColumnMapping, EventLogData, Table, build_ekg, dispose, validate_mapping
 
 from soup.core.contracts import (
     Field,
@@ -172,7 +173,8 @@ def _bool(value: Any, name: str) -> bool:
 def parse_options(options: Mapping[str, Any], columns: Sequence[str]) -> Options:
     """
     The import options (not checked by the core: the importer does it).
-    :raises ValidationError: a missing standard column, unknown columns, bad pairs
+    :raises ValidationError: a missing standard column, one column for two
+        standard roles, unknown columns, bad pairs
     """
 
     entities = _columns(options, "entities", columns)
@@ -183,6 +185,7 @@ def parse_options(options: Mapping[str, Any], columns: Sequence[str]) -> Options
         entity_columns=entities,
         value_columns=_columns(options, "values", columns),
     )
+    validate_mapping(mapping.event_id, mapping.timestamp, mapping.activity, columns=columns)
     return Options(mapping, _pairs(options, entities), _bool(options.get("save_process_times"), "save_process_times"))
 
 

@@ -13,6 +13,25 @@ const LABEL_STYLE = 'font-size: 1.1em;';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Selection = d3.Selection<any, unknown, null, undefined>;
 
+// The margin, in pixels, left around the graph by the first centering.
+const FIT_MARGIN = 20;
+
+/**
+ * The zoom that fits a laid out graph of graphWidth x graphHeight in a box
+ * of boxWidth x boxHeight (centered, never enlarged), or null unless all
+ * four sizes and the result are positive and finite: an empty graph is
+ * laid out with an infinite size, and a container not shown yet is 0 x 0
+ * (either gave the zoom "translate(NaN,NaN) scale(0)").
+ */
+export function fitTransform(graphWidth: number, graphHeight: number, boxWidth: number, boxHeight: number): d3.ZoomTransform | null {
+  if (![graphWidth, graphHeight, boxWidth, boxHeight].every((size) => Number.isFinite(size) && size > 0)) return null;
+  const scale = Math.min(1, (boxWidth - FIT_MARGIN) / graphWidth, (boxHeight - FIT_MARGIN) / graphHeight);
+  const x = (boxWidth - graphWidth * scale) / 2;
+  const y = (boxHeight - graphHeight * scale) / 2;
+  if (!(scale > 0 && Number.isFinite(scale) && Number.isFinite(x) && Number.isFinite(y))) return null;
+  return d3.zoomIdentity.translate(x, y).scale(scale);
+}
+
 /**
  * DagreGraphRenderer - the default engine, moved from the old
  * GraphComponent (createGraphVisualization, initializePanZoom,
@@ -23,7 +42,9 @@ type Selection = d3.Selection<any, unknown, null, undefined>;
  *    here the <svg> and its <g> are created once and every redraw is in
  *    that group, so zoom and pan stay;
  *  - the first centering was a transform attribute the zoom did not know
- *    (the first drag jumped back); here it is a zoom transform;
+ *    (the first drag jumped back); here it is a zoom transform, applied
+ *    only with valid sizes (fitTransform): an empty graph or a container
+ *    not laid out yet leave it for the next draw or the first resize;
  *  - a hidden relationship type shown again kept no weight (thinner,
  *    label without weight): edges are always rebuilt from the model;
  *  - the weight scale had an empty domain with a single weight.
@@ -39,6 +60,9 @@ export class DagreGraphRenderer implements GraphRenderer {
   private options: RenderOptions = { palette: new RelationshipPalette(), shape: 'rect' };
   private readonly highlighted = new Set<string>();
   private centered = false;
+  // The last graph laid out, centered when the container gets a size.
+  private laidOut: dagreD3.graphlib.Graph | null = null;
+  private resizes: ResizeObserver | null = null;
 
   public mount(container: HTMLElement): void {
     this.container = container;
@@ -79,8 +103,10 @@ export class DagreGraphRenderer implements GraphRenderer {
 
   public clear(): void {
     this.model = null;
+    this.laidOut = null;
     this.highlighted.clear();
     this.group?.selectAll('*').remove();
+    this.stopWatchingSize();
   }
 
   public exportSvg(): string {
@@ -99,6 +125,7 @@ export class DagreGraphRenderer implements GraphRenderer {
   }
 
   public destroy(): void {
+    this.stopWatchingSize();
     this.svg?.on('.zoom', null);
     this.svg?.remove();
     this.svg = this.group = null;
@@ -165,20 +192,40 @@ export class DagreGraphRenderer implements GraphRenderer {
       this.onNodeClick?.(id);
     });
 
+    this.laidOut = graph;
     if (!this.centered) {
-      this.centered = true;
-      this.center(graph);
+      this.centered = this.center(graph);
+      if (!this.centered) this.watchSize();
     }
   }
 
-  /** Fit the graph in the container, as a zoom transform (pan and zoom continue from it). */
-  private center(graph: dagreD3.graphlib.Graph): void {
-    if (!this.svg || !this.zoom || !this.container) return;
+  /**
+   * Fit the graph in the container, as a zoom transform (pan and zoom
+   * continue from it). False, and nothing applied, without valid sizes.
+   */
+  private center(graph: dagreD3.graphlib.Graph): boolean {
+    if (!this.svg || !this.zoom || !this.container) return false;
     const { width = 0, height = 0 } = graph.graph() as { width?: number; height?: number };
     const box = this.container.getBoundingClientRect();
-    if (!width || !height || !box.width || !box.height) return;
-    const scale = Math.min(1, (box.width - 20) / width, (box.height - 20) / height);
-    const transform = d3.zoomIdentity.translate((box.width - width * scale) / 2, (box.height - height * scale) / 2).scale(scale);
+    const transform = fitTransform(width, height, box.width, box.height);
+    if (!transform) return false;
     (this.svg as d3.Selection<SVGSVGElement, unknown, null, undefined>).call(this.zoom.transform, transform);
+    return true;
+  }
+
+  /** Center the last graph laid out when the container gets a size (once, where ResizeObserver exists). */
+  private watchSize(): void {
+    if (this.resizes || !this.container || typeof ResizeObserver === 'undefined') return;
+    this.resizes = new ResizeObserver(() => {
+      if (this.centered || !this.laidOut) return;
+      this.centered = this.center(this.laidOut);
+      if (this.centered) this.stopWatchingSize();
+    });
+    this.resizes.observe(this.container);
+  }
+
+  private stopWatchingSize(): void {
+    this.resizes?.disconnect();
+    this.resizes = null;
   }
 }

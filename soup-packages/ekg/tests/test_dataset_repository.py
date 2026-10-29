@@ -3,13 +3,16 @@
 File : test_dataset_repository.py
 Description: Tests for DatasetRepository (ekg package) on the
              tool_storage package's "storage" tool: hostile name
-             rejection, config round-trip (preserving unknown keys), files
+             rejection, config round-trip (preserving unknown keys), the
+             configs encoded twice by the old interface, files
              and paths matching the legacy volume layout
              (Models/docker_file_manager_model.py, Services/dataset_service.py),
              the analyses under Analyses/ and the list of the datasets.
 Project : soup-packages/ekg
 ------------------------------------------------------------------------
 """
+
+import json
 
 import pytest
 
@@ -59,6 +62,21 @@ def test_config_round_trip_preserves_unknown_keys(repo):
 
     assert loaded == config
     assert loaded["some_future_field_this_class_does_not_know_about"] == {"nested": True}
+
+
+def test_a_config_encoded_twice_by_the_old_interface_is_read_as_an_object(repo, files):
+    config = {"dataset_name": "try", "dataset_description": "desc"}
+    files.write("try/try_config.json", json.dumps(json.dumps(config, indent=4)).encode("utf-8"))
+
+    assert repo.load_config("try") == config
+
+
+@pytest.mark.parametrize("content", [b"42", b"[1, 2]", b"null", b'"\\"text\\""'])
+def test_a_config_that_is_not_an_object_is_refused(repo, files, content):
+    files.write("bad/bad_config.json", content)
+
+    with pytest.raises(ValidationError, match="'bad' is not a JSON object"):
+        repo.load_config("bad")
 
 
 def test_exists_reflects_config_presence(repo):

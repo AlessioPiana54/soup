@@ -1,7 +1,6 @@
 import { Component, signal, ViewChild } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { Block, columnsOf, FormValues } from '@soup/sdk';
-import { NgxDropzoneModule } from 'ngx-dropzone';
 
 import { ImporterInfo, Inspection } from '../../../core/v3/v3.models';
 import { V3ApiService } from '../../../core/v3/v3-api.service';
@@ -21,13 +20,14 @@ import { errorMessage, notify } from '../../components/notify';
  */
 @Component({
   selector: 'app-import',
-  standalone: true,
-  imports: [RouterLink, NgxDropzoneModule, DynamicFormComponent, ConfigElementHostComponent, BlocksPreviewComponent],
+  imports: [RouterLink, DynamicFormComponent, ConfigElementHostComponent, BlocksPreviewComponent],
   templateUrl: './import.component.html',
   styleUrl: './import.component.scss'
 })
 export class ImportComponent {
   public readonly file = signal<File | null>(null);
+  // A file is being dragged over the drop zone (its border becomes solid)
+  public readonly dragging = signal(false);
   public readonly importers = signal<ImporterInfo[] | null>(null);
   public readonly importer = signal<ImporterInfo | null>(null);
   public readonly inspection = signal<Inspection | null>(null);
@@ -58,6 +58,25 @@ export class ImportComponent {
   ) {}
 
   // --- 1. file ------------------------------------------------------------- //
+  public onDragOver(event: DragEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.dragging.set(true);
+  }
+
+  public onDrop(event: DragEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.dragging.set(false);
+    this.onSelectFile({ addedFiles: firstFile(event.dataTransfer?.files) });
+  }
+
+  public onInputChange(input: HTMLInputElement): void {
+    this.onSelectFile({ addedFiles: firstFile(input.files) });
+    // Reset, so that choosing the same file again is a change too.
+    input.value = '';
+  }
+
   public onSelectFile(event: { addedFiles: File[] }): void {
     const [chosen] = event.addedFiles ?? [];
     if (!chosen || event.addedFiles.length !== 1) {
@@ -210,4 +229,9 @@ export class ImportComponent {
     this.busy.set('');
     this.error.set(errorMessage(error));
   }
+}
+
+/** One file only, like the drop zone always did: the others are ignored. */
+function firstFile(files: FileList | null | undefined): File[] {
+  return files && files.length > 0 ? [files[0]] : [];
 }

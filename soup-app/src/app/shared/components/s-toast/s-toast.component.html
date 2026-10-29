@@ -6,7 +6,8 @@
     warning: this.toastLevel === 2,
     error: this.toastLevel === 3
   }"
-  [@toastAnimation]>
+  animate.enter="toast-enter"
+  animate.leave="toast-leave">
   <!--Title-->
   @if (this.title) {
     <div class="toast-title">

@@ -116,14 +116,19 @@ def visualizer(entry: Registered[Visualizer], entry_url: str | None) -> dict[str
     }
 
 
-def exporter(entry: Registered[Exporter], options: Iterable[Field]) -> dict[str, Any]:
+def exporter(
+    entry: Registered[Exporter], options: Iterable[Field], file_type: tuple[str, str] | None = None
+) -> dict[str, Any]:
+    """`file_type`: the (extension, mime) of this object's file (default: the exporter's own)."""
+
     item = entry.item
+    extension, mime = file_type or (item.extension, item.mime)
     return {
         "id": entry.key,
         "label": item.label or item.id,
         "package": entry.package,
-        "extension": item.extension,
-        "mime": item.mime,
+        "extension": extension,
+        "mime": mime,
         "fields": fields(options),
     }
 

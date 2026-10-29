@@ -1,9 +1,9 @@
-import { SpBtnComponent } from '@aledevsharp/sp-lib';
 import { Component, OnInit, signal } from '@angular/core';
 import { environment } from 'src/environments/environment';
 
 import { Health } from '../../core/v3/v3.models';
 import { V3ApiService } from '../../core/v3/v3-api.service';
+import { SpBtnComponent } from '../../shared/components/sp-btn/sp-btn.component';
 
 /**
  * Home page component: what SOUP is, the link to its documentation and
@@ -16,7 +16,6 @@ import { V3ApiService } from '../../core/v3/v3-api.service';
  */
 @Component({
   selector: 'app-welcome',
-  standalone: true,
   imports: [SpBtnComponent],
   templateUrl: './welcome.component.html',
   styleUrl: './welcome.component.scss'

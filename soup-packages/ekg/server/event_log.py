@@ -46,8 +46,9 @@ from __future__ import annotations
 import csv
 import io
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
+from typing import Any
 
 from soup.core.contracts import ValidationError
 
@@ -215,6 +216,78 @@ class ColumnMapping:
         missing = sorted(name for name in referenced if name not in available)
         if missing:
             raise ValidationError(f"Column mapping refers to columns missing from the data: {missing}")
+
+
+def mapping_problem(  # noqa: PLR0913 - the roles of a mapping, as the callers have them
+    event_id: object,
+    timestamp: object,
+    activity: object,
+    *,
+    entities: Sequence[str] = (),
+    values: Sequence[str] = (),
+    columns: Sequence[str] | None = None,
+) -> str | None:
+    """
+    What is wrong with a column mapping, or None: the three standard roles
+    must be three different columns (one column for two roles builds no
+    sensible graph, and a legacy config like that made Memgraph refuse the
+    load query: "Same key can't appear twice in a map literal"). With
+    `columns`, every referenced column must be one of them.
+    """
+
+    standard = dict(zip(STANDARD_ROLES, (event_id, timestamp, activity), strict=True))
+    empty = [role for role, column in standard.items() if not isinstance(column, str) or not column]
+    if empty:
+        return f"The mapping has no column for {', '.join(empty)}"
+    roles: dict[str, list[str]] = {}
+    for role, column in standard.items():
+        roles.setdefault(str(column), []).append(role)
+    shared = [(column, names) for column, names in roles.items() if len(names) > 1]
+    if shared:
+        column, names = shared[0]
+        return (
+            f"event_id, timestamp and activity must be three different columns: "
+            f"'{column}' is used for {', '.join(names)}"
+        )
+    if columns is not None:
+        available = set(columns)
+        missing = sorted({str(column) for column in (*standard.values(), *entities, *values)} - available)
+        if missing:
+            return f"The mapping refers to columns that are not in the data: {missing}"
+    return None
+
+
+def validate_mapping(  # noqa: PLR0913 - same arguments as mapping_problem
+    event_id: object,
+    timestamp: object,
+    activity: object,
+    *,
+    entities: Sequence[str] = (),
+    values: Sequence[str] = (),
+    columns: Sequence[str] | None = None,
+) -> None:
+    """:raises ValidationError: the mapping_problem, if any"""
+
+    problem = mapping_problem(event_id, timestamp, activity, entities=entities, values=values, columns=columns)
+    if problem:
+        raise ValidationError(problem)
+
+
+def config_mapping_problem(config: Mapping[str, Any]) -> str | None:
+    """
+    mapping_problem of a dataset config (<name>_config.json): the roles
+    are its standard_columns, which must be among its all_columns or the
+    canonical names (build_ekg stores those: the staged CSV has them as
+    headers). The entity and value columns are not checked against
+    all_columns: in the separated form (OCEL) they are the object types,
+    not columns of the events table; build_ekg checked them on the data.
+    """
+
+    standard = config.get("standard_columns") or (EVENT_ID_COLUMN, TIMESTAMP_COLUMN, ACTIVITY_COLUMN)
+    if not isinstance(standard, (list, tuple)) or len(standard) != len(STANDARD_ROLES):
+        return "The config of the dataset must have exactly 3 standard_columns: [event_id, timestamp, activity]"
+    columns = [str(column) for column in (*(config.get("all_columns") or ()), *_RESERVED_CANONICAL_NAMES)]
+    return mapping_problem(*standard, columns=columns)
 
 
 @dataclass(frozen=True)

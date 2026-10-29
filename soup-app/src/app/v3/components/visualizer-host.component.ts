@@ -48,7 +48,6 @@ type HostState = 'idle' | 'loading' | 'ready' | 'error';
  */
 @Component({
   selector: 'soup-visualizer-host',
-  standalone: true,
   imports: [ObjectFallbackComponent],
   schemas: [CUSTOM_ELEMENTS_SCHEMA],
   template: `
@@ -199,7 +198,7 @@ export class VisualizerHostComponent implements OnChanges, AfterViewInit, OnDest
       return await firstValueFrom(this.api.visualizerAction(objectId, visualizerId, name, params));
     } catch (error) {
       // Package code gets a real Error, not the host's ApiResponse.
-      throw new Error(errorMessage(error));
+      throw new Error(errorMessage(error), { cause: error });
     }
   }
 

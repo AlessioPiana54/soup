@@ -13,7 +13,12 @@ Description: The migration of the volumes of the old interface, in one
              config and a new graph key (meta.graph_key). A folder that
              already has an "ekg" object (same meta.dataset) is skipped,
              so running it again adds nothing;
-             a folder whose config cannot be read is logged and skipped.
+             a folder whose config cannot be read is logged and skipped
+             (one line for a config that is not valid JSON or not an
+             object, the traceback for anything unexpected). A config
+             whose graph cannot be built (e.g. one column for two
+             standard roles) is adopted anyway, its files kept, with
+             meta.warning and meta.buildable = false, and one log line.
 Project : soup-packages/ekg
 ------------------------------------------------------------------------
 """
@@ -26,12 +31,13 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
-from soup.core.contracts import CREATED_BY_IMPORTER, Catalog, CreatedBy, ObjectRef, validate_name
+from soup.core.contracts import CREATED_BY_IMPORTER, Catalog, CreatedBy, ObjectRef, ValidationError, validate_name
 
 from .builder import EKG_KIND, STORAGE, meta_from_config
 from .dataset_repository import DatasetRepository
+from .event_log import config_mapping_problem
 from .process_timer import DATE_FORMAT
-from .state import CATALOG, is_derived
+from .state import CATALOG, is_derived, unbuildable_message
 
 _LOGGER = logging.getLogger("soup.ekg")
 
@@ -55,6 +61,11 @@ def adopt_legacy_datasets(tools: Any, clock: Callable[[], datetime] = datetime.n
         try:
             config = repository.load_config(name)
             description = config.get("dataset_description") or ""
+            meta = meta_from_config(name, config)
+            problem = config_mapping_problem(config)
+            if problem:
+                meta["warning"] = unbuildable_message(name, problem)
+                meta["buildable"] = False
             obj = ObjectRef(
                 id=str(uuid.uuid4()),
                 name=validate_name(name),
@@ -62,9 +73,14 @@ def adopt_legacy_datasets(tools: Any, clock: Callable[[], datetime] = datetime.n
                 created_by=CreatedBy(CREATED_BY_IMPORTER, LEGACY_IMPORTER, LEGACY_PACKAGE),
                 created_at=str(config.get("date_created") or clock().strftime(DATE_FORMAT)[:-3]),
                 description=description if isinstance(description, str) else "",
-                meta=meta_from_config(name, config),
+                meta=meta,
             )
             catalog.add(obj)
+            if problem:
+                _LOGGER.warning("Dataset '%s' adopted but its graph cannot be built: %s", name, problem)
+        except (ValidationError, ValueError) as exc:
+            _LOGGER.warning("Dataset '%s' could not be added to the catalog: %s", name, exc)
+            continue
         except Exception:  # noqa: BLE001 - one broken folder must not stop the others
             _LOGGER.exception("Dataset '%s' could not be added to the catalog", name)
             continue

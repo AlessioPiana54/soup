@@ -9,7 +9,8 @@ Description: /api/v3/objects/<id>/visualizers and /exporters, delegating
                                                           (no object needed)
              - GET  .../visualizers/<vid>/data            ?params (JSON answer)
              - POST .../visualizers/<vid>/actions/<name>  JSON params
-             - GET  .../exporters                         with their fields
+             - GET  .../exporters                         with their fields and the
+                                                          extension/MIME of this object's file
              - GET  .../export/<eid>?params               the file, as an
                                                           attachment
              GET parameters are ?params=<json> or the flat query
@@ -62,10 +63,12 @@ def build_visualizer_blueprint(engine: Engine) -> Blueprint:
 
     @blueprint.route("/api/v3/objects/<object_id>/exporters", methods=["GET"])
     def list_exporters(object_id: str) -> ResponseReturnValue:
-        return serializers.ok("Exporters", [
-            serializers.exporter(entry, exporters.fields(entry.key, object_id))
-            for entry in exporters.exporters_for(object_id)
-        ])
+        listed = []
+        for entry in exporters.exporters_for(object_id):
+            options = exporters.fields(entry.key, object_id)
+            file_type = exporters.listed_file_type(entry.key, object_id, options)
+            listed.append(serializers.exporter(entry, options, file_type))
+        return serializers.ok("Exporters", listed)
 
     @blueprint.route("/api/v3/objects/<object_id>/export/<exporter_id>", methods=["GET"])
     def export_object(object_id: str, exporter_id: str) -> ResponseReturnValue:

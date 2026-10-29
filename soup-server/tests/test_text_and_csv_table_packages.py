@@ -383,10 +383,50 @@ def test_csv_export_with_the_chosen_options(client):
     response = client.get(f"/api/v3/objects/{object_id}/export/csv_table.csv",
                           query_string={"params": json.dumps({"separator": "tab", "header": False})})
     assert response.status_code == 200, response.get_json()
-    assert response.headers["Content-Disposition"] == "attachment; filename=orders.csv"
+    # Tab-separated: a .tsv (Exporter.file_type; until commit 13 it was named orders.csv).
+    assert response.headers["Content-Disposition"] == "attachment; filename=orders.tsv"
     assert response.data.decode("utf-8").splitlines()[:2] == ["1\tCreate\t10", "2\tShip\t9"]
     default = client.get(f"/api/v3/objects/{object_id}/export/csv_table.csv")
     assert default.data.decode("utf-8").splitlines()[0] == "id;activity;cost"
+
+
+@pytest.mark.parametrize("separator, filename, mime, first_line", [
+    ("comma", "orders.csv", "text/csv", "id,activity,cost"),
+    ("semicolon", "orders.csv", "text/csv", "id;activity;cost"),
+    ("tab", "orders.tsv", "text/tab-separated-values", "id\tactivity\tcost"),
+])
+def test_the_csv_export_is_named_after_its_separator(client, separator, filename, mime, first_line):
+    object_id = _import(client, "csv_table.csv", "orders.csv", CSV, name="orders")["id"]
+
+    response = client.get(f"/api/v3/objects/{object_id}/export/csv_table.csv",
+                          query_string={"params": json.dumps({"separator": separator})})
+
+    assert response.status_code == 200, response.get_json()
+    assert response.headers["Content-Disposition"] == f"attachment; filename={filename}"
+    assert response.mimetype == mime
+    assert response.data.decode("utf-8").splitlines()[0] == first_line
+
+
+def test_without_a_separator_the_export_takes_the_one_of_the_import(client):
+    # A .tsv imported: its separator (meta) is the default of the export and of the list.
+    tsv = _import(client, "csv_table.csv", "orders.tsv", b"id\tactivity\n1\tCreate\n", name="orders")
+    assert tsv["meta"]["separator"] == "tab"
+
+    [exporter] = data_of(client.get(f"/api/v3/objects/{tsv['id']}/exporters"))
+    assert (exporter["extension"], exporter["mime"]) == (".tsv", "text/tab-separated-values")
+    response = client.get(f"/api/v3/objects/{tsv['id']}/export/csv_table.csv")
+    assert (response.headers["Content-Disposition"], response.mimetype) == (
+        "attachment; filename=orders.tsv", "text/tab-separated-values",
+    )
+
+
+@pytest.mark.parametrize("filename, extension, mime", [("readme.md", ".md", "text/markdown"), ("notes.txt", ".txt", "text/plain")])
+def test_the_list_of_exporters_shows_the_extension_of_the_imported_text(client, filename, extension, mime):
+    obj = _import(client, "text.text", filename, TEXT, name="doc")
+
+    [exporter] = data_of(client.get(f"/api/v3/objects/{obj['id']}/exporters"))
+
+    assert (exporter["label"], exporter["extension"], exporter["mime"]) == ("File originale", extension, mime)
 
 
 def test_deleting_a_table_removes_its_file(setup):
