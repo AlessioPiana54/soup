@@ -5,6 +5,7 @@
   "label": "Event log ed EKG",
   "description": "Event log (normalization, entities, canonical CSV), datasets on the volume and the EKG on Memgraph: build pipeline, graph state of the 'ekg' objects and the datasets already on the volume added to the catalog.",
   "author": "SOUP",
+  "contributors": [{"name": "Alessio Pianaroli", "email": "alessiopianaroli.it@gmail.com"}],
   "requires": ["tool_memgraph", "tool_storage"],
   "requires_tools": ["memgraph", "storage", "catalog"],
   "provides_tools": [],

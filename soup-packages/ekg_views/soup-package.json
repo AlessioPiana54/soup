@@ -5,6 +5,7 @@
   "label": "Viste dell'EKG",
   "description": "Visualizers and exporter of 'ekg' objects: the graph (views contributed to ekg.graph_views), the statistics, the queries contributed to ekg.queries and the JSON of the graph (parts contributed to ekg.json_parts); the statistics show the notices contributed to ekg.stats_notices.",
   "author": "SOUP",
+  "contributors": [{"name": "Alessio Pianaroli", "email": "alessiopianaroli.it@gmail.com"}],
   "requires": ["ekg", "soup_base"],
   "requires_tools": ["memgraph", "storage"],
   "provides_tools": [],

@@ -3,6 +3,12 @@
   "version": "1.0.0",
   "private": true,
   "description": "Frontend of the ekg_analysis package: <soup-pkg-ekg-insights> (uses the elements of soup_base by tag)",
+  "contributors": [
+    {
+      "name": "Alessio Pianaroli",
+      "email": "alessiopianaroli.it@gmail.com"
+    }
+  ],
   "type": "module",
   "dependencies": {
     "@soup/sdk": "*"

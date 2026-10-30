@@ -5,6 +5,7 @@
   "label": "CSV come tabella",
   "description": "Imports CSV/TSV files as tables (Python's csv module): remote paging, sorting and column filters, a column profile, the distribution of a column as a report and the CSV export.",
   "author": "SOUP",
+  "contributors": [{"name": "Alessio Pianaroli", "email": "alessiopianaroli.it@gmail.com"}],
   "requires": ["soup_base", "tool_storage"],
   "requires_tools": ["storage"],
   "provides_tools": [],

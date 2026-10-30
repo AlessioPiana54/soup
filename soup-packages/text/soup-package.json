@@ -5,6 +5,7 @@
   "label": "Testo",
   "description": "Imports text files (.txt, .md, .log) into the package's storage space and shows them as text or markdown.",
   "author": "SOUP",
+  "contributors": [{"name": "Alessio Pianaroli", "email": "alessiopianaroli.it@gmail.com"}],
   "requires": ["soup_base", "tool_storage"],
   "requires_tools": ["storage"],
   "provides_tools": [],

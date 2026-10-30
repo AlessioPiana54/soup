@@ -3,6 +3,12 @@
   "version": "1.0.0",
   "private": true,
   "description": "Frontend of the ocel package: <soup-pkg-ocel-tables> and <soup-pkg-ocel-summary> (use the elements of soup_base by tag)",
+  "contributors": [
+    {
+      "name": "Alessio Pianaroli",
+      "email": "alessiopianaroli.it@gmail.com"
+    }
+  ],
   "type": "module",
   "dependencies": {
     "@soup/sdk": "*"

@@ -7,6 +7,12 @@
     "npm": ">=11"
   },
   "description": "SOUP packages: the @soup/sdk and the frontend bundles of every package with an app/ part",
+  "contributors": [
+    {
+      "name": "Alessio Pianaroli",
+      "email": "alessiopianaroli.it@gmail.com"
+    }
+  ],
   "workspaces": [
     "sdk",
     "_template/app",

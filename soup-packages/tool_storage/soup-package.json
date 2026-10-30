@@ -5,6 +5,7 @@
   "label": "Storage, catalog and preferences",
   "description": "Provides the 'storage' (files by namespace), 'catalog' (workspace objects) and 'preferences' tools.",
   "author": "SOUP",
+  "contributors": [{"name": "Alessio Pianaroli", "email": "alessiopianaroli.it@gmail.com"}],
   "requires": [],
   "requires_tools": [],
   "provides_tools": ["storage", "catalog", "preferences"],

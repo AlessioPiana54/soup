@@ -1,245 +1,289 @@
 # Soup
 
 ![Angular](https://img.shields.io/badge/Angular-v21.2-DD0031?style=for-the-badge&logo=Angular&color=%23e61919)
-![Python](https://img.shields.io/badge/Python-3.12.16-3776AB?style=for-the-badge&logo=Python&color=blue)
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=Python&color=blue)
+![Flask](https://img.shields.io/badge/Flask-3.1-000000?style=for-the-badge&logo=Flask&color=black)
 ![Memgraph](https://img.shields.io/badge/Memgraph-v3.13.2-000000?style=for-the-badge&color=orange)
+![Node.js](https://img.shields.io/badge/Node.js-24-339933?style=for-the-badge&logo=Node.js&color=green)
 
 ## Description
-**SOUP** is a web application for **object-centric process mining**. Starting from a `.csv` file of
-object-centric event data, it builds an **Event Knowledge Graph (EKG)** on Memgraph and lets you
-explore, filter, aggregate and export it.
 
-Every feature of SOUP comes in a **package**: a folder holding a feature's backend and frontend
-together, which can be installed at runtime.
+**SOUP** is a web application for **object-centric process mining**. It reads event data, builds an
+**Event Knowledge Graph (EKG)** on [Memgraph](https://memgraph.com) and lets you explore, filter,
+aggregate and export it:
+
+- **event logs in CSV**: choose which columns are the event id, the timestamp, the activity, the
+  entities (objects) and the plain values; every entity becomes an `:Entity` node, linked to its
+  events with `:CORR` and ordered with directly-follows `:DF` relationships;
+- **OCEL 2.0 logs** (`.json`, `.jsonocel`): kept as tables, or decomposed into an EKG with the
+  qualifiers of the event-object relationships and the object-object relationships (`:REL`);
+- **object-centric analysis**: statistics, graph views, ready-made queries, process indicators,
+  analyses with filters (time window, trace duration, activities, frequency, variants) and the
+  aggregated graph of the classes of events per entity type;
+- **export** of every object: the graph as JSON, analysis configurations, CSV tables, OCEL 2.0
+  JSON, reports.
+
+Everything SOUP does comes from a **package**: a folder with a feature's backend and frontend, which
+can also be installed while the application runs.
+
+The full documentation is in the [wiki](https://github.com/AlessioPiana54/soup/wiki). Example event
+logs are in [soup-validation](https://github.com/soup-ocpm/soup-validation); this repository ships
+[soup-app/public/help/order_process.csv](soup-app/public/help/order_process.csv) and the OCEL 2.0
+file [soup-packages/ocel/tests/fixtures/orders.json](soup-packages/ocel/tests/fixtures/orders.json).
 
 ---
 
 ## Architecture
 
+SOUP follows the plug-in model of [ProM](https://promtools.org/): a small core that only mediates,
+and packages that contribute everything else.
+
 ```
 soup-app/        host frontend (Angular 21): workspace, import, object page, packages page
-soup-server/     host backend (Python/Flask)
-  soup/core/     the mediator: loads packages, registers their contributions, routes requests,
-                 keeps the workspace of objects, the EventBus and the tools
-  soup/api/      the HTTP layer (/api/v3), the only module that imports Flask
-soup-packages/   the packages (server/ + app/ each) and @soup/sdk, the frontend SDK
+soup-server/     host backend (Python, Flask): the core (soup/core) and the HTTP API (soup/api)
+soup-packages/   the packages (server/ + app/ each) and @soup/sdk, the SDK of their frontends
 ```
 
-- **The core is only a mediator.** It knows typed objects, contributions, tools, extension points
-  and events. It does not import pandas, neo4j, docker or Flask, and holds no Cypher, event log,
-  EKG or filter code. All of that lives in packages.
-- **Everything is a typed object** `{id, name, kind, created_by, parents, meta}` in the workspace.
-  Each kind of contribution works with objects as follows:
+- **The core is a mediator.** It loads the packages, registers their contributions, routes the
+  requests and keeps the workspace. It does not import pandas, neo4j, docker or Flask and holds no
+  Cypher: `soup-server/tests/test_architecture_boundaries.py` checks it.
+- **Typed objects.** Everything in the workspace is an object `{id, name, kind, created_by,
+  parents, meta}`; an object made from others lists them in `parents` (its provenance).
+- **Contributions**, offered only for the objects whose kind they accept (the user chooses when
+  there are several):
 
-  | Contribution | What it does with objects |
+  | Contribution | What it does |
   |---|---|
-  | Importer | Creates objects from a file. Several importers can accept the same extension with different results; the user chooses. |
-  | Operation | Takes objects of some kinds and produces new objects, derived from them. |
-  | Visualizer | Shows objects of the kinds it accepts. |
-  | Exporter | Writes objects of the kinds it accepts to a file. |
+  | Importer | Creates an object from a file (by extension). |
+  | Operation | Takes objects of some kinds and produces new, derived objects. |
+  | Visualizer | Shows an object: a Web Component of the package, loaded at runtime. |
+  | Exporter | Writes an object to a file. |
 
-  For each object only the contributions that accept its kind are offered. When there are
-  several, the user chooses.
-- **Memgraph, file storage, the object catalog and the preferences are tools** provided by
-  packages. A package can only use the tools it declares in `requires_tools`.
-- **Packages talk only through:**
-  - the core contracts (`soup.core.contracts`);
-  - tools;
-  - extension points (`add_extension_point` / `contribute`);
-  - events (EventBus);
-  - the public `api.py` of another package, and only one listed in `requires`.
-- **The frontend host contains no visualizer.** Every visualizer is a Web Component (custom
-  element) defined in its package's `app/` bundle and loaded at runtime with `import()` from the
-  URL the backend serves. It receives `data` and `context` and talks to the host only through
-  `context` and DOM events. Packages import only `@soup/sdk`, never host code.
-
-### SOUP and ProM
-
-SOUP follows the plug-in model of [ProM](https://promtools.org/):
+- **Tools** are services provided by packages (Memgraph, file storage, catalog of the objects,
+  preferences); a package uses only the tools it declares.
+- **Extension points** let a package extend another (e.g. a build step of the EKG, a view of the
+  graph, a filter of the analyses); **events** (`object.created`, `ekg.built`...) let packages react
+  to each other. A package imports another only through its `api.py`, and only if it requires it.
 
 | ProM | SOUP |
 |---|---|
-| Package (plug-ins installed by the Package Manager) | Package in `soup-packages/` or installed from a zip at `/packages` (`soup-package.json`, `server/`, `app/`) |
-| Object pool (provenance of the objects) | Workspace (`/workspace`): typed objects with `parents`, derived objects shown under their sources |
-| `@Plugin` with input/output types | Operation (`inputs` by kind → `produces` kinds) |
-| Import plug-in | Importer (by extension; the user picks among several) |
-| `@Visualizer` | Visualizer = Web Component of the package (`/o/:id`, chosen per kind and remembered) |
-| Export plug-in | Exporter (download from the object page) |
-| Shared services, plug-in extensions | Tools (`requires_tools`), extension points and EventBus events |
+| Package | Package in `soup-packages/` or installed from a zip at `/packages` |
+| Object pool | Workspace (`/workspace`), with the provenance of the objects |
+| `@Plugin` with input/output types | Operation (inputs by kind → produced kinds) |
+| Import plug-in | Importer |
+| `@Visualizer` | Visualizer (`/o/:id`, chosen per kind and remembered) |
+| Export plug-in | Exporter |
+
+### Containers
+
+```mermaid
+flowchart LR
+  browser["Browser"]
+  app["soup-app<br/>nginx + Angular, port 4200"]
+  engine["soup-engine<br/>Flask API /api/v3 on waitress, port 8080"]
+  db["soup-database<br/>Memgraph 3.13.2 with MAGE, ports 7687 and 7444"]
+  lab["soup-lab<br/>Memgraph Lab, port 3300"]
+  init["volume-init<br/>one-off, then exits"]
+  vol[("soup-volume<br/>/soup")]
+  pkgs[("soup-installed-packages<br/>/data/soup-packages")]
+
+  browser -->|"pages"| app
+  browser -->|"REST /api/v3 and package bundles"| engine
+  engine -->|"Bolt"| db
+  lab -->|"Bolt"| db
+  engine -->|"writes datasets, catalog, preferences"| vol
+  db -->|"LOAD CSV"| vol
+  engine --- pkgs
+  init -.->|"gives the files to the memgraph user"| vol
+  init -.-> pkgs
+```
+
+### From a file to an object
+
+```mermaid
+flowchart TD
+  file["File chosen in /import"] --> importers{"Importers that accept<br/>its extension"}
+  importers -->|"the user picks one,<br/>sets its fields"| object[("Typed object<br/>in the workspace")]
+  object --> visualizers["Visualizers of its kind<br/>(page /o/:id)"]
+  object --> operations["Operations of its kind<br/>(Azioni)"]
+  operations --> derived[("Derived object<br/>parents = inputs")]
+  derived --> visualizers
+  object --> exporters["Exporters of its kind<br/>(Esporta)"]
+  exporters --> download["Downloaded file"]
+```
 
 ### Shipped packages
 
 | Package | Importers | Operations | Visualizers | Exporters | Tools, extension points, events |
 |---|---|---|---|---|---|
-| `tool_memgraph` | | | | | provides tool `memgraph` (Cypher with `Query`/`ident`, active graph) |
-| `tool_storage` | | | | | provides tools `storage`, `catalog`, `preferences` |
-| `soup_base` | | | Report (`report`) | Report in JSON | shared elements (`soup-table`, `soup-chart`, `soup-graph-view`, ...) |
-| `text` | Text (`.txt`, `.md`, `.log`) | | Text | Original file (with its own extension) | uses `storage` |
-| `csv_table` | CSV as table (`.csv`, `.tsv`) | Column distribution | CSV table, Column profile | CSV | uses `storage` |
-| `ekg` | | Load into Memgraph | | | extension points `ekg.build_steps`, `ekg.state_providers`; events `ekg.before_reset`, `ekg.built` |
-| `csv_ekg` | CSV as event log (EKG on Memgraph): column mapping, trigger/target, multiplicity diagram | Convert to EKG (`table` → `ekg`) | | | uses `memgraph`, `storage` |
-| `causal_df` | | | | | contributes the causal `:DF` step to `ekg.build_steps` |
-| `ekg_views` | | | Graph (standard and object views), Statistics, Queries | Graph JSON | extension points `ekg.graph_views`, `ekg.queries`, `ekg.json_parts`, `ekg.stats_notices` |
-| `ekg_analysis` | | New analysis, Import analysis configuration, Configuration example | Process indicators | Analysis configuration | extension point `ekg.analysis_filters` (6 filters); event `analysis.before_apply` |
-| `ocel` | OCEL 2.0 as tables (`.json`, `.jsonocel`, kind `ocel_tables`), OCEL 2.0 as EKG on Memgraph | Decompose into EKG (`ocel_tables` → `ekg`) | OCEL tables, OCEL summary | OCEL 2.0 JSON | uses `storage` (tables), `memgraph` (EKG); contributes the step of the qualifiers on `:CORR` and the object-object `:REL` to `ekg.build_steps` (order 420) and a notice to `ekg.stats_notices` |
-| `ekg_class_graph` | | Build aggregated graph (`ekg` → `ekg_class`) | Aggregated graph, Aggregated graph statistics | | contributes a view, queries and JSON parts; subscribes to `ekg.before_reset`, `analysis.before_apply` |
+| `tool_memgraph` | | | | | tool `memgraph` |
+| `tool_storage` | | | | | tools `storage`, `catalog`, `preferences` |
+| `soup_base` | | | Report | Report in JSON | shared elements (`soup-table`, `soup-chart`, `soup-graph-view`...) |
+| `text` | Testo (`.txt`, `.md`, `.log`) | | Testo | File originale | |
+| `csv_table` | CSV come tabella (`.csv`, `.tsv`) | Distribuzione di una colonna | Tabella CSV, Profilo colonne | CSV | |
+| `ekg` | | Carica in Memgraph | | | points `ekg.build_steps`, `ekg.state_providers`; events `ekg.before_reset`, `ekg.built` |
+| `csv_ekg` | CSV come event log (EKG su Memgraph) | Converti in EKG | | | |
+| `causal_df` | | | | | build step of the causal `:DF` (order 450) |
+| `ekg_views` | | | Grafo, Statistiche, Interrogazioni | JSON del grafo | points `ekg.graph_views`, `ekg.queries`, `ekg.json_parts`, `ekg.stats_notices` |
+| `ekg_analysis` | | Nuova analisi, Importa configurazione di analisi, Esempio di configurazione | Indicatori di processo | Configurazione dell'analisi | point `ekg.analysis_filters` (six filters); event `analysis.before_apply` |
+| `ekg_class_graph` | | Costruisci grafo aggregato | Grafo aggregato, Statistiche del grafo aggregato | | |
+| `ocel` | OCEL 2.0 come tabelle, OCEL 2.0 come EKG su Memgraph | Scomponi in EKG | Tabelle OCEL, Riepilogo OCEL | OCEL 2.0 JSON | build step of the qualifiers and `:REL` (order 420) |
 
-Details of every package, of the tools and of the extension points are in
-[soup-packages/README.md](soup-packages/README.md). That page also has the guide
-"Scrivere un package", with a complete example of each kind of contribution.
+The user interface is in Italian: the names above are the ones it shows. Every package is described
+in the [Package reference](https://github.com/AlessioPiana54/soup/wiki/Package-reference).
 
 ---
 
-## Start the tool via Docker
+## Start the tool with Docker
 
-Install [Git](https://git-scm.com/downloads) and [Docker](https://www.docker.com/get-started/), then
-from a terminal:
+Install [Git](https://git-scm.com/downloads) and [Docker](https://www.docker.com/get-started/), then:
 
-```
-git clone https://github.com/soup-ocpm/soup.git
+```sh
+git clone https://github.com/AlessioPiana54/soup.git
 cd soup
 docker compose -p soup-tool up --build
 ```
 
-(Older Docker versions: `docker-compose -p soup-tool up --build`.)
-
-| Container | Description | Access point |
+| Container | What it is | Access |
 |---|---|---|
-| **soup-app** | Frontend (nginx; `/api/` is proxied to the backend) | [http://localhost:4200](http://localhost:4200) |
-| **soup-engine** | Backend `/api/v3` and the package bundles, served by waitress (`wsgi.py`), with the `soup-volume` volume on `/soup` | [http://localhost:8080](http://localhost:8080) |
-| **soup-database** | Memgraph (`memgraph/memgraph-mage:3.13.2`), with the `soup-volume` volume on `/soup` | `7687` (Bolt), `7444` |
+| **soup-app** | The frontend (nginx) | [http://localhost:4200](http://localhost:4200) |
+| **soup-engine** | The backend `/api/v3` and the package bundles, on waitress (`wsgi.py`), one process with 8 threads | [http://localhost:8080](http://localhost:8080) |
+| **soup-database** | Memgraph 3.13.2 with MAGE (`memgraph/memgraph-mage:3.13.2`) | `7687` (Bolt), `7444` |
 | **soup-lab** | Memgraph Lab (`memgraph/lab:3.13.2`) | [http://localhost:3300](http://localhost:3300) |
 | **volume-init** | One-off: gives the files of the volumes to the user of the backend and of Memgraph, then exits | |
 
-The backend image runs `python wsgi.py`: the [waitress](https://docs.pylonsproject.org/projects/waitress/)
-WSGI server, in **one process with 8 threads**. The engine keeps its state in memory (the loaded
-packages, the graph active in Memgraph, the caches and their locks), so it must not run as several
-worker processes (e.g. gunicorn with more than one worker). For local development, `python app.py`
-in `soup-server/` starts the same engine with the Flask development server (`SOUP_DEBUG`).
+The datasets, the catalog of the objects and the preferences are files in the `soup-volume`
+volume, mounted on `/soup` in the backend (which writes them) and in Memgraph (which reads the CSVs
+with `LOAD CSV`). The packages installed at runtime are in `soup-installed-packages`. Both survive a
+rebuild; the graph is rebuilt from the dataset files when an object is opened.
 
-### Memgraph
-
-`docker-compose.yaml` pins **Memgraph 3.13.2**: `memgraph/memgraph-mage:3.13.2` (Memgraph with the MAGE
-procedures) and `memgraph/lab:3.13.2` (the web interface) as two services. The image used before,
-`memgraph/memgraph-platform` without a tag, is deprecated: its `latest` has stayed at Memgraph 2.14.1
-(February 2024), which does not implement list and pattern comprehensions (`[x IN list | expr]`).
-The packages never use them (`soup-server/tests/test_cypher_compatibility.py` checks it) and run on
-2.14.1 too. Update the tags together (the `volume-init` service uses the Memgraph image too), then run the smoke tests of `ekg_views` and `ekg_analysis`
-against the new image (their READMEs).
-
-To read the version of the running Memgraph, run `SHOW VERSION;` in Memgraph Lab or with mgconsole:
+The backend runs as an unprivileged user with the UID and GID of the `memgraph` user of the Memgraph
+image (101 and 103 in 3.13.2):
 
 ```sh
-echo "SHOW VERSION;" | docker exec -i soup-database mgconsole
+docker run --rm --entrypoint id memgraph/memgraph-mage:3.13.2 memgraph
 ```
 
-At startup Memgraph may warn that `vm.max_map_count` is too low. It is a setting of the Linux kernel
-that runs Docker, not of the image. On Docker Desktop for Windows (WSL2):
-
-```sh
-wsl -d docker-desktop sysctl -w vm.max_map_count=524288
-```
-
-It lasts until WSL restarts. To keep it, add `kernelCommandLine = sysctl.vm.max_map_count=524288`
-under `[wsl2]` in `%UserProfile%\.wslconfig`, then run `wsl --shutdown`. On Linux:
-`sudo sysctl -w vm.max_map_count=524288` (permanent in `/etc/sysctl.conf`).
-
-### The `soup-volume` volume
-
-The datasets, the catalog and the preferences are files in the `soup-volume` volume, mounted on `/soup`
-in both the backend and Memgraph: the backend writes them as plain files (`SOUP_STORAGE_KIND=local`,
-`SOUP_LOCAL_STORAGE_ROOT=/soup`) and Memgraph reads the CSVs with `LOAD CSV` from the same path. The
-volume keeps the datasets of an existing installation; the graph itself is rebuilt from them when an
-object is opened.
-
-The `memgraph/memgraph-mage` image runs as the unprivileged `memgraph` user, UID 101 and GID 103 in
-3.13.2 (`docker run --rm --entrypoint id memgraph/memgraph-mage:3.13.2 memgraph`). The backend image
-runs as a user with the same UID and GID (`ARG SOUP_UID`, `SOUP_GID` in `soup-server/Dockerfile`), so
-what one writes the other can read and write. Check them again when the Memgraph tag changes.
-
-Volumes created before this layout were written by the backend through the Docker socket as root. The
-`volume-init` service runs before the backend at every `up`: it gives the files of `soup-volume` and
-`soup-installed-packages` that have another owner to the `memgraph` user and exits; it removes and
-moves nothing, and does nothing when every owner is already right. The same by hand:
+`volume-init` runs before the backend at every `up`: it changes the owner of the files of the two
+volumes that belong to someone else (for example volumes written by older versions, as root) and
+removes or moves nothing. To run it by hand:
 
 ```sh
 docker compose -p soup-tool run --rm volume-init
 ```
 
-The backend image builds every package frontend (`npm ci && npm run build:packages`). Packages
-installed at runtime are stored in the `soup-installed-packages` volume.
+### Backup and restore of the volumes
 
-**Pages:**
+```sh
+# backup: one archive per volume in ./backup
+docker run --rm -v soup-tool_soup-volume:/data -v "$PWD/backup":/backup alpine tar czf /backup/soup-volume.tgz -C /data .
+docker run --rm -v soup-tool_soup-installed-packages:/data -v "$PWD/backup":/backup alpine tar czf /backup/soup-installed-packages.tgz -C /data .
+tar tzf backup/soup-volume.tgz | head   # check that the archive can be read
+
+# restore (with the stack stopped: docker compose -p soup-tool down)
+docker run --rm -v soup-tool_soup-volume:/data -v "$PWD/backup":/backup alpine sh -c "tar xzf /backup/soup-volume.tgz -C /data"
+```
+
+On Windows use a full path (`-v C:\Users\me\backup:/backup`); in Git Bash prefix the commands with
+`MSYS_NO_PATHCONV=1`.
+
+### `vm.max_map_count`
+
+At startup Memgraph may log `vm.max_map_count 262144 is too low, increase to at least 524288`. It
+is a setting of the Linux kernel that runs Docker. On Docker Desktop for Windows (WSL2):
+
+```sh
+wsl -d docker-desktop sysctl vm.max_map_count                # the current value
+wsl -d docker-desktop sysctl -w vm.max_map_count=524288      # only if it is lower
+```
+
+It lasts until WSL restarts; to keep it, add `kernelCommandLine = sysctl.vm.max_map_count=524288`
+under `[wsl2]` in `%UserProfile%\.wslconfig` and run `wsl --shutdown`. On Linux:
+`sudo sysctl -w vm.max_map_count=524288` (permanent in `/etc/sysctl.conf`).
+
+### Pages
 
 | Page | What it does |
 |---|---|
-| `/welcome` | Shows the state of the tools (`/api/v3/health`). |
-| `/import` | Choose a file and an importer. |
-| `/workspace` | The objects: search, rename and describe, delete. |
-| `/o/:id` | One object: its visualizers, its operations ("Azioni") and its exporters. |
-| `/packages` | Install, enable, disable and remove packages. |
-
-The addresses of the old interface still work as redirects:
-
-| Old address | Goes to |
-|---|---|
-| `/new-dataset` | `/import` |
-| `/datasets` | `/workspace` |
-| `/datasets/<name>` and `/datasets/<name>/graph` | `/o/<id>` of that dataset |
-| `/datasets/<name>/<analysis>/graph` | `/o/<id>` of that analysis |
+| `/welcome` | The state of the tools. |
+| `/import` | Choose a file and an importer, set its fields, see the preview, import. |
+| `/workspace` | The objects with their provenance: search, filter by kind and package, rename and describe, delete. |
+| `/o/:id` | One object: its visualizers, its operations (**Azioni**) and its exporters (**Esporta**). |
+| `/packages` | Install a package from a zip, enable, disable and remove packages. |
 
 ---
 
-## Tests
+## Local development
 
-Node **24.22.0** or later with npm 11 (`.nvmrc` at the root; `engines` in `soup-app/package.json`
-and `soup-packages/package.json`): the `package-lock.json` of `soup-app` installs with `npm ci`
-only with npm 11, while npm 10 reports it as out of sync.
+Node **24.22.0** or later with npm 11 (`.nvmrc`), Python **3.12** (3.10 is supported too).
+
+```sh
+# backend: a virtual environment with the libraries of the image and the dev tools
+cd soup-server
+python -m venv .venv
+source .venv/Scripts/activate     # Git Bash on Windows; Linux and macOS: source .venv/bin/activate
+pip install -r requirements-dev.txt
+
+# packages: the SDK and the frontend bundles of every package
+cd ../soup-packages
+npm ci
+npm run build:packages
+
+# host frontend
+cd ../soup-app
+npm ci
+```
+
+To work on the frontend against the backend of the Docker stack, stop its frontend and start the
+development server on the same port (the frontend calls the backend at `http://127.0.0.1:8080`):
+
+```sh
+docker compose -p soup-tool stop angular
+cd soup-app && npm start          # ng serve on http://localhost:4200
+```
+
+To run the backend from the sources, stop its container and start `app.py` (the Flask development
+server) against the Memgraph of the stack. Outside Docker the backend cannot share the `/soup`
+volume, so it writes the datasets into the Memgraph container through the Docker API
+(`SOUP_STORAGE_KIND=docker`, the Docker of your machine); the next `docker compose up` gives the
+files it wrote back to the `memgraph` user:
+
+```sh
+docker compose -p soup-tool stop flask
+cd soup-server
+MEMGRAPH_HOST=localhost SOUP_STORAGE_KIND=docker python app.py
+```
+
+`SOUP_DEBUG=1` turns on Flask's debug mode (never on a reachable port, see
+[Security](#security)).
+
+---
+
+## Tests and continuous integration
 
 ```sh
 # backend and the Python tests of the packages (FakeDatabase and in-memory storage: no Docker)
-cd soup-server && pip install -r requirements-dev.txt && python -m pytest
-# with the coverage, and the static analysis of the backend (pyproject.toml)
-python -m pytest --cov
-python scripts/lint.py               # ruff, vulture, mypy --strict (soup/ and every package's server/)
-python scripts/lint.py --counts      # the number of messages per area
-python scripts/metrics.py            # lines, files, ruff warnings, cyclomatic complexity (max, mean, > 10)
+cd soup-server
+python -m pytest
+python scripts/lint.py            # ruff, vulture, mypy --strict on soup/ and every package's server/
 
-# packages: lint (eslint, knip, tsc), unit tests (vitest/jsdom), type check and bundles
-cd soup-packages && npm install && npm run lint && npm test && npm run build:packages
+# packages: eslint, knip, tsc; unit tests (Vitest, jsdom); bundles
+cd ../soup-packages
+npm run lint && npm test && npm run build:packages
 
-# host frontend: lint (ng lint, knip, tsc), build (with type check), unit tests (Vitest, jsdom), end to end (Playwright)
-cd soup-app && npm install && npm run lint && npm run build && npm run test:v3 && npm run e2e
+# host frontend: lint, unit tests (Vitest, jsdom), build, end to end (Playwright, with Chrome)
+cd ../soup-app
+npm run lint && npm run test:v3 && npm run build && npm run e2e
 ```
 
-The same checks run in continuous integration on every push and pull request, plus the Memgraph
-smoke tests and the build of the two images: [.github/workflows/README.md](.github/workflows/README.md).
+The end-to-end tests start their own backend (`python -m tests.e2e_server` in `soup-server`) with
+the `python` on the `PATH`: activate the virtual environment first. The smoke tests of `ekg_views`
+and `ekg_analysis` run every query against a real Memgraph (their READMEs).
 
-`soup-server/tests/test_architecture_boundaries.py` checks the boundaries statically:
-
-- the core imports none of pandas, neo4j, docker and Flask;
-- `soup/api` is the only module that imports Flask;
-- packages import other packages only through the `api.py` of packages they `require`;
-- packages use only the tools and libraries they declare;
-- `soup-app` imports from `soup-packages` only the SDK;
-- no package imports host code;
-- no frontend code calls `/api/v2`;
-- one `ParsedCache` (soup_base's) and one DOM helper `h()` (the SDK's) for every package.
-
-`tests/test_contributions_contract.py` checks that every contribution of the default packages
-honours the contract of its base class (Importer, Operation, Visualizer, Exporter, Tool): declared
-attributes, required methods implemented, overrides with the parameters of the base, unknown
-actions answered with `NotFoundError`, valid `file_type()` and `health()`.
-`tests/test_cypher_compatibility.py` checks that no query uses what the Memgraph of
-`docker-compose.yaml` does not implement.
-
-The limits of the code (ruff: complexity 10, PL rules; eslint: `complexity` 10 and
-`max-lines-per-function` 60, not for tests) are reported by the lint scripts; the exceptions are
-marked in the code with `noqa` and the reason (public signatures, the ekg runtime, the imports of
-the storage backends chosen at runtime).
-
-`tests/test_legacy_routes.py` compares the served routes with `tests/fixtures/api_v3_routes.json`.
-To regenerate the fixture: `python -m tests.tools.dump_v3_routes`.
+The same checks run on GitHub Actions at every push and pull request
+([.github/workflows/README.md](.github/workflows/README.md)): backend on Python 3.10 and 3.12,
+packages, frontend with the end-to-end tests, the Memgraph smoke tests and the build of the two
+images. More in [Testing and CI](https://github.com/AlessioPiana54/soup/wiki/Testing-and-CI).
 
 ---
 
@@ -247,17 +291,17 @@ To regenerate the fixture: `python -m tests.tools.dump_v3_routes`.
 
 | Variable | Default | Read by | Meaning |
 |---|---|---|---|
-| `SOUP_PACKAGES` | absent: every package found | host | Comma-separated packages to activate at startup (empty = none). |
+| `SOUP_PACKAGES` | absent: every package found | host | Comma-separated packages to activate at startup (empty: none). |
 | `SOUP_PACKAGES_PATH` | `soup-packages/` + installed dir | host | Folders where packages are searched (`os.pathsep`-separated). |
-| `SOUP_INSTALLED_PACKAGES_DIR` | `soup-server/instance/packages` (Docker: `/data/soup-packages`) | host | Where zips are extracted and the enabled/disabled state is kept. |
+| `SOUP_INSTALLED_PACKAGES_DIR` | `soup-server/instance/packages` (image: `/data/soup-packages`) | host | Where installed zips are extracted and the enabled/disabled state is kept. |
 | `SOUP_ALLOW_PACKAGE_INSTALL` | `false` (`true` in `docker-compose.yaml`) | host | Allows installing and uninstalling packages at runtime. |
 | `SOUP_STRICT` | `false` | host | A package that fails to load stops the startup. |
 | `SOUP_MAX_UPLOAD_MB` | `200` | host | Maximum request body of `/api/v3` (413 above). |
-| `SOUP_DEBUG` | `false` | `app.py` (local development; not `wsgi.py`) | `1` or `true` turns on Flask's debug mode. **Development only, never on a reachable port:** the Werkzeug debugger runs Python code on the server for whoever reaches port 8080 (`docker-compose.yaml` publishes it and does not set the variable). The reloader stays off in any case, so the engine starts once. |
+| `SOUP_DEBUG` | `false` | `app.py` only | `1` or `true`: Flask debug mode. |
 | `MEMGRAPH_HOST`, `MEMGRAPH_PORT` | `memgraph`, `7687` | `tool_memgraph` | Memgraph connection. |
-| `SOUP_STORAGE_KIND` | `docker` (`local` in `docker-compose.yaml`) | `tool_storage` | `local` (files under `SOUP_LOCAL_STORAGE_ROOT`; in `docker-compose.yaml` the `/soup` volume Memgraph also mounts) or `docker` (files written into the `/soup` of the Memgraph container through the Docker socket: see "Security" below). |
-| `SOUP_CONTAINER_NAME` | `soup-database` | `tool_storage` | Container of the `docker` storage (the `container_name` of the Memgraph service). |
-| `SOUP_LOCAL_STORAGE_ROOT` | `/soup` | `tool_storage` | Root of the `local` storage. |
+| `SOUP_STORAGE_KIND` | `docker` (`local` in `docker-compose.yaml`) | `tool_storage` | `local`: files under `SOUP_LOCAL_STORAGE_ROOT`; `docker`: files written into the Memgraph container through the Docker API. |
+| `SOUP_LOCAL_STORAGE_ROOT` | `/soup` | `tool_storage` | Root of the `local` storage, the same path Memgraph reads with `LOAD CSV`. |
+| `SOUP_CONTAINER_NAME` | `soup-database` | `tool_storage` | Container of the `docker` storage. |
 | `SOUP_EKG_VIEWS_MAX_LIMIT` | `2000` | `ekg_views` | Maximum number of graph elements drawn. |
 | `SOUP_TEXT_CACHE_OBJECTS`, `SOUP_TEXT_CACHE_MB` | `8`, `200` | `text` | In-memory cache of the decoded files. |
 | `SOUP_CSV_TABLE_CACHE_OBJECTS`, `SOUP_CSV_TABLE_CACHE_MB` | `8`, `200` | `csv_table` | In-memory cache of the parsed tables. |
@@ -265,64 +309,61 @@ To regenerate the fixture: `python -m tests.tools.dump_v3_routes`.
 
 ---
 
-## Security of the backend container
+## Security
 
-The backend container has **no access to the Docker daemon**: `docker-compose.yaml` does not mount
-`/var/run/docker.sock` and the backend runs as an unprivileged user, not root. Whoever reaches the
-Docker socket controls every container and, through them, the host as root; a backend holding it
-would hand that to any code running in it, packages included.
-
-The `docker` storage (`SOUP_STORAGE_KIND=docker`, `DockerVolumeStorage`) is still available for an
-installation that cannot share a volume between the backend and Memgraph: it writes into the
-Memgraph container (`SOUP_CONTAINER_NAME`) through the Docker socket, so it needs the socket mounted
-in the backend, with the risk above. It is not the default of `docker-compose.yaml`; choose it only
-on purpose.
-
-## Security of runtime installation
-
-A package runs code with the privileges of the server (its `server/` part, in the Flask process)
-and of the browser (its `app/` part, loaded in the page). **Install only packages you trust.**
-
-- **Installation is off by default.** Installing or uninstalling answers `403` unless
-  `SOUP_ALLOW_PACKAGE_INSTALL=true`. The development `docker-compose.yaml` enables it; turn it off
-  for a shared deployment.
-- **Zips are validated before any code is imported.** Rejected:
-  - zips over 50 MB, or over 200 MB extracted;
-  - paths that leave the package folder, and symbolic links;
-  - invalid manifests and invalid names (no `""`, `..`, separators or leading `_`);
-  - an incompatible `api_version` (the contracts are at `4.0`);
-  - missing `python_dependencies` (checked, never installed);
-  - `requires` that are not active.
-- **Overriding a shipped package** requires a higher version and `allow_override=true`. A failed
-  load rolls back to the previous version.
-- **Only a package's `app/dist` is served to the browser.** A path leaving it answers `404`.
-- **Inside a package**, the core enforces at runtime:
-  - a tool not declared in `requires_tools` cannot be reached (`ToolNotDeclaredError`);
-  - an extension point or tool not declared in the manifest cannot be registered.
-- **Package code must follow these rules:**
-  - Cypher always travels as a `Query` with parameters;
-  - identifiers go through `ident()`;
-  - operators come from closed lists;
-  - `LIMIT` is a parameter.
+- **Installing a package runs its code** with the privileges of the server (its `server/` part) and
+  of the browser (its `app/` part). Installation is off by default
+  (`SOUP_ALLOW_PACKAGE_INSTALL=false`, then install and uninstall answer `403`); the development
+  `docker-compose.yaml` turns it on: turn it off for a shared deployment. Zips are validated before
+  any code is imported (size, paths, symbolic links, manifest, `api_version`,
+  `python_dependencies`, `requires`); only a package's `app/dist` is served to the browser.
+- **The backend has no access to the Docker daemon.** `docker-compose.yaml` does not mount the
+  Docker socket and the backend runs as an unprivileged user. Whoever controls the Docker socket
+  controls the host; the `docker` storage (`SOUP_STORAGE_KIND=docker`) needs it and is meant for
+  local development only.
+- **`SOUP_DEBUG` is for local development only:** the Werkzeug debugger runs Python code for
+  whoever reaches the port. `wsgi.py`, used by the image, never reads it.
+- **Package code** reaches only the tools it declares, sends Cypher as a parameterized `Query`,
+  quotes identifiers with `ident()` and never puts user values in the text of a query.
 
 ---
 
-> [!TIP]
-> Please refer to the project [wiki](https://github.com/soup-ocpm/soup/wiki) for all the details; you can also download some event logs [here](https://github.com/soup-ocpm/soup-validation).
+## Known limitations
 
-> [!WARNING]
-> Make sure your `.csv` file **does not contain spaces** in the column headers to avoid parsing issues.
+- **One process, one graph.** The engine keeps its state in memory: run one process (waitress
+  with threads), never several workers. Memgraph holds one graph at a time: opening another EKG
+  rebuilds its graph from the dataset files.
+- **The frontend calls the backend at `http://127.0.0.1:8080`.** The production build uses
+  `src/environments/environment.ts`, so the application works from the machine that runs the
+  stack; the `/api/` proxy in `soup-app/nginx.conf` points at `localhost:8080` inside the frontend
+  container and does not reach the backend.
+- **Legacy datasets** whose configuration uses one column for two of the roles event id, timestamp
+  and activity cannot be built: their object shows why.
+- **EKGs imported from OCEL before the relationships entered the graph** have neither the
+  qualifiers nor `:REL` until the file is imported again (or decomposed again from its tables);
+  their statistics say so.
+- **Timestamps** must be in a format Memgraph's `localDateTime` reads: `YYYY-MM-DDThh:mm:ss[.mmm]`,
+  `YYYY-MM-DDThh:mm`, `YYYYMMDDThhmmss`, `YYYYMMDDThhmm` or `YYYYMMDDThh`.
+- **The graph view** draws at most `SOUP_EKG_VIEWS_MAX_LIMIT` elements (2000 by default).
 
-> [!NOTE]
-> **Timestamp Format Requirements**: Memgraph accepts the following timestamp formats (with optional milliseconds): `YYYY-MM-DDThh:mm:ss` or `YYYY-MM-DDThh:mm` or `YYYYMMDDThhmmss` or `YYYYMMDDThhmm` or `YYYYMMDDThh`.
+---
 
-## Note
-> 💭 Our tool is called _Soup_, with a logo showcasing a mix of rainbow noodles, symbolizing the dynamic and interconnected flow of object-centric process mining, much like the iconic image of rainbow spaghetti.
+## Credits
 
-## Contact
-* **Development support**: Alessio Giacché ✉️ ale.giacc.dev@gmail.com
+- **Original author:** Alessio Giacché.
+- **Contributors:** Sara Pettinari; research activities with Lorenzo Rossi.
+- **Plugin architecture, package system and v3 API by Alessio Pianaroli (2026):**
+  - the core as a mediator of typed objects, contributions, tools, extension points and events;
+  - the package system: manifests, loading, runtime installation from zips, frontends as Web
+    Components with `@soup/sdk`;
+  - the `/api/v3` HTTP API and the new host pages (import, workspace, object page, packages);
+  - the EKG, OCEL, analysis, views and aggregated-graph packages, with the relationships of OCEL
+    2.0 in the graph;
+  - the backend without access to Docker, the test suites and the continuous integration.
 
-* **Research activities**: Sara Pettinari ✉️ sara.pettinari@gssi.it & Lorenzo Rossi ✉️ lorenzo.rossi@unicam.it
+The original project is [soup-ocpm/soup](https://github.com/soup-ocpm/soup). SOUP is released under
+the [MIT License](LICENSE).
 
-## Feedback
-We'd love to hear from you! Please share your feedback by filling out our form ➡️ [here](https://forms.gle/nBgZTeaDefTaYYkk9)
+> 💭 Our tool is called _Soup_, with a logo showcasing a mix of rainbow noodles, symbolizing the
+> dynamic and interconnected flow of object-centric process mining, much like the iconic image of
+> rainbow spaghetti.

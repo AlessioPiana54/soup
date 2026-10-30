@@ -5,6 +5,7 @@
   "label": "Memgraph",
   "description": "Provides the 'memgraph' tool: parameterized Cypher queries and the active graph.",
   "author": "SOUP",
+  "contributors": [{"name": "Alessio Pianaroli", "email": "alessiopianaroli.it@gmail.com"}],
   "requires": [],
   "requires_tools": [],
   "provides_tools": ["memgraph"],
