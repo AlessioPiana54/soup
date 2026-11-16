@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="soup-app/public/icons/icon-152x152.png" alt="The SOUP logo: a bowl of rainbow noodles" width="120">
+  <img src="assets/soup.webp" alt="A dark bowl of rainbow noodles whose strands rise and turn into the glowing nodes of a graph." width="400">
 </p>
 
 # SOUP
